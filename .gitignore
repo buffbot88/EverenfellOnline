@@ -1,0 +1,68 @@
+# ── Curated repo: text, configs, web code and the new client are versioned.
+# ── Legacy runtime binaries, database data, logs and bulk assets are not.
+# ── (See knowledge.md for what lives where.)
+
+# ── Java runtime / game server binaries ──
+*.jar
+*.dll
+*.exe
+TonNgoKhong/server/jre6/
+TonNgoKhong/server/server/
+TonNgoKhong/tools/
+TonNgoKhong/server/jvm.dll
+TonNgoKhong/server/game.ico
+
+# ── ESSamp stack binaries (Apache / MySQL / PHP / phpMyAdmin / Zend) ──
+TonNgoKhong/server/ESSamp/Apache2/
+TonNgoKhong/server/ESSamp/MySQL4/
+TonNgoKhong/server/ESSamp/MySQL5/
+TonNgoKhong/server/ESSamp/PHP5/
+TonNgoKhong/server/ESSamp/phpMyAdmin/
+TonNgoKhong/server/ESSamp/zend/
+TonNgoKhong/server/ESSamp/eAccelerator/
+TonNgoKhong/server/ESSamp/ESSamp.exe
+TonNgoKhong/server/ESSamp/*.ini
+
+# ── Flash client + bulk game assets (1.7 GB; asset extraction is a later milestone) ──
+*.swf
+*.7z
+*.zip
+TonNgoKhong/server/ESSamp/wwwroot/res/
+TonNgoKhong/server/ESSamp/wwwroot/wangzhan/
+TonNgoKhong/server/ESSamp/wwwroot/cnupload/
+TonNgoKhong/server/ESSamp/wwwroot/ClientRes/
+TonNgoKhong/server/ESSamp/wwwroot/5_files/
+
+# ── Binary game data tables (not hand-editable; see knowledge.md) ──
+*.dat
+*.jat
+*.mm
+*.db
+*.psd
+*.ttc
+
+# ── Runtime state: logs, pid files, file DBs, uploads ──
+# (bare `logs/` also catches stray dumps nested inside config/data trees,
+# e.g. config/game/sys_config/logs/)
+logs/
+TonNgoKhong/server/logs/
+TonNgoKhong/server/data/
+TonNgoKhong/server/pid
+TonNgoKhong/server/**/pid
+*.log
+*.err
+
+# ── OS / editor noise ──
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.lnk
+.vscode/
+.idea/
+
+# ── New web client build output + deps ──
+client/node_modules/
+client/dist/
+
+# ── Local agent metadata ──
+.freebuff/

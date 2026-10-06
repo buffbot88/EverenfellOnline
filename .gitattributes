@@ -1,0 +1,9 @@
+# Legacy tree: 2014 Windows deployment, CRLF everywhere. Store bytes exactly
+# as-is; never normalize, or the old tooling/PHP may misbehave.
+TonNgoKhong/** -text
+
+# New web client: normal modern handling.
+client/** text=auto
+*.md text=auto
+.gitignore text=auto
+.gitattributes text=auto

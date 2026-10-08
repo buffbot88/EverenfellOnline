@@ -63,6 +63,13 @@ Desktop.ini
 # ── New web client build output + deps ──
 client/node_modules/
 client/dist/
+tools/bridge/node_modules/
+# Ruffle selfhosted runtime (~30MB) staged from npm by sync:ruffle
+client/public/ruffle/
+
+# ── Python server bytecode (the SQLite db is covered by *.db above) ──
+__pycache__/
+*.pyc
 
 # ── Local agent metadata ──
 .freebuff/

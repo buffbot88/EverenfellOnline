@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MonkeyKingOnline — Flash Client (Ruffle)</title>
+    <!-- Same trick as the original Gamelogin.php: the SWF resolves its
+      relative loads (PlatformLoader.swf, tg.swf, data XML) against the page
+      URL, so point the base at /res/. Absolute-path URLs (/ruffle/..., 
+      /src/..., /api/...) are unaffected. -->
+    <base href="/res/" />
+    <style>
+      html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: #000; overflow: hidden;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      #container { position: relative; width: 100%; height: 100%; }
+      #game { width: 100%; height: 100%; }
+      #game ruffle-player { width: 100%; height: 100%; display: block; }
+      #status {
+        position: absolute; left: 12px; bottom: 10px; z-index: 10;
+        font-size: 12px; color: #8a93b8; background: rgba(5,7,15,.75);
+        padding: 6px 10px; border-radius: 6px; pointer-events: none;
+      }
+      #status b { color: #ffd76a; }
+      #diagnostics-toggle {
+        position: absolute; right: 12px; bottom: 10px; z-index: 20;
+        border: 1px solid #59627e; border-radius: 6px; padding: 6px 10px;
+        background: rgba(5,7,15,.9); color: #d9def0; font: inherit;
+        font-size: 12px; cursor: pointer;
+      }
+      #diagnostics-toggle.has-errors { border-color: #ff6b6b; color: #ffb0b0; }
+      #diagnostics {
+        display: none; position: absolute; right: 12px; bottom: 48px; z-index: 20;
+        width: min(620px, calc(100vw - 24px)); max-height: min(55vh, 420px);
+        overflow: hidden; border: 1px solid #59627e; border-radius: 8px;
+        background: rgba(8, 10, 20, .97); color: #d9def0; font-size: 12px;
+        box-shadow: 0 8px 30px #000a;
+      }
+      #diagnostics.open { display: flex; flex-direction: column; }
+      #diagnostics header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #30374a; }
+      #diagnostics-title { flex: 1; font-weight: 600; }
+      #diagnostics button { border: 1px solid #59627e; border-radius: 4px; background: #171b2a; color: inherit; padding: 3px 7px; cursor: pointer; }
+      #diagnostics-list { margin: 0; padding: 8px 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      .diag-error { color: #ff8585; }
+      .diag-warn { color: #ffd76a; }
+      .diag-info { color: #9bb8ff; }
+      #diagnostics-empty { color: #98a2bd; }
+      @media (max-width: 600px) { #status { max-width: calc(100vw - 36px); } }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="game"></div>
+      <div id="status">loading Ruffle…</div>
+      <section id="diagnostics" aria-label="Client diagnostics" aria-live="polite">
+        <header>
+          <span id="diagnostics-title">Client diagnostics</span>
+          <button id="diagnostics-copy" type="button">Copy</button>
+          <button id="diagnostics-clear" type="button">Clear</button>
+          <button id="diagnostics-close" type="button" aria-label="Close diagnostics">×</button>
+        </header>
+        <pre id="diagnostics-list"><span id="diagnostics-empty">No client warnings or errors captured.</span></pre>
+      </section>
+      <button id="diagnostics-toggle" type="button" aria-expanded="false" aria-controls="diagnostics">Diagnostics · 0</button>
+    </div>
+    <script src="/ruffle/ruffle.js"></script>
+    <script type="module" src="/src/player.js"></script>
+  </body>
+</html>

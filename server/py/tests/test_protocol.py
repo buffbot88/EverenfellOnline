@@ -1,0 +1,261 @@
+"""Protocol + persistence tests. The handshake/login vectors are built from
+evidence, not invention: INITKEY bytes captured live from the real client,
+framing/cipher/login/role layouts from jar bytecode (see docs/protocol.md).
+"""
+import os
+import shutil
+import struct
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from auth import check_sign, generate_sign, hash_password, verify_password
+from db import Store
+from game import amf3
+from game.amf3 import Obj
+from game.cipher import SimpleEncrypt, new_key
+from game.protocol import Session, frame
+
+# Live-captured first frame from the original client (bridge LOG_PACKETS=1).
+CAPTURED_INITKEY = bytes.fromhex('00000009060f494e49544b4559')
+
+
+def temp_store(cleanups):
+    """A Store on a throwaway DB.
+
+    Ordering matters on Windows: cleanup handlers run LIFO, so register the
+    directory removal FIRST and the connection close second, otherwise rmtree
+    runs while SQLite still holds the file (WinError 32 masks the real
+    failure being debugged).
+    """
+    d = tempfile.mkdtemp()
+    cleanups.append((shutil.rmtree, (d,), {'ignore_errors': True}))
+    st = Store(os.path.join(d, 't.db'))
+    cleanups.append((st.close, (), {}))
+    return st
+
+
+class TestVectors(unittest.TestCase):
+    def test_captured_initkey_shape(self):
+        ln = struct.unpack('>I', CAPTURED_INITKEY[:4])[0]
+        self.assertEqual(ln, 9)
+        self.assertEqual(amf3.decode(CAPTURED_INITKEY[4:]), 'INITKEY')
+
+    def test_cipher_known_answer(self):
+        # encode/decode are inverses; algorithm matches SimpleEncrypt bytecode:
+        # enc[i] = (b + ticket[i%tl] - key[i%kl]) mod 256 (independent counters)
+        c = SimpleEncrypt('k', 't')
+        enc = c.encode(b'\x00\x01\xffABC')
+        tk, kv = ord('t'), ord('k')
+        want = bytes([(0 + tk - kv) & 0xFF, (1 + tk - kv) & 0xFF,
+                      (0xFF + tk - kv) & 0xFF]) + SimpleEncrypt('k', 't').encode(b'ABC')[2:]
+        self.assertEqual(enc[:3], want[:3])
+        self.assertEqual(SimpleEncrypt('k', 't').decode(enc), b'\x00\x01\xffABC')
+
+    def test_u29_boundaries(self):
+        for v in [0, 1, 0x7F, 0x80, 0x3FFF, 0x4000, 0x1FFFFF, 0x200000,
+                  0xFFFFFFF, -1, -0x10000000]:
+            self.assertEqual(amf3.decode(amf3.encode(v)), v, hex(v & 0xFFFFFFFF))
+
+    def test_exact_login_response_roundtrip(self):
+        # byte-shape of what we send for 16001 success (big session id goes
+        # out as AMF3 double, like BlazeDS Long>U29; small ids stay ints)
+        for sid in (7, 1231072208):
+            env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []],
+                   0, 2, 1, sid, None, 'hero', None, 0]
+            raw = amf3.encode(env)
+            back = amf3.decode(raw)
+            self.assertEqual(back, env)
+            self.assertEqual(len(back), 10)
+
+    def test_amf3_anonymous_object(self):
+        # Canonical BlazeDS anonymous dynamic object: 0A 0B 01 <k><v>.. 01
+        raw = amf3.encode(Obj({'rawOffset': 0}))
+        self.assertEqual(raw[0], 0x0A)
+        self.assertEqual(raw[1], 0x0B)
+        self.assertEqual(raw[2], 0x01)
+        self.assertEqual(raw[-1], 0x01)
+        back = amf3.decode(raw)
+        self.assertEqual(back['rawOffset'], 0)
+        # roundtrip with mixed value types
+        tz = Obj({'rawOffset': 28800000, 'ID': 'Asia/Shanghai',
+                  'displayName': 'Asia/Shanghai', 'dstSavings': 0})
+        self.assertEqual(amf3.decode(amf3.encode(tz)), tz)
+
+    def test_server_info_vo_shape(self):
+        # Mirrors ServerInfoVO.decode(): slot 3 must be an object carrying
+        # rawOffset (the String we sent before raised AS3 Error #1069).
+        tz = Obj({'rawOffset': 0, 'ID': 'UTC', 'displayName': 'UTC',
+                  'dstSavings': 0})
+        env = ['10001', [1, [1, 2, None, tz, False, None], [0, 0], []],
+               0, 2, 1, 7, None, 'hero', None, 0]
+        back = amf3.decode(amf3.encode(env))
+        # result[1] is the 6-slot server-info array; slot 3 is the TimeZone.
+        # (result[3] is the roles list — easy to conflate, hence the assert.)
+        self.assertEqual(back[1][3], [])
+        self.assertNotIsInstance(back[1][1][3], str)
+        self.assertEqual(back[1][1][3]['rawOffset'], 0)
+
+    def test_amf3_login_shapes(self):
+        login = [10001, ['hero', 1700000000.0, 'fu1304', False, 'sig', 0, 1]]
+        self.assertEqual(amf3.decode(amf3.encode(login)), login)
+        env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []],
+               0, 2, 1, 99, None, 'hero', None, 0]
+        self.assertEqual(amf3.decode(amf3.encode(env)), env)
+
+
+def make_session(store=None):
+    return Session(conn_id=7, check_sign=check_sign,
+                   get_roles=(lambda u, s: store.list_roles(u, s)) if store
+                   else (lambda u, s: []),
+                   server_start_ms=1234567890000)
+
+
+class TestHandshake(unittest.TestCase):
+    def test_initkey_triggers_key_reply(self):
+        s = make_session()
+        out = s.feed(CAPTURED_INITKEY)
+        self.assertEqual(len(out), 1)
+        ln = struct.unpack('>I', out[0][:4])[0]
+        key = out[0][4:].decode()
+        self.assertEqual(ln, len(out[0][4:]))
+        self.assertEqual(len(key), 36)  # UUID string
+        self.assertIsNotNone(s.cipher)
+
+    def test_policy_answered_raw(self):
+        s = make_session()
+        out = s.feed(b'<policy-file-request/>\x00')
+        self.assertEqual(len(out), 1)
+        self.assertIn(b'cross-domain-policy', out[0])
+        self.assertNotIn(out[0][:4], [struct.pack('>I', len(out[0][4:]))])
+
+    def test_fragmented_initkey(self):
+        s = make_session()
+        self.assertEqual(s.feed(CAPTURED_INITKEY[:5]), [])
+        out = s.feed(CAPTURED_INITKEY[5:])
+        self.assertEqual(len(out), 1)
+
+
+class TestLogin(unittest.TestCase):
+    def login_frame(self, sess, user, ts, verify):
+        data = [user, float(ts), 'fu1304', False, verify, 0, 1]
+        return frame(sess.cipher.encode(amf3.encode([10001, data])))
+
+    def test_login_success_empty_roles(self):
+        s = make_session()
+        s.feed(CAPTURED_INITKEY)
+        ts, user = '1700000000', 'hero'
+        out = s.feed(self.login_frame(s, user, ts, generate_sign(user, ts)))
+        self.assertEqual(len(out), 1)
+        ln = struct.unpack('>I', out[0][:4])[0]
+        env = amf3.decode(out[0][4:4 + ln])
+        self.assertEqual(env[0], '10001')
+        self.assertEqual(env[1][0], 1)  # success flag (InOutput.success)
+        self.assertEqual(env[1][2], [0, 0])
+        self.assertEqual(env[1][3], [])
+        self.assertEqual(env[7], user)
+        self.assertEqual(s.authed_user, user)
+
+    def test_login_bad_sign(self):
+        s = make_session()
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(self.login_frame(s, 'hero', '1700000000', 'wrong'))
+        env = amf3.decode(out[0][4:])
+        self.assertEqual(env[1], [0, '16002'])  # InOutput.signError shape
+
+    def test_response_is_plaintext_not_enciphered(self):
+        # Regression guard for the asymmetric protocol: server->client must
+        # be parseable raw. If this ever fails, responses got encrypted again
+        # and the Flash client aborts socketData with "Invalid object".
+        s = make_session()
+        s.feed(CAPTURED_INITKEY)
+        ts, user = '1700000000', 'hero'
+        out = s.feed(self.login_frame(s, user, ts, generate_sign(user, ts)))
+        ln = struct.unpack('>I', out[0][:4])[0]
+        payload = out[0][4:4 + ln]
+        self.assertEqual(payload[0], 0x09)  # AMF3 array marker, in the clear
+        self.assertEqual(amf3.decode(payload)[0], '10001')
+        # and it must NOT be valid ciphertext of the AMF3 shape
+        self.assertNotEqual(s.cipher.decode(payload)[0], 0x09)
+
+    def test_unknown_command_ignored(self):
+        s = make_session()
+        s.feed(CAPTURED_INITKEY)
+        bad = frame(s.cipher.encode(amf3.encode([99999, []])))
+        self.assertEqual(s.feed(bad), [])
+
+
+class TestCharacters(unittest.TestCase):
+    def test_character_roundtrip_and_login_roles(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        st = temp_store(cleanups)
+        st.create_account('hero', hash_password('pw'))
+        cid = st.create_character('hero', 'fu1304', 'SunWukong', job=2, sex=1)
+        self.assertIsNotNone(cid)
+        # duplicate name on the same account+server is rejected
+        self.assertIsNone(st.create_character('hero', 'fu1304', 'SunWukong'))
+        roles = st.list_roles('hero', 'fu1304')
+        self.assertEqual(len(roles), 1)
+        self.assertEqual(roles[0]['name'], 'SunWukong')
+        self.assertEqual(roles[0]['job'], 2)
+        # characters are scoped per server, and other accounts see none
+        self.assertEqual(st.list_roles('hero', 'other'), [])
+        self.assertEqual(st.list_roles('nobody', 'fu1304'), [])
+
+        # ...and they show up in the 10001 login reply, one Array per role.
+        sess = make_session(st)
+        sess.feed(CAPTURED_INITKEY)
+        ts, user = '1700000000', 'hero'
+        data = [user, float(ts), 'fu1304', False,
+                generate_sign(user, ts), 0, 1]
+        out = sess.feed(frame(sess.cipher.encode(amf3.encode([10001, data]))))
+        env = amf3.decode(out[0][4:])
+        self.assertEqual(env[1][0], 1)
+        self.assertEqual(len(env[1][3]), 1)
+        role = env[1][3][0]
+        # GetRoleOutput.roleInfo builds a positional Object[8]; the client
+        # does `as Array` per entry (AS3 #1034 if we send an object instead).
+        self.assertIsInstance(role, list)
+        self.assertEqual(len(role), 8)
+        self.assertEqual(role[0], str(cid))   # [0] getId(), a String
+        self.assertEqual(role[1], 'SunWukong')  # [1] name
+        self.assertEqual(role[2], '2')        # [2] getJob(), a String
+        self.assertEqual(role[3], 1)          # [3] sex
+        self.assertEqual(role[4], 1)          # [4] level
+        self.assertIsNone(role[5])            # [5] reserved, always null
+        self.assertEqual(role[6], '')         # [6] face
+        # [7] createTime is a Java Long: past AMF3's 29-bit int range it
+        # travels as an AMF3 double, hence float on the way back.
+        self.assertIsInstance(role[7], (int, float))
+        self.assertEqual(int(role[7]), roles[0]['created'] * 1000)
+
+
+class TestStore(unittest.TestCase):
+    def test_account_roundtrip(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        st = temp_store(cleanups)
+        self.assertTrue(st.create_account('hero', hash_password('pw')))
+        self.assertFalse(st.create_account('hero', hash_password('pw')))
+        acc = st.get_account('hero')
+        self.assertTrue(verify_password('pw', acc['pass_hash']))
+        self.assertFalse(verify_password('nope', acc['pass_hash']))
+        self.assertEqual(st.list_roles('hero', 'fu1304'), [])
+
+    def test_sessions_persist_in_sqlite(self):
+        # A restart must not log everyone out (the browser keeps its cookie).
+        from auth import Sessions
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        st = temp_store(cleanups)
+        tok = Sessions(st).create('hero')
+        # a brand-new Sessions object over the same DB = a "restart"
+        self.assertEqual(Sessions(st).get(tok)['uid'], 'hero')
+        self.assertIsNone(Sessions(st).get('nope'))
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -96,6 +96,42 @@ dumps nested under config), runtime `data/`, `*.log`, build output and
 legacy CRLF bytes are stored exactly; `client/**` uses normal handling.
 Committed: `knowledge.md`, text configs, PHP web code, docs, `client/`.
 
+## Python game server (`server/py/`) — replaces Java + ESSamp + MySQL
+
+Stdlib Python + SQLite (Pillow only for the captcha image). Accounts,
+sessions and characters persist in `data/mko.db`; sessions are stored in the
+DB so a restart keeps browser logins valid.
+
+```sh
+cd server/py
+python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080
+```
+
+It reproduces the legacy PHP HTTP contract (`AjaxRequest/AccountHandler.php`
+login/register, `VerifyCode.php`, `gamesession.php`) **and** the game socket
+on 8008 (INITKEY handshake, `SimpleEncrypt`, AMF3 codec, command 10001).
+Characters are stored (unique per account+server) and returned in the login
+reply; `--add-char ACCOUNT:NAME` seeds one, since the client's createRole
+command (`10002`) shape is still unrecovered.
+Full runbook: `server/py/README.md`; protocol evidence: `docs/protocol.md`.
+
+Two protocol facts that cost real debugging (both proven from bytecode):
+
+- **Only client→server is enciphered**; server replies are plaintext AMF3
+  (`AmfResponseEncoder` never encrypts; nothing calls `SimpleEncrypt.encode`).
+- **The login result's TimeZone slot is an object** with `rawOffset`
+  (`InOutput.success` passes `TimeZone.getDefault()`); a String there raises
+  AS3 `Error #1069` in `ServerInfoVO.decode()`.
+- **Each role is a positional `Object[8]`** — `[id:String, name, job:String,
+  sex, level, null, face, createTimeMs:Long]` per `GetRoleOutput.roleInfo`.
+  Sending objects instead raises AS3 `#1034 cannot convert Object to Array`
+  inside `Conn/f_10001()`. Note the empty-roles case masks this bug entirely.
+
+A lesson worth keeping: two real protocol bugs (the TimeZone String and the
+role Object-vs-Array) were invisible until a character existed and until the
+reply was actually fed to the client. Tests over an empty data set passed
+both times.
+
 ## New HTML5 client (`client/` — Phaser 3 + Vite, milestone 1)
 
 Replaces the Flash `Main.swf` client (Flash Player is EOL). Backend contract:
@@ -112,5 +148,90 @@ Replaces the Flash `Main.swf` client (Flash Player is EOL). Backend contract:
 - Run: ESSamp (Apache :80 + MySQL :3306) must be up, then
   `cd client && npm install && npm run dev` → http://localhost:5173.
 - `src/net/GameSocket.js` is a stub: browsers can't open raw TCP to the
-  8008 MINA socket, so milestone 2 needs a WebSocket→TCP bridge plus packet
-  protocol reverse-engineering (see `client/README.md`).
+  8008 socket, so traffic goes through the WebSocket bridge below (built).
+
+## Milestone 2 — bridge + Python server (DONE)
+
+- `tools/bridge/` — byte-transparent WebSocket↔TCP forwarder (Ruffle
+  `socketProxy` → `ws://127.0.0.1:8181` → `8008`). Never parses packets.
+- `server/py/` — Python + SQLite replacement for the Java server and the
+  PHP/MySQL website. The real Flash client completes the full login
+  handshake against it (INITKEY → key exchange → encrypted login → AMF3
+  result) with **no AS3 errors**.
+- Tooling added: `tools/javap.py` (minimal JVM disassembler — used to recover
+  the cipher, framing and login output shapes from `dntg_start.jar`).
+
+**Current wall:** the client renders its real splash and the progress bar
+reaches ~99% but it never loads its UI SWFs after login, so the visual login
+screen is not reached yet. Reaching the socket stage is intermittent. See
+`docs/protocol.md` → "Open question".
+
+## Strategy pivot: run the original Flash client under Ruffle (2026-10)
+
+Rewriting the game in Phaser was shelved — the original `Main.swf` boots
+cleanly under **Ruffle 0.7.1 (selfhosted)** with only benign stubs
+(`NativeMenuItem`, `Capabilities.isDebugger`, `Times New Roman` device font,
+`URLStream` streaming). So `client/` now has two pages (both built by Vite):
+
+- `index.html` — the Phaser login scaffold (milestone 1, still works).
+- `player.html` + `src/player.js` — boots the **unmodified** `Main.swf`
+  with the real `Gamelogin.php` flashvars (via `src/flashvars.js` +
+  `/api/gamesession.php`, demo-session fallback when PHP is offline).
+
+Ruffle integration notes (all verified 2026-10-07):
+
+- `@ruffle-rs/ruffle` is an npm dependency, but its selfhosted build resolves
+  core/wasm relative to its `<script>` tag — it must NOT be Vite-bundled.
+  `client/scripts/copy-ruffle.js` (auto-run via `predev`/`prebuild`) stages
+  `ruffle.js` + core + wasm into `client/public/ruffle/` (gitignored, ~30MB);
+  `player.html` loads it with a plain `<script src="/ruffle/ruffle.js">` tag.
+- `/res/*` is served straight from the legacy tree in dev by middleware in
+  `client/vite.config.js` (`LEGACY_RES`, traversal-checked, SWF MIME set) —
+  the 1.7 GB stays out of git and out of the bundle.
+- Verified live: `player.html` 200, `ruffle.js` 200, `Main.swf` 200
+  (`application/x-shockwave-flash`), Ruffle WASM init + `Loading SWF file
+  /res/Main.swf`, active 766×751 canvas, status `game loaded`. The one 500
+  is the expected `/api/gamesession.php` proxy error (no Apache here) →
+  the demo-session fallback engaged as designed.
+- World-entry networking is bridged, not reimplemented: `tools/bridge/`
+  (`bridge.js`, Node + `ws`) forwards Ruffle's `socketProxy` WebSocket
+  (default `ws://127.0.0.1:8181`, `?bridge=` overrides, `?nobridge=1` opts
+  out) to raw TCP `127.0.0.1:8008`, byte-transparent both directions.
+  `player.html` also carries `<base href="/res/">` (same trick as
+  `Gamelogin.php`) so the SWF's relative loads hit `/res/` instead of `/`.
+  Verified live against a fake game server: full chain Ruffle → bridge →
+  TCP:8008, client first frame captured (`00 00 00 09 06 0F "INITKEY"` =
+  u32be length + AMF3 string). Full findings in `docs/protocol.md`.
+  Ruffle decrypts the asset packs itself at runtime (see cipher note below),
+  so no asset pipeline is needed just to *run* the game.
+
+## Asset-pack cipher (what we learned without breaking it)
+
+`res/assets/*.swf` (+ `tw/`, `zhcn/`, `kokr/` locale packs) are encrypted
+(high entropy ~7.95, bad magic). `tools/abc_strings.py` now extracts
+PlatformLoader's ABC pool (1277 strings, see `.survey/plat_abc.txt`): it
+contains an Adobe Alchemy/CrossBridge module (`cmodule.ccode`,
+`FSM_Md5_decode`, `___xordi3`, `ByteArrayForString`) — i.e. an **MD5-based
+decoder compiled from C**, plus raw `Socket`/`sockConnect`. So the pack
+cipher is MD5-derived, key derivation still unknown — but irrelevant for
+running the game, since the real decoder executes inside Ruffle.
+`tools/abc_strings.py` fixes that unblocked this: DoABC tags are 72/82
+(tag 84 is DefineMorphShape2 — parsing it as ABC caused the `unknown
+multiname kind` crash), plus fault-tolerant multiname walking.
+
+## English translation plan (text + images)
+
+| Source | Scope (measured) | Tool | Status |
+|---|---|---|---|
+| `res/java/zhcn/*.dat|*.jat` (AMF3 tables: quests, items, skills, dialogue) | 246 files, 16,918 occurrences, **7,520 unique** | `tools/dat_strings.py` → `.survey/i18n_zh.json` (1.2 MB TM with file+offset per string) | extracted, awaiting translation |
+| PHP web (`login.php`, `Register.php`, `AccountHandler.php`, …) | 35 files contain CJK | hand-edit (small) | scoped |
+| Loose images (`res/f/`, `res/global/`) | 524 files, **58 likely-text** (event banners, vip/shouchong strips, `yd_*` guide icons), 237 to review | `tools/image_inventory.py` → `.survey/images.json` | triaged |
+| SWF code pools (`Main`/`PlatformLoader` ABC) | ~0 CJK — UI text comes from tables/packs, not code | — | no work needed |
+| Encrypted SWF packs (baked UI text + bitmaps) | ~193 files | phase 2: solve MD5 key derivation → decrypt → extract → repack, or replace art at the `/res` serving layer | blocked on cipher |
+
+Delivery sketch: translate the TM (MT + human review), then build English
+locale tables with an AMF3-aware rewriter (length-prefixed strings, so the
+byte-offset TM alone isn't enough for write-back) served via the `/res`
+layer; PHP pages edited directly; loose images redrawn into an overlay dir.
+`tw/` (95 files) and `kokr/` (68) prove the engine is locale-parameterized —
+there is just no `us/`/`en/` asset set yet.

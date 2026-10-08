@@ -1,0 +1,14 @@
+{
+  "name": "mko-ws-tcp-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "description": "WebSocket-to-TCP bridge letting the Ruffle-run Flash client reach the legacy game server on :8008. Byte-transparent: never parses game packets.",
+  "scripts": {
+    "start": "node bridge.js",
+    "test": "node --test test/bridge.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

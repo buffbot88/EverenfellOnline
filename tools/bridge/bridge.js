@@ -32,7 +32,7 @@ const BRIDGE_HOST = process.env.BRIDGE_HOST || '127.0.0.1';
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '8181', 10);
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 const LOG_PACKETS = process.env.LOG_PACKETS === '1';
-const HEX_CAP = 96;
+const HEX_CAP = parseInt(process.env.HEX_CAP || '96', 10);
 
 let nextId = 1;
 const peers = new Map(); // id -> { ws, tcp, upBytes, downBytes }

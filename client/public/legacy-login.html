@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8" /><title>Legacy login (dev only)</title></head>
+<body style="background:#0b0e1a;color:#fff;font-family:sans-serif;padding:40px">
+  <h1>原版登录 <small style="color:#888">dev only — posts to Apache PHP</small></h1>
+  <form method="POST" action="/api/AjaxRequest/AccountHandler.php">
+    <input type="hidden" name="Action" value="Login" />
+    <p>账号 <input name="uName" value="111111" /></p>
+    <p>密码 <input name="uPas" type="password" value="111111" /></p>
+    <p><button type="submit">登 录</button></p>
+  </form>
+  <p>成功后打开 <a style="color:#ffd76a" href="/player.html">/player.html</a>（保持标签可见）。</p>
+</body>
+</html>

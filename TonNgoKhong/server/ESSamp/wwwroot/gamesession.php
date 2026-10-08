@@ -9,10 +9,10 @@
 // They intentionally differ from config/server-info.properties (server_id=fu0);
 // do not "fix" them without testing against the running game server.
 header('Content-Type: application/json; charset=utf-8');
-include_once __DIR__ . '/configuration/config.inc.php'; // starts session, opens MySQL
+include_once dirname(__FILE__) . '/configuration/config.inc.php'; // starts session, opens MySQL
 
 if (empty($_SESSION['accountName'])) {
-    http_response_code(401);
+    header('HTTP/1.0 401 Unauthorized');
     echo json_encode(array('ok' => false, 'error' => 'not-logged-in'));
     exit;
 }

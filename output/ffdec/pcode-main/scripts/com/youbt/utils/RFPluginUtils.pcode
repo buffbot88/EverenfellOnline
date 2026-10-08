@@ -1,0 +1,226 @@
+package com.youbt.utils
+{
+   import flash.utils.ByteArray;
+   
+   public class RFPluginUtils
+   {
+      
+      public static var decodeFunction:Function;
+      
+      method
+         name null
+         returns null
+         
+         body
+            maxstack 2
+            localcount 1
+            initscopedepth 3
+            maxscopedepth 4
+            
+            code
+               getlocal0
+               pushscope
+               jump ofs000c
+               newarray 10000000
+               setlocal0
+      ofs000c:
+               findproperty QName(PackageNamespace(""),"decodeFunction")
+               getlex QName(PrivateNamespace(null,"3"),"de")
+               setproperty QName(PackageNamespace(""),"decodeFunction")
+               returnvoid
+            end ; code
+         end ; body
+      end ; method
+      
+      public function RFPluginUtils()
+      {
+         method
+            name null
+            returns null
+            
+            body
+               maxstack 1
+               localcount 1
+               initscopedepth 4
+               maxscopedepth 5
+               
+               code
+                  getlocal0
+                  pushscope
+                  getlocal0
+                  constructsuper 0
+                  returnvoid
+               end ; code
+            end ; body
+         end ; method
+      }
+      
+      private static function de(param1:ByteArray) : ByteArray
+      {
+         trait method QName(PrivateNamespace(null,"3"),"de")
+            flag FINAL
+            dispid 3
+            method
+               name null
+               param QName(PackageNamespace("flash.utils"),"ByteArray")
+               returns QName(PackageNamespace("flash.utils"),"ByteArray")
+               
+               body
+                  maxstack 3
+                  localcount 7
+                  initscopedepth 3
+                  maxscopedepth 4
+                  
+                  code
+                     getlocal0
+                     pushscope
+                     jump ofs000c
+                     newarray 10000000
+                     setlocal0
+            ofs000c:
+                     pushbyte 0
+                     setlocal 5
+                     pushbyte 0
+                     setlocal 6
+                     getlocal1
+                     getproperty QName(PackageNamespace(""),"length")
+                     convert_i
+                     setlocal2
+                     findpropstrict QName(PackageNamespace("flash.utils"),"ByteArray")
+                     constructprop QName(PackageNamespace("flash.utils"),"ByteArray"), 0
+                     coerce QName(PackageNamespace("flash.utils"),"ByteArray")
+                     setlocal3
+                     getlocal1
+                     callproperty QName(PackageNamespace(""),"readByte"), 0
+                     convert_i
+                     dup
+                     setlocal 4
+                     pushbyte 8
+                     rshift
+                     iffalse ofs00e1
+                     pushbyte 0
+                     setlocal 5
+                     jump ofs00d4
+            ofs003a:
+                     label
+                     jump ofs00bd
+                     pushbyte 0
+                     setlocal 6
+                     jump ofs0047
+            ofs0047:
+                     label
+                     getlocal3
+                     getlocal 6
+                     pushbyte 8
+                     lshift
+                     callpropvoid QName(PackageNamespace(""),"writeInt"), 1
+            ofs0052:
+                     label
+                     jump ofs009f
+            ofs0057:
+                     label
+                     getlocal1
+                     callproperty QName(PackageNamespace(""),"readByte"), 0
+                     convert_i
+                     dup
+                     setlocal 4
+                     pushshort 221
+                     bitand
+                     iffalse ofs0078
+                     jump ofs008f
+                     getlocal3
+                     getlocal 4
+                     callpropvoid QName(PackageNamespace(""),"writeByte"), 1
+                     jump ofs0078
+            ofs0078:
+                     getlocal 4
+                     pushshort 204
+                     bitand
+                     iffalse ofs008b
+                     findpropstrict QName(PrivateNamespace(null,"3"),"de")
+                     getlocal3
+                     callproperty QName(PrivateNamespace(null,"3"),"de"), 1
+                     returnvalue
+            ofs008b:
+                     jump ofs011d
+            ofs008f:
+                     label
+                     getlocal1
+                     getlocal1
+                     getproperty QName(PackageNamespace(""),"position")
+                     pushbyte 3
+                     add
+                     setproperty QName(PackageNamespace(""),"position")
+                     jump ofs00dc
+            ofs009f:
+                     getlocal1
+                     getproperty QName(PackageNamespace(""),"bytesAvailable")
+                     iftrue ofs0057
+                     getlocal 6
+                     pushbyte 1
+                     bitand
+                     iffalse ofs00b4
+                     jump ofs00e9
+            ofs00b4:
+                     inclocal_i 6
+                     getlocal 6
+                     getlocal2
+                     iflt ofs0047
+            ofs00bd:
+                     label
+                     getlocal 5
+                     pushbyte 1
+                     rshift
+                     pushbyte 1
+                     bitand
+                     iffalse ofs00d2
+                     jump ofs0052
+                     jump ofs00d2
+            ofs00d2:
+                     inclocal_i 5
+            ofs00d4:
+                     getlocal 5
+                     pushbyte 10
+                     iflt ofs003a
+            ofs00dc:
+                     label
+                     jump ofs00e5
+            ofs00e1:
+                     getlocal1
+                     coerce QName(PackageNamespace("flash.utils"),"ByteArray")
+                     setlocal3
+            ofs00e5:
+                     getlocal3
+                     returnvalue
+                  end ; code
+               end ; body
+            end ; method
+         }
+      }
+   }
+   
+   method
+      name null
+      returns null
+      
+      body
+         maxstack 2
+         localcount 1
+         initscopedepth 1
+         maxscopedepth 3
+         
+         code
+            getlocal0
+            pushscope
+            getscopeobject 0
+            getlex QName(PackageNamespace(""),"Object")
+            pushscope
+            getlex QName(PackageNamespace(""),"Object")
+            newclass 7
+            popscope
+            initproperty QName(PackageNamespace("com.youbt.utils"),"RFPluginUtils")
+            returnvoid
+         end ; code
+      end ; body
+   end ; method
+   

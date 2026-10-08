@@ -155,13 +155,30 @@ export default class LoginScene extends Phaser.Scene {
       <code>${escapeHtml(
         `server  ${session.seid} (${session.ip}:${session.sport})\nuid     ${session.uid}\nt       ${session.t}\nsign    ${session.sign}`,
       )}</code>
-      <button id="auth-enter" disabled title="下一步：WebSocket 网关 + 协议逆向">
-        进 入 游 戏（milestone 2）
+      <button id="auth-enter">
+        进 入 游 戏
       </button>
-      <div class="auth-ok">下一步：实现 WebSocket 网关以连接 8008 游戏端口。</div>
+      <div class="auth-ok">正在进入游戏……（<span id="auth-count">2</span> 秒后自动跳转）</div>
     </div>`;
     root.appendChild(wrap);
     this.session = session;
+    const go = () => {
+      window.location.href = '/player.html';
+    };
+    wrap.querySelector('#auth-enter').onclick = go;
+    // Auto-enter the Flash client; the mko_session cookie carries the login.
+    let left = 2;
+    const tick = () => {
+      left -= 1;
+      if (left <= 0) {
+        go();
+        return;
+      }
+      const el = wrap.querySelector('#auth-count');
+      if (el) el.textContent = String(left);
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1000);
   }
 }
 

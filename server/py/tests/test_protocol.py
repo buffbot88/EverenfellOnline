@@ -59,16 +59,15 @@ class TestVectors(unittest.TestCase):
                   0xFFFFFFF, -1, -0x10000000]:
             self.assertEqual(amf3.decode(amf3.encode(v)), v, hex(v & 0xFFFFFFFF))
 
-    def test_exact_login_response_roundtrip(self):
-        # byte-shape of what we send for 16001 success (big session id goes
-        # out as AMF3 double, like BlazeDS Long>U29; small ids stay ints)
-        for sid in (7, 1231072208):
-            env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []],
-                   0, 2, 1, sid, None, 'hero', None, 0]
-            raw = amf3.encode(env)
-            back = amf3.decode(raw)
-            self.assertEqual(back, env)
-            self.assertEqual(len(back), 10)
+    def test_exact_login_response_envelope(self):
+        # Genuine Java sends the 2-element envelope ['10001', result]
+        # (PublicMsgSender$2 path, byte-verified via raw-TCP probe). The old
+        # 10-element shape belongs to a different sender; the client drops it.
+        env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []]]
+        raw = amf3.encode(env)
+        back = amf3.decode(raw)
+        self.assertEqual(back, env)
+        self.assertEqual(len(back), 2)
 
     def test_amf3_anonymous_object(self):
         # Canonical BlazeDS anonymous dynamic object: 0A 0B 01 <k><v>.. 01
@@ -89,8 +88,7 @@ class TestVectors(unittest.TestCase):
         # rawOffset (the String we sent before raised AS3 Error #1069).
         tz = Obj({'rawOffset': 0, 'ID': 'UTC', 'displayName': 'UTC',
                   'dstSavings': 0})
-        env = ['10001', [1, [1, 2, None, tz, False, None], [0, 0], []],
-               0, 2, 1, 7, None, 'hero', None, 0]
+        env = ['10001', [1, [1, 2, None, tz, False, None], [0, 0], []]]
         back = amf3.decode(amf3.encode(env))
         # result[1] is the 6-slot server-info array; slot 3 is the TimeZone.
         # (result[3] is the roles list — easy to conflate, hence the assert.)
@@ -101,8 +99,7 @@ class TestVectors(unittest.TestCase):
     def test_amf3_login_shapes(self):
         login = [10001, ['hero', 1700000000.0, 'fu1304', False, 'sig', 0, 1]]
         self.assertEqual(amf3.decode(amf3.encode(login)), login)
-        env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []],
-               0, 2, 1, 99, None, 'hero', None, 0]
+        env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []]]
         self.assertEqual(amf3.decode(amf3.encode(env)), env)
 
 
@@ -155,7 +152,7 @@ class TestLogin(unittest.TestCase):
         self.assertEqual(env[1][0], 1)  # success flag (InOutput.success)
         self.assertEqual(env[1][2], [0, 0])
         self.assertEqual(env[1][3], [])
-        self.assertEqual(env[7], user)
+        self.assertEqual(len(env), 2)  # genuine 2-element envelope
         self.assertEqual(s.authed_user, user)
 
     def test_login_bad_sign(self):
@@ -231,6 +228,32 @@ class TestCharacters(unittest.TestCase):
         # travels as an AMF3 double, hence float on the way back.
         self.assertIsInstance(role[7], (int, float))
         self.assertEqual(int(role[7]), roles[0]['created'] * 1000)
+
+
+class TestWorldInit(unittest.TestCase):
+    def reply(self, cmd, arg=None):
+        s = make_session()
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(amf3.encode([cmd, arg]))))
+        self.assertEqual(len(out), 1)
+        return amf3.decode(out[0][4:])
+
+    def test_world_init_replies(self):
+        # Every reply shape below comes from jar bytecode (Action ->
+        # ServiceImpl -> OutputWrapper chain); zeros/empties are what a
+        # fresh role genuinely gets (no money, gear, vip, dungeon progress).
+        self.assertEqual(self.reply(19001)[0], '19001')
+        self.assertEqual(self.reply(20000)[1], [1, '0', [57, 148]])
+        self.assertEqual(self.reply(32010)[1], [0, 0, 0, 0])
+        self.assertEqual(len(self.reply(12011)[1]), 11)
+        self.assertEqual(self.reply(12010)[1], [[0] * 5] * 5)
+        self.assertEqual(self.reply(35011)[1], 0)
+        self.assertEqual(self.reply(32000, [None, '2000'])[1], [1, '', []])
+        self.assertEqual(self.reply(64010)[1], [])
+        self.assertEqual(self.reply(64001)[1], [])
+        self.assertIsNone(self.reply(62000)[1])
+        self.assertEqual(self.reply(111000)[1], [[], []])
+        self.assertEqual(self.reply(108001)[1], [])
 
 
 class TestStore(unittest.TestCase):

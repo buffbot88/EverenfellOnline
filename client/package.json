@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ruffle-rs/ruffle": "^0.7.1",
+    "@ruffle-rs/ruffle": "^0.8.0-nightly.2026.10.8",
     "phaser": "^3.80.0"
   },
   "devDependencies": {

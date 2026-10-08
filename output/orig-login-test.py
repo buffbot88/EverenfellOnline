@@ -9,7 +9,7 @@ import struct
 import sys
 import time
 
-sys.path.insert(0, 'server/py')
+sys.path.insert(0, 'Server-v1')
 from game.amf3 import decode as amf3_decode
 from game.amf3 import encode as amf3_encode
 from game.cipher import SimpleEncrypt

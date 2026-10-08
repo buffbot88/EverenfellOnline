@@ -83,7 +83,7 @@ Legacy game server 127.0.0.1:8008 (MINA NioSocketAcceptor, TcpNoDelay)
 
 ## Confirmed — login handshake, end to end (2026-10-07)
 
-The Python server (`server/py`) now drives the real client through login. Two
+The Python server (`Server-v1/`) now drives the real client through login. Two
 non-obvious facts, both found by disassembling the jar with `tools/javap.py`
 and then confirmed against the live client:
 

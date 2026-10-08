@@ -23,7 +23,7 @@ import http.cookiejar
 
 WEB = "http://127.0.0.1"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PROJECTOR = os.path.join(ROOT, "output", "flash-projector", "flashplayer363.exe")
+PROJECTOR = os.path.join(ROOT, "MKO_Client", "flash-projector", "flashplayer363.exe")
 
 sys.path.insert(0, "tools")
 import parse_flashvars as pf

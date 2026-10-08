@@ -2,7 +2,7 @@
 import struct
 import sys
 
-sys.path.insert(0, 'server/py')
+sys.path.insert(0, 'Server-v1')
 sys.path.insert(0, '.')
 from game.amf3 import Reader
 from game.cipher import SimpleEncrypt

@@ -8,10 +8,10 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WEB="http://127.0.0.1"
-RUFFLE="$ROOT/output/ruffle-desktop/ruffle.exe"
+RUFFLE="$ROOT/MKO_Client/ruffle-desktop/ruffle.exe"
 LOGDIR="$ROOT/output/desktop-client"
 mkdir -p "$LOGDIR"
-[ -x "$RUFFLE" ] || { echo "missing $RUFFLE (see output/ruffle-desktop)"; exit 1; }
+[ -x "$RUFFLE" ] || { echo "missing $RUFFLE (see MKO_Client/ruffle-desktop)"; exit 1; }
 USER="${1:-}"; PASS="${2:-}"
 [ -n "$USER" ] && [ -n "$PASS" ] || { echo "usage: $0 <username> <password>"; exit 1; }
 

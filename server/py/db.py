@@ -16,6 +16,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   uid TEXT NOT NULL,
   created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS role_settings (
+  role_id INTEGER PRIMARY KEY,
+  quickbar_info TEXT,
+  panel_config BLOB,
+  ui_info BLOB,
+  guaji_info BLOB,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   account TEXT NOT NULL,
@@ -152,6 +160,45 @@ class Store:
                 'WHERE account=? AND server_id=? ORDER BY id',
                 (account, server_id)).fetchall()
             return [dict(row) for row in rows]
+
+    def get_role_settings(self, role_id, account, server_id):
+        """Read legacy-compatible per-role UI settings for an owned role."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT s.quickbar_info, s.panel_config, s.ui_info, s.guaji_info '
+                'FROM characters c LEFT JOIN role_settings s ON s.role_id=c.id '
+                'WHERE CAST(c.id AS TEXT)=? AND c.account=? AND c.server_id=?',
+                (str(role_id), account, server_id)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            for field in ('panel_config', 'ui_info', 'guaji_info'):
+                if result[field] is not None:
+                    result[field] = bytes(result[field])
+            return result
+
+    def save_role_settings(self, role_id, account, server_id, **settings):
+        """Update setting fields only when the role belongs to account/server."""
+        allowed = {'quickbar_info', 'panel_config', 'ui_info', 'guaji_info'}
+        if not settings or set(settings) - allowed:
+            raise ValueError('unknown or empty role settings update')
+        fields = ', '.join(f'{name}=excluded.{name}' for name in settings)
+        names = ', '.join(settings)
+        values = [bytes(value) if name in {'panel_config', 'ui_info', 'guaji_info'}
+                  and value is not None else value
+                  for name, value in settings.items()]
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id FROM characters WHERE CAST(id AS TEXT)=? AND account=? AND server_id=?',
+                (str(role_id), account, server_id)).fetchone()
+            if not row:
+                return False
+            rid = row['id']
+            self.db.execute(
+                f'INSERT INTO role_settings(role_id,{names}) VALUES(?,{",".join("?" for _ in values)}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {fields}', [rid, *values])
+            self.db.commit()
+            return True
 
     def get_character(self, role_id, account, server_id):
         with self.lock:

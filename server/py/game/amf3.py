@@ -197,10 +197,11 @@ class Writer:
         elif isinstance(v, str):
             self.b.append(0x06)
             self.string(v)
-        elif isinstance(v, ByteArray):
+        elif isinstance(v, (ByteArray, bytes, bytearray, memoryview)):
+            raw = bytes(v)
             self.b.append(0x0C)
-            self.u29((len(v) << 1) | 1)
-            self.b += v
+            self.u29((len(raw) << 1) | 1)
+            self.b += raw
         elif isinstance(v, (list, tuple)):
             self.b.append(0x09)
             items = list(v)

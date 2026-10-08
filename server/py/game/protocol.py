@@ -56,7 +56,13 @@ CMD_CREATE_ROLE = 10002
 CMD_ENTER_WORLD = 10003
 CMD_GETTIME = 19001
 CMD_APPLY_STAGE = 20000
+CMD_CHANGE_STAGE = 21000
 CMD_MONEY = 32010
+
+# MapLine-back.csv in the original Java config: map_id -> MapLineConfig.mapType.
+# Populate exact map types as their map lines are ported; unknown maps do not
+# receive a fabricated scene-type value.
+MAP_TYPES = {'5': 1}
 CMD_ROLE_EWAI = 12011
 CMD_FIGHTING = 12010
 CMD_RECIVE_YB = 35011
@@ -66,6 +72,7 @@ CMD_JUQING_INFO = 64001
 CMD_VIP = 62000
 CMD_ZUWU = 111000
 CMD_ZUWUFUBEN = 108001
+CMD_ROLE_SETTINGS = 13000
 
 
 def frame(payload: bytes) -> bytes:
@@ -74,7 +81,8 @@ def frame(payload: bytes) -> bytes:
 
 class Session:
     def __init__(self, conn_id, check_sign, get_roles, server_start_ms,
-                 gm_open=False, tz_raw_offset=0, tz_id='UTC'):
+                 gm_open=False, tz_raw_offset=0, tz_id='UTC',
+                 get_role_settings=None):
         self.conn_id = conn_id
         self.buf = bytearray()
         self.cipher = None
@@ -83,6 +91,7 @@ class Session:
         self.server_id = None
         self.check_sign = check_sign
         self.get_roles = get_roles
+        self.get_role_settings = get_role_settings or (lambda role_id, user, server: None)
         self.server_start_ms = server_start_ms
         self.gm_open = gm_open
         self.tz_raw_offset = tz_raw_offset
@@ -107,7 +116,9 @@ class Session:
             payload = bytes(self.buf[4:4 + ln])
             del self.buf[:4 + ln]
             reply = self.handle(payload)
-            if reply is not None:
+            if isinstance(reply, tuple):
+                out.extend(reply)
+            elif reply is not None:
                 out.append(reply)
         return out
 
@@ -153,12 +164,16 @@ class Session:
             return frame(amf3_encode(['19001', int(time.time() * 1000)]))
         if cmd_num == CMD_APPLY_STAGE:
             return self.apply_stage(msg)
+        if cmd_num == CMD_CHANGE_STAGE:
+            return self.change_stage(msg)
         if cmd_num == CMD_MONEY:
             return self.money_info()
         if cmd_num == CMD_ROLE_EWAI:
             return self.role_extra_info()
         if cmd_num == CMD_FIGHTING:
             return self.fighting_info()
+        if cmd_num == CMD_ROLE_SETTINGS:
+            return self.role_settings(msg)
         if cmd_num == CMD_RECIVE_YB:
             return frame(amf3_encode(['35011', 0]))
         if cmd_num == CMD_MALL:
@@ -220,10 +235,27 @@ class Session:
         ok = self.check_sign(user_id, timestamp, verify)
         log.info('conn %d: login user=%r server=%r sign_ok=%s',
                  self.conn_id, user_id, server_id, ok)
+        bootstrap = ()
         if ok:
             self.authed_user = user_id
             self.server_id = server_id
-            roles = [self.role_info(r) for r in self.get_roles(user_id, server_id)]
+            role_rows = self.get_roles(user_id, server_id)
+            roles = [self.role_info(r) for r in role_rows]
+            # The captured Java login stream pushes settings and currency for
+            # the sole role before the client sends its enter-world command.
+            if len(role_rows) == 1:
+                role = role_rows[0]
+                role_id = str(role['id'])
+                settings = self.get_role_settings(role_id, user_id, server_id)
+                setting_values = ([settings.get('quickbar_info'),
+                                   settings.get('panel_config'),
+                                   settings.get('ui_info'),
+                                   settings.get('guaji_info')]
+                                  if settings is not None else [None] * 4)
+                bootstrap = (
+                    frame(amf3_encode(['13000', setting_values])),
+                    self.money_info(role),
+                )
             # Slot 3 is a serialized java.util.TimeZone object, not a string:
             # ServerInfoVO.decode() reads `.rawOffset` off it (it reflects the
             # Java bean, hence ID/displayName/dstSavings alongside).
@@ -245,7 +277,8 @@ class Session:
         # referenced solely by AmfRequestDecoder). Encrypting this reply makes
         # the client try to parse ciphertext as AMF3 and abort the socketData
         # event with "Invalid object". Only client->server is enciphered.
-        return frame(amf3_encode(env))
+        login_reply = frame(amf3_encode(env))
+        return (login_reply, *bootstrap) if bootstrap else login_reply
 
     def enter_world(self, msg):
         """Serve the role's persisted stage and basic role values."""
@@ -290,9 +323,25 @@ class Session:
         y = role.get('map_y') if role.get('map_y') is not None else 148
         return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
 
-    def money_info(self):
+    def change_stage(self, msg):
+        """Acknowledge the role's scene entry with line number and map type."""
+        args = self.safe(msg, 1, [])
+        role_id = str(self.safe(args, 0, '') or '')
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
-        role = roles[0] if roles else {}
+        role = next((r for r in roles if str(r.get('id')) == role_id), None)
+        if role is None:
+            return None
+        map_id = str(role.get('map_id') or '')
+        if map_id not in MAP_TYPES:
+            log.warning('conn %d: scene entry map %r has no known map type',
+                        self.conn_id, map_id)
+            return None
+        return frame(amf3_encode(['21000', [1, 1, MAP_TYPES[map_id]]]))
+
+    def money_info(self, role=None):
+        if role is None:
+            roles = self.get_roles(self.authed_user or '', self.server_id or '')
+            role = roles[0] if roles else {}
         return frame(amf3_encode(['32010', [role.get('tongqian') or 0,
                                              role.get('lingshi') or 0,
                                              role.get('bind_lingshi') or 0,
@@ -308,3 +357,14 @@ class Session:
 
     def fighting_info(self):
         return frame(amf3_encode(['12010', [[0] * 5 for _ in range(5)]]))
+
+    def role_settings(self, msg):
+        role_id = str(self.safe(msg, 1, '') or '')
+        settings = self.get_role_settings(role_id, self.authed_user or '',
+                                          self.server_id or '')
+        if settings is None:
+            values = [None, None, None, None]
+        else:
+            values = [settings.get('quickbar_info'), settings.get('panel_config'),
+                      settings.get('ui_info'), settings.get('guaji_info')]
+        return frame(amf3_encode(['13000', values]))

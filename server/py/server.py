@@ -31,7 +31,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             conn_id=next(_conn_ids),
             check_sign=self.server.check_sign,
             get_roles=self.server.get_roles,
-            server_start_ms=self.server.server_start_ms)
+            server_start_ms=self.server.server_start_ms,
+            get_role_settings=self.server.get_role_settings)
         log.info('game conn from %s', self.client_address)
         try:
             while True:
@@ -82,6 +83,7 @@ def main():
     tcpd.get_roles = lambda u, s: [
         dict(r)
         for r in store.list_roles(u, s)]
+    tcpd.get_role_settings = store.get_role_settings
     tcpd.server_start_ms = int(time.time() * 1000)
 
     import threading

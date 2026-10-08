@@ -131,6 +131,8 @@ def make_session(store=None):
     return Session(conn_id=7, check_sign=check_sign,
                    get_roles=(lambda u, s: store.list_roles(u, s)) if store
                    else (lambda u, s: []),
+                   get_role_settings=(lambda r, u, s: store.get_role_settings(r, u, s))
+                   if store else (lambda r, u, s: None),
                    server_start_ms=1234567890000)
 
 
@@ -185,6 +187,30 @@ class TestLogin(unittest.TestCase):
         out = s.feed(self.login_frame(s, 'hero', '1700000000', 'wrong'))
         env = amf3.decode(out[0][4:])
         self.assertEqual(env[1], [0, '16002'])  # InOutput.signError shape
+
+    def test_login_pushes_java_bootstrap_after_login_reply(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        role_id = store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', tongqian=4509290,
+            lingshi=9986377, bind_lingshi=360, recive_yb=0)
+        panel = ByteArray(b'captured panel config')
+        store.save_role_settings(role_id, 'hero', 'fu1304', panel_config=panel)
+        s = make_session(store)
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(self.login_frame(s, 'hero', '1700000000',
+                                      generate_sign('hero', '1700000000')))
+        self.assertEqual(len(out), 3)
+        messages = [amf3.decode(packet[4:]) for packet in out]
+        self.assertEqual([msg[0] for msg in messages],
+                         ['10001', '13000', '32010'])
+        self.assertEqual(messages[1], ['13000', [None, panel, None, None]])
+        self.assertEqual(messages[2], ['32010', [4509290, 9986377, 360, 0]])
+        self.assertEqual(s.authed_user, 'hero')
+        self.assertEqual(store.get_role_settings(str(role_id), 'someone-else',
+                                                'fu1304'), None)
 
     def test_response_is_plaintext_not_enciphered(self):
         # Regression guard for the asymmetric protocol: server->client must
@@ -301,6 +327,28 @@ class TestWorldInit(unittest.TestCase):
         self.assertIsNone(self.reply(20000))
         self.assertEqual(self.reply(32010)[1], [0, 0, 0, 0])
 
+    def test_java_scene_entry_confirmation_21000(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', map_id='5', map_x=44,
+            map_y=33)
+        session = make_session(store)
+        session.authed_user, session.server_id = 'hero', 'fu1304'
+        session.feed(CAPTURED_INITKEY)
+        request = frame(session.cipher.encode(
+            amf3.encode([21000, [str(role_id), '5']])))
+        out = session.feed(request)
+        self.assertEqual(len(out), 1)
+        result = amf3.decode(out[0][4:])
+        self.assertEqual(result, ['21000', [1, 1, 1]])
+
+        # Unknown or unowned roles/maps must not receive a made-up scene reply.
+        self.assertIsNone(session.change_stage([21000, '999']))
+        store.update_character_state(role_id, map_id='999')
+        self.assertIsNone(session.change_stage([21000, str(role_id)]))
+
     def test_java_capture_role_stage_and_money_values(self):
         cleanups = []
         self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
@@ -314,6 +362,7 @@ class TestWorldInit(unittest.TestCase):
         s = make_session(store)
         s.authed_user, s.server_id = 'hero', 'fu1304'
         entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
+        self.assertEqual(entry[0], '10003')
         self.assertEqual(entry[1][1],
                          ['', 1, 10692892, 0, 'C', False, 0, 10,
                           [20000000, 0], 0])
@@ -322,6 +371,16 @@ class TestWorldInit(unittest.TestCase):
         self.assertEqual(money, ['32010', [4509290, 9986377, 360, 0]])
         apply = amf3.decode(s.apply_stage([20000, [str(role_id), '5']])[4:])
         self.assertEqual(apply, ['20000', [1, '5', [44, 33]]])
+        scene = amf3.decode(s.change_stage([21000, str(role_id)])[4:])
+        self.assertEqual(scene, ['21000', [1, 1, 1]])
+        extra = amf3.decode(s.role_extra_info()[4:])
+        self.assertEqual(extra, ['12011', [1, 5226, 1811, 9999, 0, 0,
+                                           0, None, None, 0, 1]])
+        panel = ByteArray(bytes(range(256)) * 2 + b'panel')
+        self.assertTrue(store.save_role_settings(
+            role_id, 'hero', 'fu1304', panel_config=panel))
+        setting = amf3.decode(s.role_settings([13000, str(role_id)])[4:])
+        self.assertEqual(setting, ['13000', [None, panel, None, None]])
         self.assertEqual(len(self.reply(12011)[1]), 11)
         self.assertEqual(self.reply(12010)[1], [[0] * 5] * 5)
         self.assertEqual(self.reply(35011)[1], 0)
@@ -331,6 +390,7 @@ class TestWorldInit(unittest.TestCase):
         self.assertIsNone(self.reply(62000)[1])
         self.assertEqual(self.reply(111000)[1], [[], []])
         self.assertEqual(self.reply(108001)[1], [])
+        self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 
 class TestStore(unittest.TestCase):

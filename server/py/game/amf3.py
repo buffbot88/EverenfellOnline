@@ -14,6 +14,10 @@ class Amf3Error(ValueError):
     pass
 
 
+class ByteArray(bytes):
+    """AMF3 inline ByteArray payload, distinct from strings and arrays."""
+
+
 class Obj(dict):
     """Dict that encodes as an AMF3 anonymous dynamic object (0x0A).
 
@@ -84,9 +88,23 @@ class Reader:
             return self.string()
         if marker == 0x09:
             return self.array()
+        if marker == 0x0C:
+            return self.byte_array()
         if marker == 0x0A:
             return self.object()
         raise Amf3Error(f'unsupported marker 0x{marker:02x} at {self.p - 1}')
+
+    def byte_array(self):
+        header = self.u29()
+        if not header & 1:
+            return self.objects[header >> 1]
+        size = header >> 1
+        value = ByteArray(self.d[self.p:self.p + size])
+        if self.p + size > len(self.d):
+            raise Amf3Error('truncated ByteArray')
+        self.p += size
+        self.objects.append(value)
+        return value
 
     def object(self):
         traits = self.u29()
@@ -114,9 +132,11 @@ class Reader:
     def array(self):
         ref = self.u29()
         if not ref & 1:
-            raise Amf3Error('object references unsupported')
+            return self.objects[ref >> 1]
         dense = ref >> 1
         assoc = {}
+        value = {'__assoc__': assoc, 'items': []} if assoc else []
+        self.objects.append(value)
         while True:
             k = self.string()
             if k == '':
@@ -124,8 +144,10 @@ class Reader:
             assoc[k] = self.read()
         items = [self.read() for _ in range(dense)]
         if assoc:
-            return {'__assoc__': assoc, 'items': items}
-        return items
+            value['items'] = items
+            return value
+        value.extend(items)
+        return value
 
 
 class Writer:
@@ -175,6 +197,10 @@ class Writer:
         elif isinstance(v, str):
             self.b.append(0x06)
             self.string(v)
+        elif isinstance(v, ByteArray):
+            self.b.append(0x0C)
+            self.u29((len(v) << 1) | 1)
+            self.b += v
         elif isinstance(v, (list, tuple)):
             self.b.append(0x09)
             items = list(v)

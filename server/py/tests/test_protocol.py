@@ -8,13 +8,20 @@ import struct
 import sys
 import tempfile
 import unittest
+import importlib.util
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+spec = importlib.util.spec_from_file_location(
+    'decode_tap', os.path.join(ROOT, 'tools', 'decode-tap.py'))
+decode_tap = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(decode_tap)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from auth import check_sign, generate_sign, hash_password, verify_password
 from db import Store
 from game import amf3
-from game.amf3 import Obj
+from game.amf3 import ByteArray, Obj
 from game.cipher import SimpleEncrypt, new_key
 from game.protocol import Session, frame
 
@@ -68,6 +75,23 @@ class TestVectors(unittest.TestCase):
         back = amf3.decode(raw)
         self.assertEqual(back, env)
         self.assertEqual(len(back), 2)
+
+    def test_amf3_byte_array_inline_and_object_reference(self):
+        payload = bytes.fromhex('0c07010203')
+        reader = amf3.Reader(payload + bytes.fromhex('0c00'))
+        first = reader.read()
+        second = reader.read()
+        self.assertEqual(first, amf3.ByteArray(bytes([1, 2, 3])))
+        self.assertIs(second, first)
+        self.assertEqual(reader.p, len(payload) + 2)
+
+    def test_amf3_byte_array_truncation_is_rejected(self):
+        with self.assertRaises(amf3.Amf3Error):
+            amf3.decode(bytes.fromhex('0c090102'))
+
+    def test_amf3_byte_array_roundtrip(self):
+        value = ['13000', [None, amf3.ByteArray(bytes(range(100))), None]]
+        self.assertEqual(amf3.decode(amf3.encode(value)), value)
 
     def test_amf3_anonymous_object(self):
         # Canonical BlazeDS anonymous dynamic object: 0A 0B 01 <k><v>.. 01
@@ -190,14 +214,23 @@ class TestCharacters(unittest.TestCase):
         self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
         st = temp_store(cleanups)
         st.create_account('hero', hash_password('pw'))
-        cid = st.create_character('hero', 'fu1304', 'SunWukong', job=2, sex=1)
+        cid = st.create_character('hero', 'fu1304', 'SunWukong', job='C', sex=0,
+                                  exp=10692892, map_id='5', map_x=44,
+                                  map_y=33, hp=5226, mp=1811,
+                                  max_hp=5466, max_mp=1811,
+                                  tongqian=4509290, bind_lingshi=360,
+                                  lingshi=9986377, recive_yb=0)
         self.assertIsNotNone(cid)
         # duplicate name on the same account+server is rejected
         self.assertIsNone(st.create_character('hero', 'fu1304', 'SunWukong'))
         roles = st.list_roles('hero', 'fu1304')
         self.assertEqual(len(roles), 1)
         self.assertEqual(roles[0]['name'], 'SunWukong')
-        self.assertEqual(roles[0]['job'], 2)
+        self.assertEqual(roles[0]['job'], 'C')
+        self.assertEqual(roles[0]['map_id'], '5')
+        self.assertEqual((roles[0]['map_x'], roles[0]['map_y']), (44, 33))
+        self.assertEqual((roles[0]['hp'], roles[0]['max_hp']), (5226, 5466))
+        self.assertEqual(roles[0]['tongqian'], 4509290)
         # characters are scoped per server, and other accounts see none
         self.assertEqual(st.list_roles('hero', 'other'), [])
         self.assertEqual(st.list_roles('nobody', 'fu1304'), [])
@@ -219,8 +252,8 @@ class TestCharacters(unittest.TestCase):
         self.assertEqual(len(role), 8)
         self.assertEqual(role[0], str(cid))   # [0] getId(), a String
         self.assertEqual(role[1], 'SunWukong')  # [1] name
-        self.assertEqual(role[2], '2')        # [2] getJob(), a String
-        self.assertEqual(role[3], 1)          # [3] sex
+        self.assertEqual(role[2], 'C')        # [2] getJob(), a String
+        self.assertEqual(role[3], 0)          # [3] sex
         self.assertEqual(role[4], 1)          # [4] level
         self.assertIsNone(role[5])            # [5] reserved, always null
         self.assertEqual(role[6], '')         # [6] face
@@ -230,21 +263,65 @@ class TestCharacters(unittest.TestCase):
         self.assertEqual(int(role[7]), roles[0]['created'] * 1000)
 
 
+class TestCaptureDecoder(unittest.TestCase):
+    def test_multiple_server_messages_and_bytearray_payload(self):
+        payload = amf3.encode(['13000', [None, ByteArray(b'opaque bootstrap'), None]])
+        second = amf3.encode(['10003', [1, ['C', 56], ['5', 45, 31]]])
+        framed = frame(payload + second)[4:]
+        decoded = list(decode_tap.decode_server([('frame', framed)]))
+        self.assertEqual(decoded[0][1][0], '13000')
+        self.assertEqual(decoded[0][1][1][1], ByteArray(b'opaque bootstrap'))
+        self.assertEqual(decoded[1][1][0], '10003')
+        self.assertEqual(decoded[1][1][1][2], ['5', 45, 31])
+
+    def test_frame_reader_handles_fragment_and_coalesced_frames(self):
+        one, two = b'first', b'second'
+        data = frame(one) + frame(two) + frame(b'incomplete')[:7]
+        frames, used = decode_tap.read_frames(data)
+        self.assertEqual(frames, [('frame', one), ('frame', two)])
+        self.assertEqual(used, len(frame(one)) + len(frame(two)))
+
+
 class TestWorldInit(unittest.TestCase):
     def reply(self, cmd, arg=None):
         s = make_session()
+        if cmd == 20000:
+            s.authed_user, s.server_id = 'hero', 'fu1304'
         s.feed(CAPTURED_INITKEY)
         out = s.feed(frame(s.cipher.encode(amf3.encode([cmd, arg]))))
+        if not out:
+            return None
         self.assertEqual(len(out), 1)
         return amf3.decode(out[0][4:])
 
     def test_world_init_replies(self):
-        # Every reply shape below comes from jar bytecode (Action ->
-        # ServiceImpl -> OutputWrapper chain); zeros/empties are what a
-        # fresh role genuinely gets (no money, gear, vip, dungeon progress).
+        # Existing startup shapes remain covered while state-specific handlers
+        # are tested with a role-backed session below.
         self.assertEqual(self.reply(19001)[0], '19001')
-        self.assertEqual(self.reply(20000)[1], [1, '0', [57, 148]])
+        self.assertIsNone(self.reply(20000))
         self.assertEqual(self.reply(32010)[1], [0, 0, 0, 0])
+
+    def test_java_capture_role_stage_and_money_values(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', sex=0,
+            exp=10692892, map_id='5', map_x=44, map_y=33,
+            hp=5226, mp=1811, max_hp=5466, max_mp=1811,
+            tongqian=4509290, bind_lingshi=360, lingshi=9986377,
+            recive_yb=0)
+        s = make_session(store)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
+        self.assertEqual(entry[1][1],
+                         ['', 1, 10692892, 0, 'C', False, 0, 10,
+                          [20000000, 0], 0])
+        self.assertEqual(entry[1][2], ['5', 44, 33])
+        money = amf3.decode(s.money_info()[4:])
+        self.assertEqual(money, ['32010', [4509290, 9986377, 360, 0]])
+        apply = amf3.decode(s.apply_stage([20000, [str(role_id), '5']])[4:])
+        self.assertEqual(apply, ['20000', [1, '5', [44, 33]]])
         self.assertEqual(len(self.reply(12011)[1]), 11)
         self.assertEqual(self.reply(12010)[1], [[0] * 5] * 5)
         self.assertEqual(self.reply(35011)[1], 0)

@@ -1,4 +1,4 @@
-"""SQLite persistence: accounts + characters. Replaces MySQL dntg/caonima."""
+"""SQLite persistence for accounts, characters, sessions, and game state."""
 import os
 import sqlite3
 import threading
@@ -21,14 +21,42 @@ CREATE TABLE IF NOT EXISTS characters (
   account TEXT NOT NULL,
   server_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  job INTEGER DEFAULT 0,
-  sex INTEGER DEFAULT 0,
+  job TEXT NOT NULL DEFAULT 'A',
+  sex INTEGER NOT NULL DEFAULT 0,
   face TEXT DEFAULT '',
-  level INTEGER DEFAULT 1,
+  level INTEGER NOT NULL DEFAULT 1,
+  exp INTEGER,
+  map_id TEXT,
+  map_x INTEGER,
+  map_y INTEGER,
+  hp INTEGER,
+  mp INTEGER,
+  max_hp INTEGER,
+  max_mp INTEGER,
+  tongqian INTEGER,
+  bind_lingshi INTEGER,
+  lingshi INTEGER,
+  recive_yb INTEGER,
   created INTEGER NOT NULL,
   UNIQUE(account, server_id, name)
 );
 '''
+
+CHARACTER_COLUMNS = {
+    'level': 'INTEGER NOT NULL DEFAULT 1',
+    'exp': 'INTEGER',
+    'map_id': 'TEXT',
+    'map_x': 'INTEGER',
+    'map_y': 'INTEGER',
+    'hp': 'INTEGER',
+    'mp': 'INTEGER',
+    'max_hp': 'INTEGER',
+    'max_mp': 'INTEGER',
+    'tongqian': 'INTEGER',
+    'bind_lingshi': 'INTEGER',
+    'lingshi': 'INTEGER',
+    'recive_yb': 'INTEGER',
+}
 
 
 class Store:
@@ -39,6 +67,13 @@ class Store:
         self.lock = threading.Lock()
         with self.lock:
             self.db.executescript(SCHEMA)
+            present = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(characters)')}
+            for name, declaration in CHARACTER_COLUMNS.items():
+                if name not in present:
+                    self.db.execute(
+                        f'ALTER TABLE characters ADD COLUMN {name} {declaration}')
+            self.db.commit()
 
     def create_account(self, username, pass_hash):
         with self.lock:
@@ -75,24 +110,55 @@ class Store:
         with self.lock:
             self.db.close()
 
-    def create_character(self, account, server_id, name, job=0, sex=0, face=''):
-        """Insert a character; returns its id, or None if the name is taken
-        on that account+server."""
+    def create_character(self, account, server_id, name, job='A', sex=0,
+                         face='', **state):
+        """Insert a character and supplied authoritative state; returns its id."""
+        unknown = set(state) - set(CHARACTER_COLUMNS)
+        if unknown:
+            raise ValueError(f'unknown character state fields: {sorted(unknown)}')
+        fields = ['account', 'server_id', 'name', 'job', 'sex', 'face',
+                  *state.keys(), 'created']
+        values = [account, server_id, name, str(job), sex, face,
+                  *state.values(), int(time.time())]
+        placeholders = ','.join('?' for _ in fields)
         with self.lock:
             try:
                 cur = self.db.execute(
-                    'INSERT INTO characters(account, server_id, name, job, sex,'
-                    ' face, created) VALUES(?,?,?,?,?,?,?)',
-                    (account, server_id, name, job, sex, face, int(time.time())))
+                    f"INSERT INTO characters({','.join(fields)}) VALUES({placeholders})",
+                    values)
                 self.db.commit()
                 return cur.lastrowid
             except sqlite3.IntegrityError:
                 return None
 
+    def update_character_state(self, role_id, **state):
+        """Persist authoritative gameplay fields for an owned role ID."""
+        if not state or set(state) - set(CHARACTER_COLUMNS):
+            raise ValueError('state must contain known gameplay fields')
+        fields = list(state)
+        with self.lock:
+            cur = self.db.execute(
+                'UPDATE characters SET ' + ', '.join(f'{f}=?' for f in fields)
+                + ' WHERE CAST(id AS TEXT)=?', [*state.values(), str(role_id)])
+            self.db.commit()
+            return cur.rowcount == 1
+
     def list_roles(self, account, server_id):
         with self.lock:
             rows = self.db.execute(
-                'SELECT id, name, job, sex, face, level, created FROM characters '
+                'SELECT id, name, job, sex, face, level, exp, map_id, map_x, map_y,'
+                ' hp, mp, max_hp, max_mp, tongqian, bind_lingshi, lingshi,'
+                ' recive_yb, created FROM characters '
                 'WHERE account=? AND server_id=? ORDER BY id',
                 (account, server_id)).fetchall()
-            return [dict(r) for r in rows]
+            return [dict(row) for row in rows]
+
+    def get_character(self, role_id, account, server_id):
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, account, server_id, name, job, sex, face, level, exp,'
+                ' map_id, map_x, map_y, hp, mp, max_hp, max_mp, tongqian,'
+                ' bind_lingshi, lingshi, recive_yb, created FROM characters '
+                'WHERE CAST(id AS TEXT)=? AND account=? AND server_id=?',
+                (str(role_id), account, server_id)).fetchone()
+            return dict(row) if row else None

@@ -152,13 +152,13 @@ class Session:
         if cmd_num == CMD_GETTIME:
             return frame(amf3_encode(['19001', int(time.time() * 1000)]))
         if cmd_num == CMD_APPLY_STAGE:
-            return frame(amf3_encode(['20000', [1, '0', [57, 148]]]))
+            return self.apply_stage(msg)
         if cmd_num == CMD_MONEY:
-            return frame(amf3_encode(['32010', [0, 0, 0, 0]]))
+            return self.money_info()
         if cmd_num == CMD_ROLE_EWAI:
-            return frame(amf3_encode(['12011', [0, 0, 0, 0, 0, 0, 0, 0, '', 0, 0]]))
+            return self.role_extra_info()
         if cmd_num == CMD_FIGHTING:
-            return frame(amf3_encode(['12010', [[0] * 5 for _ in range(5)]]))
+            return self.fighting_info()
         if cmd_num == CMD_RECIVE_YB:
             return frame(amf3_encode(['35011', 0]))
         if cmd_num == CMD_MALL:
@@ -248,16 +248,7 @@ class Session:
         return frame(amf3_encode(env))
 
     def enter_world(self, msg):
-        """10003 stagecontroll LOGIN: enter the world with a role.
-
-        Request is [10003, roleId str] (captured live from the projector).
-        Reply mirrors StageControllOutputWrapper.login bytecode:
-          [1, [face, level, exp, sex, job, chenmi, chenmiTime,
-                vipLevel, rechargeArr, gmState], [mapId, mapX, mapY]]
-        Unimplemented server state is zeroed (no vip/recharge/gm/chenmi in
-        our store). Spawn position mirrors a fresh account's saved row
-        (map 0, x 57, y 148) until real per-character positions are stored.
-        """
+        """Serve the role's persisted stage and basic role values."""
         role_id = str(self.safe(msg, 1, '') or '')
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = next((r for r in roles if str(r.get('id')) == role_id), None)
@@ -277,8 +268,43 @@ class Session:
                 return None
         log.info('conn %d: enter_world role=%r (%s)',
                  self.conn_id, role.get('name'), role_id)
-        result = [1, [role.get('face') or '', role.get('level', 1),
-                      role.get('exp', 0), role.get('sex', 0),
-                      str(role.get('job', '')), False, 0, 0, [0, 0], 0],
-                  ['0', 57, 148]]
+        exp = role.get('exp') if role.get('exp') is not None else 0
+        state = [role.get('face') or '', role.get('level', 1), exp,
+                 role.get('sex', 0), str(role.get('job', '')),
+                 False, 0, 10, [20000000, 0], 0]
+        stage = [str(role.get('map_id') or '0'),
+                 role.get('map_x') if role.get('map_x') is not None else 57,
+                 role.get('map_y') if role.get('map_y') is not None else 148]
+        result = [1, state, stage]
         return frame(amf3_encode(['10003', result]))
+
+    def apply_stage(self, msg):
+        role_id = str(self.safe(self.safe(msg, 1, []), 0, '') or '')
+        target_map = str(self.safe(self.safe(msg, 1, []), 1, '') or '')
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = next((r for r in roles if str(r.get('id')) == role_id), None)
+        if role is None:
+            return None
+        map_id = target_map or str(role.get('map_id') or '0')
+        x = role.get('map_x') if role.get('map_x') is not None else 57
+        y = role.get('map_y') if role.get('map_y') is not None else 148
+        return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
+
+    def money_info(self):
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else {}
+        return frame(amf3_encode(['32010', [role.get('tongqian') or 0,
+                                             role.get('lingshi') or 0,
+                                             role.get('bind_lingshi') or 0,
+                                             role.get('recive_yb') or 0]]))
+
+    def role_extra_info(self):
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else {}
+        values = [1, role.get('hp') or 0, role.get('mp') or 0, 9999,
+                  role.get('zhenqi') or 0, role.get('shengwang') or 0,
+                  0, None, None, 0, 1]
+        return frame(amf3_encode(['12011', values]))
+
+    def fighting_info(self):
+        return frame(amf3_encode(['12010', [[0] * 5 for _ in range(5)]]))

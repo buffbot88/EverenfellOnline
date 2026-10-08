@@ -1,9 +1,6 @@
-"""Transparent TCP tap: listen :8009, forward to :8008, hex-log everything.
-
-Lets the projector play the genuine Java server while every frame is
-captured to output/orig-stack/tap.log for later decoding (bridge can't
-do this: the projector uses raw TCP, not WebSockets).
-"""
+"""Forward TCP between projector and Java while recording each byte stream."""
+import itertools
+import os
 import socket
 import threading
 import time
@@ -11,24 +8,26 @@ import time
 LISTEN = ('127.0.0.1', 8009)
 TARGET = ('127.0.0.1', 8008)
 LOG = 'output/orig-stack/tap.log'
-CAP = 8192
+_next_conn = itertools.count(1)
+_log_lock = threading.Lock()
 
 
-def hexdump(tag, data):
-    line = f'{time.strftime("%H:%M:%S")} {tag} len={len(data)} hex=[{" ".join(f"{b:02x}" for b in data[:CAP])}]'
-    if len(data) > CAP:
-        line += f' ...(+{len(data) - CAP})'
-    with open(LOG, 'a') as f:
-        f.write(line + '\n')
+def hexdump(conn_id, tag, data):
+    line = (f'{time.strftime("%H:%M:%S")} conn={conn_id} {tag} len={len(data)} '
+            f'hex=[{" ".join(f"{b:02x}" for b in data)}]\n')
+    with _log_lock:
+        with open(LOG, 'a', encoding='ascii') as log:
+            log.write(line)
+            log.flush()
 
 
-def pipe(src, dst, tag):
+def pipe(conn_id, src, dst, tag):
     try:
         while True:
             data = src.recv(65536)
             if not data:
                 break
-            hexdump(tag, data)
+            hexdump(conn_id, tag, data)
             dst.sendall(data)
     except OSError:
         pass
@@ -39,19 +38,30 @@ def pipe(src, dst, tag):
             pass
 
 
-def handle(client):
-    server = socket.create_connection(TARGET)
-    threading.Thread(target=pipe, args=(client, server, 'C>S'), daemon=True).start()
-    pipe(server, client, 'S>C')
-    client.close()
-    server.close()
+def handle(conn_id, client):
+    server = None
+    try:
+        server = socket.create_connection(TARGET)
+        up = threading.Thread(target=pipe,
+                              args=(conn_id, client, server, 'C>S'), daemon=True)
+        up.start()
+        pipe(conn_id, server, client, 'S>C')
+        up.join(timeout=2)
+    except OSError as exc:
+        hexdump(conn_id, 'ERROR', str(exc).encode('ascii', 'replace'))
+    finally:
+        client.close()
+        if server:
+            server.close()
 
 
-srv = socket.socket()
-srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-srv.bind(LISTEN)
-srv.listen(10)
+os.makedirs(os.path.dirname(LOG), exist_ok=True)
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(LISTEN)
+server.listen(10)
 print(f'tap up: {LISTEN} -> {TARGET}', flush=True)
 while True:
-    c, _ = srv.accept()
-    threading.Thread(target=handle, args=(c,), daemon=True).start()
+    client, _ = server.accept()
+    cid = next(_next_conn)
+    threading.Thread(target=handle, args=(cid, client), daemon=True).start()

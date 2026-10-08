@@ -80,8 +80,7 @@ def main():
     tcpd.daemon_threads = True
     tcpd.check_sign = staticmethod(check_sign)
     tcpd.get_roles = lambda u, s: [
-        {'id': r['id'], 'name': r['name'], 'job': r['job'], 'sex': r['sex'],
-         'face': r['face'], 'level': r['level'], 'created': r['created']}
+        dict(r)
         for r in store.list_roles(u, s)]
     tcpd.server_start_ms = int(time.time() * 1000)
 

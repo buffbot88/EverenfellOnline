@@ -18,6 +18,14 @@ class ByteArray(bytes):
     """AMF3 inline ByteArray payload, distinct from strings and arrays."""
 
 
+class XmlText(str):
+    """AMF3 XML text, kept distinct from a plain string value."""
+
+
+class Dictionary(list):
+    """AMF3 dictionary: an ordered list of (key, value) pairs."""
+
+
 class Obj(dict):
     """Dict that encodes as an AMF3 anonymous dynamic object (0x0A).
 
@@ -35,6 +43,7 @@ class Reader:
         self.p = 0
         self.strings = []
         self.objects = []
+        self.traits = []
 
     def u8(self):
         v = self.d[self.p]
@@ -92,7 +101,31 @@ class Reader:
             return self.byte_array()
         if marker == 0x0A:
             return self.object()
+        if marker == 0x08:
+            return self.date()
+        if marker == 0x00:
+            return None  # undefined reads as null for our purposes
+        if marker in (0x0D, 0x0E, 0x0F, 0x10):
+            return self.vector(marker)
+        if marker == 0x11:
+            return self.dictionary()
+        if marker in (0x07, 0x0B):
+            return self.xml()
         raise Amf3Error(f'unsupported marker 0x{marker:02x} at {self.p - 1}')
+
+    def date(self):
+        """AMF3 Date: a U29 ref followed by big-endian milliseconds (double).
+
+        Needed for the legacy config tables (MapLine.dat et al), which embed
+        dates; the login frames never use the marker.
+        """
+        ref = self.u29()
+        if not ref & 1:
+            return self.objects[ref >> 1]
+        ms = struct.unpack('>d', self.d[self.p:self.p + 8])[0]
+        self.p += 8
+        self.objects.append(ms)
+        return ms
 
     def byte_array(self):
         header = self.u29()
@@ -107,16 +140,26 @@ class Reader:
         return value
 
     def object(self):
-        traits = self.u29()
-        if not traits & 1:
-            return self.objects[traits >> 1]
-        flags = traits & 0x0F
-        sealed = traits >> 4
-        self.string()  # class name (empty = anonymous)
-        if flags & 0x04:
+        """Object: bit0 = not an object ref; bit1 = inline traits (else a traits ref).
+
+        A traits reference carries its index in the upper bits and points at the
+        traits table, which is separate from the object table. Ignoring that was
+        the desync that stopped the legacy config tables.
+        """
+        header = self.u29()
+        if not header & 1:
+            return self.objects[header >> 1]
+        if header & 0x02:
+            cname = self.string()  # class name ('' = anonymous)
+            sealed = header >> 4
+            members = [self.string() for _ in range(sealed)]
+            traits = (cname, members, bool(header & 0x04), bool(header & 0x08))
+            self.traits.append(traits)
+        else:
+            traits = self.traits[header >> 2]
+        _cname, members, externalizable, dynamic = traits
+        if externalizable:
             raise Amf3Error('externalizable objects unsupported')
-        dynamic = bool(flags & 0x08)
-        members = [self.string() for _ in range(sealed)]
         obj = Obj()
         self.objects.append(obj)
         for m in members:
@@ -128,6 +171,53 @@ class Reader:
                     break
                 obj[k] = self.read()
         return obj
+
+    def vector(self, marker):
+        """Typed vectors 0x0D (int), 0x0E (uint), 0x0F (double), 0x10 (object)."""
+        header = self.u29()
+        if not header & 1:
+            return self.objects[header >> 1]
+        count = header >> 1
+        self.u8()  # fixed-length flag; always present, not needed to decode
+        if marker == 0x10:
+            self.string()  # element class name ('' = any)
+            items = []
+            self.objects.append(items)
+            items.extend(self.read() for _ in range(count))
+            return items
+        if marker == 0x0F:
+            items = [struct.unpack('>d', self.d[self.p + 8 * i:self.p + 8 * i + 8])[0]
+                     for i in range(count)]
+            self.p += 8 * count
+        else:
+            fmt = '>i' if marker == 0x0D else '>I'
+            items = [struct.unpack(fmt, self.d[self.p + 4 * i:self.p + 4 * i + 4])[0]
+                     for i in range(count)]
+            self.p += 4 * count
+        self.objects.append(items)
+        return items
+
+    def dictionary(self):
+        """Dictionary 0x11: a list of (key, value) pairs; keys may be any type."""
+        header = self.u29()
+        if not header & 1:
+            return self.objects[header >> 1]
+        self.u8()  # weak-keys flag
+        pairs = Dictionary()
+        self.objects.append(pairs)
+        for _ in range(header >> 1):
+            key = self.read()
+            pairs.append((key, self.read()))
+        return pairs
+
+    def xml(self):
+        """XML 0x07 / XML-doc 0x0B: a U29 length and UTF-8 text, referenced by the object table."""
+        header = self.u29()
+        if not header & 1:
+            return self.objects[header >> 1]
+        text = XmlText(self.utf(header >> 1))
+        self.objects.append(text)
+        return text
 
     def array(self):
         ref = self.u29()

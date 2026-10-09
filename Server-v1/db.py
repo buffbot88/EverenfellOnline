@@ -24,8 +24,35 @@ CREATE TABLE IF NOT EXISTS role_settings (
   guaji_info BLOB,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Mirrors the legacy MySQL `role_stage` table (see docs/mysql-to-sqlite-migration.md).
+-- Stage/stat/live-state columns live here instead of growing `characters`.
+CREATE TABLE IF NOT EXISTS role_stage (
+  role_id INTEGER PRIMARY KEY,
+  map_id TEXT,
+  map_x INTEGER,
+  map_y INTEGER,
+  line_no INTEGER DEFAULT 0,
+  hp INTEGER,
+  mp INTEGER,
+  max_hp INTEGER,
+  max_mp INTEGER,
+  buff TEXT,
+  props TEXT,
+  state INTEGER DEFAULT 0,
+  map_node TEXT,
+  ti_li INTEGER DEFAULT 0,
+  shanbi_val INTEGER DEFAULT 0,
+  pk_info TEXT,
+  meiren_info TEXT,
+  zuoqi_info TEXT,
+  copy_info TEXT,
+  free_fly_count INTEGER DEFAULT 0,
+  fly_count_refresh_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  legacy_id TEXT,
   account TEXT NOT NULL,
   server_id TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -50,7 +77,9 @@ CREATE TABLE IF NOT EXISTS characters (
 );
 '''
 
+# Columns that may be added to an existing characters table.
 CHARACTER_COLUMNS = {
+    'legacy_id': 'TEXT',
     'level': 'INTEGER NOT NULL DEFAULT 1',
     'exp': 'INTEGER',
     'map_id': 'TEXT',
@@ -64,6 +93,30 @@ CHARACTER_COLUMNS = {
     'bind_lingshi': 'INTEGER',
     'lingshi': 'INTEGER',
     'recive_yb': 'INTEGER',
+}
+
+# role_stage columns accepted by save_role_stage (legacy MySQL names).
+STAGE_COLUMNS = {
+    'map_id': 'TEXT',
+    'map_x': 'INTEGER',
+    'map_y': 'INTEGER',
+    'line_no': 'INTEGER',
+    'hp': 'INTEGER',
+    'mp': 'INTEGER',
+    'max_hp': 'INTEGER',
+    'max_mp': 'INTEGER',
+    'buff': 'TEXT',
+    'props': 'TEXT',
+    'state': 'INTEGER',
+    'map_node': 'TEXT',
+    'ti_li': 'INTEGER',
+    'shanbi_val': 'INTEGER',
+    'pk_info': 'TEXT',
+    'meiren_info': 'TEXT',
+    'zuoqi_info': 'TEXT',
+    'copy_info': 'TEXT',
+    'free_fly_count': 'INTEGER',
+    'fly_count_refresh_time': 'INTEGER',
 }
 
 
@@ -152,14 +205,43 @@ class Store:
             return cur.rowcount == 1
 
     def list_roles(self, account, server_id):
+        """Roles for an account; a role_stage row wins over characters columns."""
         with self.lock:
             rows = self.db.execute(
-                'SELECT id, name, job, sex, face, level, exp, map_id, map_x, map_y,'
-                ' hp, mp, max_hp, max_mp, tongqian, bind_lingshi, lingshi,'
-                ' recive_yb, created FROM characters '
-                'WHERE account=? AND server_id=? ORDER BY id',
+                'SELECT c.id, c.legacy_id, c.name, c.job, c.sex, c.face, c.level,'
+                ' c.exp, COALESCE(s.map_id, c.map_id) AS map_id,'
+                ' COALESCE(s.map_x, c.map_x) AS map_x,'
+                ' COALESCE(s.map_y, c.map_y) AS map_y,'
+                ' COALESCE(s.hp, c.hp) AS hp, COALESCE(s.mp, c.mp) AS mp,'
+                ' COALESCE(s.max_hp, c.max_hp) AS max_hp,'
+                ' COALESCE(s.max_mp, c.max_mp) AS max_mp,'
+                ' c.tongqian, c.bind_lingshi, c.lingshi, c.recive_yb, c.created'
+                ' FROM characters c LEFT JOIN role_stage s ON s.role_id=c.id'
+                ' WHERE c.account=? AND c.server_id=? ORDER BY c.id',
                 (account, server_id)).fetchall()
             return [dict(row) for row in rows]
+
+    def get_role_stage(self, role_id):
+        with self.lock:
+            row = self.db.execute(
+                'SELECT * FROM role_stage WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_stage(self, role_id, **fields):
+        """Upsert legacy stage/live-state fields for a role."""
+        if not fields or set(fields) - set(STAGE_COLUMNS):
+            raise ValueError(f'unknown stage fields: {sorted(set(fields) - set(STAGE_COLUMNS))}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_stage(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
 
     def get_role_settings(self, role_id, account, server_id):
         """Read legacy-compatible per-role UI settings for an owned role."""

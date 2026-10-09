@@ -1,18 +1,7 @@
-"""Launch the ORIGINAL client in genuine Adobe Flash projector (pre-killswitch).
+"""Launch the original Flash client in the Adobe projector using a login from the command line or MKO_Client/config.json.
 
-Logs in via the supplied Apache/PHP pages, then opens
-  http://127.0.0.1/res/Main.swf?<flashvars as query string>
-in flashplayer 32.0.0.363. Flash parses SWF-URL query params into
-loaderInfo.parameters, which is how the game gets uid/t/sign/seid/sport/ip.
-Native TCP sockets go straight to Java :8008 (no bridge). Relative loads
-(PlatformLoader.swf, assets/tg.swf) resolve against /res/ automatically.
-
-Usage: projector-client.py <username> <password> [--dry-run]
-       [--api-base URL] [--movie-base URL]
-  dry-run prints the URL without launching (password never logged).
-  Defaults target the ORIGINAL stack (Apache :80 + Java :8008).
-  For the NEW stack: --api-base http://127.0.0.1:8080
-    --movie-base http://localhost:5173/res  (Vite serves /res, Python :8008)
+Usage: projector-client.py [<username> <password>] [--dry-run] [--api-base URL] [--movie-base URL] [--game-port PORT]
+With no credentials, the dev_account in MKO_Client/config.json is used. Passwords are never printed.
 """
 import os
 import subprocess
@@ -24,6 +13,7 @@ import http.cookiejar
 WEB = "http://127.0.0.1"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECTOR = os.path.join(ROOT, "MKO_Client", "flash-projector", "flashplayer363.exe")
+CONFIG = os.path.join(ROOT, "MKO_Client", "config.json")
 
 sys.path.insert(0, "tools")
 import parse_flashvars as pf
@@ -120,6 +110,39 @@ def flashvars_of(html):
     return out
 
 
+def load_dev_account(path=CONFIG):
+    """Return (username, password) from the dev_account block of the config file."""
+    import json
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        raise SystemExit("config not found: %s (pass <username> <password> instead)" % path)
+    except json.JSONDecodeError as e:
+        raise SystemExit("config is not valid JSON: %s (line %d)" % (path, e.lineno))
+    acct = data.get("dev_account") if isinstance(data, dict) else None
+    if not isinstance(acct, dict) or not acct.get("username") or not acct.get("password"):
+        raise SystemExit("config needs dev_account.username and dev_account.password: %s" % path)
+    return acct["username"], acct["password"]
+
+
+def credentials(argv=None, path=CONFIG):
+    """Return the positional credentials if given, else the dev account."""
+    argv = sys.argv if argv is None else argv
+    if len(argv) >= 3 and not argv[1].startswith("--") and not argv[2].startswith("--"):
+        return argv[1], argv[2]
+    return load_dev_account(path)
+
+
+def apply_game_port(fv, argv):
+    """Point the game socket at --game-port (e.g. the recorder) instead of the server's sport."""
+    if '--game-port' in argv:
+        i = argv.index('--game-port')
+        fv['sport'] = str(int(argv[i + 1]))
+    return fv
+
+
 def argval(flag, default=None):
     if flag in sys.argv:
         i = sys.argv.index(flag)
@@ -128,27 +151,32 @@ def argval(flag, default=None):
     return default
 
 
-def main():
-    user, password = sys.argv[1], sys.argv[2]
-    dry = "--dry-run" in sys.argv
-    api_base = argval("--api-base")
-    movie_base = argval("--movie-base")
+def build_movie_url(user, password, api_base=None, movie_base=None, argv=None):
+    """Log in and return the Main.swf URL with signed flashvars; raises SystemExit on refusal."""
+    argv = sys.argv if argv is None else argv
     if api_base:
         sess = login_api(api_base, user, password)
-        fv = api_flashvars(sess)
-        url = (movie_base or WEB + "/res") + "/Main.swf?" + urllib.parse.urlencode(fv)
-    else:
-        html = login_legacy(user, password)
-        fv = flashvars_of(html)
-        url = WEB + "/res/Main.swf?" + urllib.parse.urlencode(fv)
-    if dry:
-        print("movie URL ready (not launching)")
-        return
-    print("launching projector...")
+        fv = apply_game_port(api_flashvars(sess), argv)
+        return (movie_base or WEB + "/res") + "/Main.swf?" + urllib.parse.urlencode(fv)
+    html = login_legacy(user, password)
+    fv = apply_game_port(flashvars_of(html), argv)
+    return (movie_base or WEB + "/res") + "/Main.swf?" + urllib.parse.urlencode(fv)
+
+
+def launch_projector(url):
+    """Start the Flash projector on the movie URL."""
     subprocess.Popen([PROJECTOR, url])
 
 
+def main():
+    user, password = credentials()
+    url = build_movie_url(user, password, argval("--api-base"), argval("--movie-base"))
+    if "--dry-run" in sys.argv:
+        print("movie URL ready (not launching)")
+        return
+    print("launching projector...")
+    launch_projector(url)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        raise SystemExit("usage: projector-client.py <username> <password> [--dry-run]")
     main()

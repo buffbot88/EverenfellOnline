@@ -2,7 +2,7 @@
 
 <!DOCTYPE html>
 <?php 
-  include_once "../configuration/config.inc.php";
+  include_once dirname(__FILE__)."/../configuration/config.inc.php";
   $Sid=$_SERVER["QUERY_STRING"];
 $ip = GetIP();
   $sql="select  *  from ip where INET_ATON('$ip') between INET_ATON(startIp) and INET_ATON(endIp)";

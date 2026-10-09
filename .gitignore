@@ -40,6 +40,9 @@ client/public/ruffle/
 __pycache__/
 *.pyc
 
+# ── Local dev credentials (never commit) ──
+MKO_Client/config.json
+
 # ── Local agent metadata ──
 .freebuff/
 /reference

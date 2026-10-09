@@ -1,6 +1,6 @@
 # Original client boot chain (from FFDec decompilation, output/ffdec/)
 
-All paths relative to the Apache webdir `TonNgoKhong/server/ESSamp/wwwroot/`.
+All paths relative to the Apache webdir `reference/TonNgoKhong/server/ESSamp/wwwroot/`.
 Flashvars come from `Gamelogin.php` (uid/pid/t/seid `fu1304`/sport `8008`/ip/sign).
 
 ## 1. `res/Main.swf` (class `Platform`, Flex bootstrapper, 16 KB)

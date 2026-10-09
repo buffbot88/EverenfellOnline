@@ -1,0 +1,6329 @@
+{
+ "files": {
+  "game/map_config/0/map.dat": {
+   "bytes": 32500,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 15174,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/0/monster.mm": {
+   "bytes": 887,
+   "error": "Amf3Error: unsupported marker 0x0f at 137",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 138,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/0/path.mm": {
+   "bytes": 14766,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/1/map.dat": {
+   "bytes": 89359,
+   "error": "IndexError: list index out of range",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 424,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/1/monster.mm": {
+   "bytes": 443,
+   "error": "Amf3Error: unsupported marker 0x87 at 236",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 237,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/1/path.mm": {
+   "bytes": 28741,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/10/map.dat": {
+   "bytes": 24118,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x81",
+   "offset": 11278,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/10/monster.mm": {
+   "bytes": 1062,
+   "error": "Amf3Error: unsupported marker 0x0f at 397",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 398,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/10/path.mm": {
+   "bytes": 10888,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/100/map.dat": {
+   "bytes": 6294,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 439,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/100/monster.mm": {
+   "bytes": 465,
+   "error": "Amf3Error: unsupported marker 0x00 at 206",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 207,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/100/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/101/map.dat": {
+   "bytes": 6294,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 410,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/101/monster.mm": {
+   "bytes": 465,
+   "error": "Amf3Error: unsupported marker 0x00 at 206",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 207,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/101/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/102/map.dat": {
+   "bytes": 6287,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 421,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/102/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/103/map.dat": {
+   "bytes": 6287,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 421,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/103/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/104/map.dat": {
+   "bytes": 20803,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 355,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/104/monster.mm": {
+   "bytes": 792,
+   "error": "Amf3Error: unsupported marker 0x0f at 230",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 231,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/104/path.mm": {
+   "bytes": 10123,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/105/map.dat": {
+   "bytes": 67212,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 359,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/105/path.mm": {
+   "bytes": 33328,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/106/map.dat": {
+   "bytes": 91542,
+   "error": "IndexError: list index out of range",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 391,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/106/path.mm": {
+   "bytes": 28741,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/107/map.dat": {
+   "bytes": 46095,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 380,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/107/monster.mm": {
+   "bytes": 3267,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 311
+  },
+  "game/map_config/107/path.mm": {
+   "bytes": 16192,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/108/map.dat": {
+   "bytes": 12282,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x3b",
+   "offset": 4427,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/108/monster.mm": {
+   "bytes": 1171,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 110
+  },
+  "game/map_config/108/path.mm": {
+   "bytes": 4020,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/109/map.dat": {
+   "bytes": 67212,
+   "error": "IndexError: list index out of range",
+   "format": "zlib",
+   "marker": "0x0c",
+   "offset": 33762,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/109/path.mm": {
+   "bytes": 33328,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/11/map.dat": {
+   "bytes": 14077,
+   "error": "Amf3Error: unsupported marker 0x11 at 5864",
+   "format": "zlib",
+   "marker": "0x03",
+   "offset": 5865,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/11/monster.mm": {
+   "bytes": 779,
+   "error": "Amf3Error: unsupported marker 0x14 at 217",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 218,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/11/path.mm": {
+   "bytes": 5448,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/110/map.dat": {
+   "bytes": 33880,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 394,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/110/path.mm": {
+   "bytes": 16669,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/111/map.dat": {
+   "bytes": 45090,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 388,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/111/path.mm": {
+   "bytes": 22266,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/112/map.dat": {
+   "bytes": 32479,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 388,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/112/path.mm": {
+   "bytes": 15958,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/113/map.dat": {
+   "bytes": 7566,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 388,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/113/path.mm": {
+   "bytes": 3505,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/114/map.dat": {
+   "bytes": 64083,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 32156,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/114/monster.mm": {
+   "bytes": 3851,
+   "error": "Amf3Error: unsupported marker 0x0f at 685",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 686,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/114/path.mm": {
+   "bytes": 31770,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/12/map.dat": {
+   "bytes": 8358,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 4341,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/12/monster.mm": {
+   "bytes": 463,
+   "error": "Amf3Error: unsupported marker 0x0f at 220",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 221,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/12/path.mm": {
+   "bytes": 3915,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/13/map.dat": {
+   "bytes": 11377,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x8a in position 1: invalid start byte",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 454,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/13/monster.mm": {
+   "bytes": 488,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 32
+  },
+  "game/map_config/13/path.mm": {
+   "bytes": 4360,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/14/map.dat": {
+   "bytes": 35880,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 523,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/14/monster.mm": {
+   "bytes": 2367,
+   "error": "Amf3Error: unsupported marker 0x0f at 269",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 270,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/14/path.mm": {
+   "bytes": 16310,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/15/map.dat": {
+   "bytes": 11544,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x3b",
+   "offset": 5884,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/15/monster.mm": {
+   "bytes": 983,
+   "error": "Amf3Error: unsupported marker 0x0f at 133",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 134,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/15/path.mm": {
+   "bytes": 5496,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/16/map.dat": {
+   "bytes": 35123,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 376,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/16/monster.mm": {
+   "bytes": 2069,
+   "error": "Amf3Error: unsupported marker 0x0f at 344",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 345,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/16/path.mm": {
+   "bytes": 16192,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/17/map.dat": {
+   "bytes": 37938,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x05",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/17/path.mm": {
+   "bytes": 10888,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/18/map.dat": {
+   "bytes": 73279,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa6 in position 1: invalid start byte",
+   "format": "zlib",
+   "marker": "0x40",
+   "offset": 465,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/18/monster.mm": {
+   "bytes": 1904,
+   "error": "Amf3Error: unsupported marker 0x0f at 335",
+   "format": "raw",
+   "marker": "0x4d",
+   "offset": 336,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/18/path.mm": {
+   "bytes": 32776,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/19/map.dat": {
+   "bytes": 7613,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x22",
+   "offset": 1552,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/19/monster.mm": {
+   "bytes": 136,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/map_config/19/path.mm": {
+   "bytes": 1164,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/2/map.dat": {
+   "bytes": 29473,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 14866,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/2/monster.mm": {
+   "bytes": 797,
+   "error": "Amf3Error: unsupported marker 0x30 at 584",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 585,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/2/path.mm": {
+   "bytes": 14458,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/20/map.dat": {
+   "bytes": 10914,
+   "error": "Amf3Error: unsupported marker 0x11 at 5593",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 5594,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/20/monster.mm": {
+   "bytes": 604,
+   "error": "Amf3Error: unsupported marker 0x0f at 127",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 128,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/20/path.mm": {
+   "bytes": 5176,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/21/map.dat": {
+   "bytes": 16208,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x5d",
+   "offset": 6348,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/21/monster.mm": {
+   "bytes": 817,
+   "error": "Amf3Error: unsupported marker 0x0f at 124",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 125,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/21/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/22/map.dat": {
+   "bytes": 7540,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 3896,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/22/monster.mm": {
+   "bytes": 425,
+   "error": "Amf3Error: unsupported marker 0x0f at 143",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 144,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/22/path.mm": {
+   "bytes": 3489,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/23/map.dat": {
+   "bytes": 53980,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x99 in position 0: invalid start byte",
+   "format": "zlib",
+   "marker": "0x99",
+   "offset": 483,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/23/monster.mm": {
+   "bytes": 2405,
+   "error": "Amf3Error: unsupported marker 0x20 at 346",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 347,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/23/path.mm": {
+   "bytes": 16193,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/24/map.dat": {
+   "bytes": 32942,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x81",
+   "offset": 16619,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/24/monster.mm": {
+   "bytes": 2680,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 233
+  },
+  "game/map_config/24/path.mm": {
+   "bytes": 16192,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/25/map.dat": {
+   "bytes": 24749,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x81",
+   "offset": 11278,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/25/monster.mm": {
+   "bytes": 1175,
+   "error": "Amf3Error: unsupported marker 0x0f at 265",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 266,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/25/path.mm": {
+   "bytes": 10888,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/26/map.dat": {
+   "bytes": 3428,
+   "error": "Amf3Error: unsupported marker 0x11 at 1870",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 1871,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/26/monster_1.mm": {
+   "bytes": 126,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/map_config/26/monster_2.mm": {
+   "bytes": 126,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/map_config/26/monster_3.mm": {
+   "bytes": 126,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/map_config/26/path.mm": {
+   "bytes": 1436,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/27/map.dat": {
+   "bytes": 3422,
+   "error": "Amf3Error: unsupported marker 0x11 at 1852",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 1853,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/27/path.mm": {
+   "bytes": 1436,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/28/map.dat": {
+   "bytes": 3071,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x0a",
+   "offset": 362,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/28/path.mm": {
+   "bytes": 1164,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/29/map.dat": {
+   "bytes": 4965,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 358,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/29/monster.mm": {
+   "bytes": 358,
+   "error": "Amf3Error: unsupported marker 0x87 at 212",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 213,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/29/path.mm": {
+   "bytes": 1164,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/3/map.dat": {
+   "bytes": 37795,
+   "error": "Amf3Error: unsupported marker 0x00 at 19066",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 19067,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/3/monster.mm": {
+   "bytes": 1399,
+   "error": "Amf3Error: unsupported marker 0x0f at 285",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 286,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/3/path.mm": {
+   "bytes": 18645,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/30/map.dat": {
+   "bytes": 3090,
+   "error": "Amf3Error: unsupported marker 0x11 at 322",
+   "format": "zlib",
+   "marker": "0x03",
+   "offset": 323,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/30/path.mm": {
+   "bytes": 1164,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/31/map.dat": {
+   "bytes": 7503,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 400,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/31/path.mm": {
+   "bytes": 3476,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/32/map.dat": {
+   "bytes": 30497,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 15425,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/32/path.mm": {
+   "bytes": 14968,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/33/map.dat": {
+   "bytes": 11470,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x55",
+   "offset": 5848,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/33/monster.mm": {
+   "bytes": 725,
+   "error": "Amf3Error: unsupported marker 0x0f at 134",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 135,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/33/path.mm": {
+   "bytes": 5460,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/34/map.dat": {
+   "bytes": 11470,
+   "error": "Amf3Error: unsupported marker 0x11 at 5876",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 5877,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/34/monster.mm": {
+   "bytes": 725,
+   "error": "Amf3Error: unsupported marker 0x0f at 134",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 135,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/34/path.mm": {
+   "bytes": 5460,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/35/map.dat": {
+   "bytes": 21411,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 419,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/35/monster.mm": {
+   "bytes": 1013,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 96
+  },
+  "game/map_config/35/path.mm": {
+   "bytes": 7233,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/36/map.dat": {
+   "bytes": 6391,
+   "error": "Amf3Error: unsupported marker 0x11 at 3347",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 3348,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/36/monster.mm": {
+   "bytes": 482,
+   "error": "Amf3Error: unsupported marker 0x0f at 207",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 208,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/36/path.mm": {
+   "bytes": 2931,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/37/map.dat": {
+   "bytes": 5746,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/37/monster.mm": {
+   "bytes": 503,
+   "error": "Amf3Error: unsupported marker 0x0f at 186",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 187,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/37/path.mm": {
+   "bytes": 2592,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/38/map.dat": {
+   "bytes": 66120,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/38/monster.mm": {
+   "bytes": 647,
+   "error": "Amf3Error: unsupported marker 0x87 at 146",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 147,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/38/path.mm": {
+   "bytes": 32776,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/39/map.dat": {
+   "bytes": 66120,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/39/monster.mm": {
+   "bytes": 493,
+   "error": "Amf3Error: unsupported marker 0x0f at 136",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 137,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/39/path.mm": {
+   "bytes": 32776,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/4/map.dat": {
+   "bytes": 48303,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0xff",
+   "offset": 489,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/4/monster.mm": {
+   "bytes": 1351,
+   "error": "Amf3Error: unsupported marker 0x0f at 320",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 321,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/4/path.mm": {
+   "bytes": 20238,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/40/map.dat": {
+   "bytes": 5062,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/40/monster.mm": {
+   "bytes": 572,
+   "error": "Amf3Error: unsupported marker 0x87 at 143",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 144,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/40/path.mm": {
+   "bytes": 2250,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/41/map.dat": {
+   "bytes": 3434,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/41/monster.mm": {
+   "bytes": 472,
+   "error": "Amf3Error: unsupported marker 0x0f at 142",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 143,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/41/path.mm": {
+   "bytes": 1436,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/42/map.dat": {
+   "bytes": 4046,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/42/monster.mm": {
+   "bytes": 584,
+   "error": "Amf3Error: unsupported marker 0x0f at 146",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 147,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/42/path.mm": {
+   "bytes": 1742,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/43/map.dat": {
+   "bytes": 6188,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/43/monster.mm": {
+   "bytes": 532,
+   "error": "Amf3Error: unsupported marker 0x87 at 148",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 149,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/43/path.mm": {
+   "bytes": 2813,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/44/map.dat": {
+   "bytes": 6932,
+   "error": "Amf3Error: unsupported marker 0x11 at 3616",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 3617,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/44/monster.mm": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/map_config/44/path.mm": {
+   "bytes": 3200,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/45/map.dat": {
+   "bytes": 16964,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 8660,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/45/monster.mm": {
+   "bytes": 1529,
+   "error": "Amf3Error: unsupported marker 0x0f at 344",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 345,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/45/path.mm": {
+   "bytes": 8200,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/46/map.dat": {
+   "bytes": 11470,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x55",
+   "offset": 5848,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/46/monster.mm": {
+   "bytes": 725,
+   "error": "Amf3Error: unsupported marker 0x0f at 134",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 135,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/46/path.mm": {
+   "bytes": 5460,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/47/map.dat": {
+   "bytes": 18246,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 416,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/47/monster.mm": {
+   "bytes": 953,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 89
+  },
+  "game/map_config/47/path.mm": {
+   "bytes": 8100,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/48/map.dat": {
+   "bytes": 16399,
+   "error": "Amf3Error: unsupported marker 0x11 at 6376",
+   "format": "zlib",
+   "marker": "0x07",
+   "offset": 6377,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/48/monster.mm": {
+   "bytes": 1087,
+   "error": "Amf3Error: unsupported marker 0x0f at 137",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 138,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/48/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/49/map.dat": {
+   "bytes": 14209,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 359,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/49/monster.mm": {
+   "bytes": 655,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 55
+  },
+  "game/map_config/49/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/5/map.dat": {
+   "bytes": 9577,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 4918,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/5/monster.mm": {
+   "bytes": 778,
+   "error": "Amf3Error: unsupported marker 0x0f at 203",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 204,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/5/path.mm": {
+   "bytes": 4343,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/50/map.dat": {
+   "bytes": 12482,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 6420,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/50/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/51/map.dat": {
+   "bytes": 16241,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 359,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/51/monster.mm": {
+   "bytes": 690,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 63
+  },
+  "game/map_config/51/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/52/map.dat": {
+   "bytes": 42343,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 388,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/52/monster.mm": {
+   "bytes": 2543,
+   "error": "Amf3Error: unsupported marker 0x0f at 371",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 372,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/52/path.mm": {
+   "bytes": 20966,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/53/map.dat": {
+   "bytes": 12482,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/53/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/54/map.dat": {
+   "bytes": 13756,
+   "error": "Amf3Error: unsupported marker 0x11 at 323",
+   "format": "zlib",
+   "marker": "0x05",
+   "offset": 324,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/54/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/55/map.dat": {
+   "bytes": 13225,
+   "error": "Amf3Error: unsupported marker 0x11 at 323",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 324,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/55/path.mm": {
+   "bytes": 6332,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/56/map.dat": {
+   "bytes": 16393,
+   "error": "Amf3Error: unsupported marker 0xff at 6536",
+   "format": "zlib",
+   "marker": "0xff",
+   "offset": 6537,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/56/monster.mm": {
+   "bytes": 610,
+   "error": "Amf3Error: unsupported marker 0x0f at 142",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 143,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/56/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/57/map.dat": {
+   "bytes": 12495,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 400,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/57/monster.mm": {
+   "bytes": 400,
+   "error": "Amf3Error: unsupported marker 0x00 at 149",
+   "format": "raw",
+   "marker": "0x09",
+   "offset": 150,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/57/path.mm": {
+   "bytes": 5969,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/58/map.dat": {
+   "bytes": 12484,
+   "error": "Amf3Error: unsupported marker 0x11 at 6375",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 6376,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/58/monster.mm": {
+   "bytes": 400,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 1: invalid start byte",
+   "format": "raw",
+   "marker": "0x7f",
+   "offset": 149,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/58/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/59/map.dat": {
+   "bytes": 12481,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/59/monster.mm": {
+   "bytes": 400,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 1: invalid start byte",
+   "format": "raw",
+   "marker": "0x7f",
+   "offset": 149,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/59/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/6/map.dat": {
+   "bytes": 16204,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x09",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/6/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/60/map.dat": {
+   "bytes": 13623,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 395,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/60/monster.mm": {
+   "bytes": 383,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 30
+  },
+  "game/map_config/60/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/61/map.dat": {
+   "bytes": 12482,
+   "error": "Amf3Error: unsupported marker 0x11 at 325",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 326,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/61/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/62/map.dat": {
+   "bytes": 32945,
+   "error": "Amf3Error: unsupported marker 0x00 at 364",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 365,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/62/monster.mm": {
+   "bytes": 1542,
+   "error": "Amf3Error: unsupported marker 0x0f at 333",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 334,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/62/path.mm": {
+   "bytes": 16192,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/63/map.dat": {
+   "bytes": 32946,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 16649,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/63/monster.mm": {
+   "bytes": 1555,
+   "error": "Amf3Error: unsupported marker 0x0f at 272",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 273,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/63/path.mm": {
+   "bytes": 16193,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/64/map.dat": {
+   "bytes": 12482,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 360,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/64/path.mm": {
+   "bytes": 5960,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/641/map.dat": {
+   "bytes": 66110,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 33200,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/641/path.mm": {
+   "bytes": 32776,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/65/map.dat": {
+   "bytes": 23828,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 426,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/65/monster.mm": {
+   "bytes": 401,
+   "error": "Amf3Error: unsupported marker 0x0f at 149",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 150,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/65/path.mm": {
+   "bytes": 10461,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/66/map.dat": {
+   "bytes": 40595,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 3: invalid start byte",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 17243,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/66/monster.mm": {
+   "bytes": 397,
+   "error": "Amf3Error: unsupported marker 0x0f at 129",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 130,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/66/path.mm": {
+   "bytes": 16677,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/67/map.dat": {
+   "bytes": 59528,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 355,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/67/monster.mm": {
+   "bytes": 515,
+   "error": "Amf3Error: unsupported marker 0x0f at 144",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 145,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/67/path.mm": {
+   "bytes": 25438,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/68/map.dat": {
+   "bytes": 82375,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 41313,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/68/monster.mm": {
+   "bytes": 2974,
+   "error": "Amf3Error: unsupported marker 0x0f at 147",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 148,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/68/path.mm": {
+   "bytes": 40904,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/69/map.dat": {
+   "bytes": 6932,
+   "error": "Amf3Error: unsupported marker 0x11 at 3616",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 3617,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/69/monster.mm": {
+   "bytes": 128,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/map_config/69/path.mm": {
+   "bytes": 3200,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/7/map.dat": {
+   "bytes": 20942,
+   "error": "Amf3Error: unsupported marker 0x11 at 326",
+   "format": "zlib",
+   "marker": "0x07",
+   "offset": 327,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/7/monster.mm": {
+   "bytes": 1176,
+   "error": "Amf3Error: unsupported marker 0x0f at 327",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 328,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/7/path.mm": {
+   "bytes": 8622,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/70/map.dat": {
+   "bytes": 6932,
+   "error": "Amf3Error: unsupported marker 0x11 at 3616",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 3617,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/70/monster.mm": {
+   "bytes": 137,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/map_config/70/path.mm": {
+   "bytes": 3200,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/71/map.dat": {
+   "bytes": 6932,
+   "error": "Amf3Error: unsupported marker 0x11 at 3616",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 3617,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/71/monster.mm": {
+   "bytes": 137,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/map_config/71/path.mm": {
+   "bytes": 3200,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/72/map.dat": {
+   "bytes": 82375,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 41313,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/72/monster.mm": {
+   "bytes": 2844,
+   "error": "Amf3Error: unsupported marker 0x0f at 147",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 148,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/72/path.mm": {
+   "bytes": 40904,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/73/map.dat": {
+   "bytes": 82538,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 41476,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/73/monster.mm": {
+   "bytes": 3331,
+   "error": "Amf3Error: unsupported marker 0x0f at 148",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 149,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/73/path.mm": {
+   "bytes": 41067,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/74/map.dat": {
+   "bytes": 23141,
+   "error": "Amf3Error: unsupported marker 0x66 at 427",
+   "format": "zlib",
+   "marker": "0x66",
+   "offset": 428,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/74/monster.mm": {
+   "bytes": 344,
+   "error": "Amf3Error: unsupported marker 0x00 at 134",
+   "format": "raw",
+   "marker": "0x05",
+   "offset": 135,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/74/path.mm": {
+   "bytes": 10461,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/75/map.dat": {
+   "bytes": 64092,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 397,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/75/path.mm": {
+   "bytes": 31760,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/76/map.dat": {
+   "bytes": 61311,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 360,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/76/path.mm": {
+   "bytes": 30368,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/77/map.dat": {
+   "bytes": 68175,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 397,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/77/path.mm": {
+   "bytes": 33800,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/78/map.dat": {
+   "bytes": 77887,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 356,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/78/path.mm": {
+   "bytes": 32776,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/79/map.dat": {
+   "bytes": 102080,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 377,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/79/monster.mm": {
+   "bytes": 3482,
+   "error": "Amf3Error: unsupported marker 0x0f at 152",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 153,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/79/path.mm": {
+   "bytes": 47296,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/8/map.dat": {
+   "bytes": 32019,
+   "error": "Amf3Error: unsupported marker 0x66 at 31633",
+   "format": "zlib",
+   "marker": "0x0a",
+   "offset": 31634,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/8/monster.mm": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/map_config/8/path.mm": {
+   "bytes": 15649,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/80/map.dat": {
+   "bytes": 53607,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x01",
+   "offset": 493,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/80/monster.mm": {
+   "bytes": 1609,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 149
+  },
+  "game/map_config/80/path.mm": {
+   "bytes": 24061,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/81/map.dat": {
+   "bytes": 46870,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 420,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/81/monster.mm": {
+   "bytes": 285,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 16
+  },
+  "game/map_config/81/path.mm": {
+   "bytes": 19103,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/82/map.dat": {
+   "bytes": 73108,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 421,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/82/monster.mm": {
+   "bytes": 3359,
+   "error": "Amf3Error: unsupported marker 0x0f at 461",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 462,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/82/path.mm": {
+   "bytes": 36326,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/83/map.dat": {
+   "bytes": 42304,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 356,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/83/monster.mm": {
+   "bytes": 331,
+   "error": "Amf3Error: unsupported marker 0x00 at 283",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 284,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/83/path.mm": {
+   "bytes": 15485,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/84/map.dat": {
+   "bytes": 69740,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 365,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/84/monster.mm": {
+   "bytes": 2424,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 221
+  },
+  "game/map_config/84/path.mm": {
+   "bytes": 34654,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/85/map.dat": {
+   "bytes": 70817,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 411,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/85/path.mm": {
+   "bytes": 35170,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/86/map.dat": {
+   "bytes": 29002,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 420,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/86/monster.mm": {
+   "bytes": 317,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 16
+  },
+  "game/map_config/86/path.mm": {
+   "bytes": 14221,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/87/map.dat": {
+   "bytes": 64152,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 407,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/87/monster.mm": {
+   "bytes": 3019,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 288
+  },
+  "game/map_config/87/path.mm": {
+   "bytes": 31837,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/88/map.dat": {
+   "bytes": 7719,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 425,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/88/monster.mm": {
+   "bytes": 633,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 52
+  },
+  "game/map_config/88/path.mm": {
+   "bytes": 3579,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/89/map.dat": {
+   "bytes": 33031,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 420,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/89/monster.mm": {
+   "bytes": 2656,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 257
+  },
+  "game/map_config/89/path.mm": {
+   "bytes": 16278,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/9/map.dat": {
+   "bytes": 7536,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 3946,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/9/monster.mm": {
+   "bytes": 483,
+   "error": "Amf3Error: unsupported marker 0x0f at 182",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 183,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/9/path.mm": {
+   "bytes": 3489,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/90/map.dat": {
+   "bytes": 64059,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0x83 in position 1: invalid start byte",
+   "format": "zlib",
+   "marker": "0x0c",
+   "offset": 32191,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/90/monster.mm": {
+   "bytes": 2836,
+   "error": "Amf3Error: unsupported marker 0x0f at 652",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 653,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/90/path.mm": {
+   "bytes": 31746,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/91/map.dat": {
+   "bytes": 6293,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/91/monster.mm": {
+   "bytes": 474,
+   "error": "Amf3Error: unsupported marker 0x00 at 146",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 147,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/91/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/92/map.dat": {
+   "bytes": 52321,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 377,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/92/monster.mm": {
+   "bytes": 3551,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 1: invalid start byte",
+   "format": "raw",
+   "marker": "0x7f",
+   "offset": 134,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/92/path.mm": {
+   "bytes": 25880,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/93/map.dat": {
+   "bytes": 6293,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/93/monster.mm": {
+   "bytes": 456,
+   "error": "Amf3Error: unsupported marker 0x00 at 206",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 207,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/93/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/94/map.dat": {
+   "bytes": 6293,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 428,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/94/monster.mm": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/map_config/94/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/95/map.dat": {
+   "bytes": 6281,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 416,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/95/monster.mm": {
+   "bytes": 447,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 32
+  },
+  "game/map_config/95/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/96/map.dat": {
+   "bytes": 6293,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x04",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/96/monster.mm": {
+   "bytes": 465,
+   "error": "Amf3Error: unsupported marker 0x00 at 206",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 207,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/96/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/97/map.dat": {
+   "bytes": 6284,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 418,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/97/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/98/map.dat": {
+   "bytes": 6284,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 418,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/98/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/99/map.dat": {
+   "bytes": 6284,
+   "error": "Amf3Error: externalizable objects unsupported",
+   "format": "zlib",
+   "marker": "0x00",
+   "offset": 418,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/map_config/99/path.mm": {
+   "bytes": 2864,
+   "error": "Amf3Error: unsupported marker 0x00 at 0",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 1,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/1.dat": {
+   "bytes": 31,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 3
+  },
+  "game/sys_config/2.dat": {
+   "bytes": 31,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 3
+  },
+  "game/sys_config/2HuoYueDu.dat": {
+   "bytes": 1517,
+   "error": "Amf3Error: unsupported marker 0x25 at 124",
+   "format": "raw",
+   "marker": "0x54",
+   "offset": 125,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/3.dat": {
+   "bytes": 31,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 3
+  },
+  "game/sys_config/72bianzhubao.jat": {
+   "bytes": 1217,
+   "error": "Amf3Error: unsupported marker 0x50 at 134",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 135,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/7daychognzhi.jat": {
+   "bytes": 105,
+   "error": "Amf3Error: unsupported marker 0x07 at 103",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 104,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/9talk.dat": {
+   "bytes": 81717,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x81",
+   "offset": 712,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaiXian.dat": {
+   "bytes": 279,
+   "error": "Amf3Error: unsupported marker 0x31 at 147",
+   "format": "raw",
+   "marker": "0xe7",
+   "offset": 148,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaiXian.jat": {
+   "bytes": 357,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x79",
+   "offset": 189,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaiXianHuaFei.dat": {
+   "bytes": 31739,
+   "error": "Amf3Error: unsupported marker 0x00 at 125",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 126,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaiXianHuaFei.jat": {
+   "bytes": 3275,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 200,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiBuWei.dat": {
+   "bytes": 1591,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0c",
+   "offset": 155,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiBuWei.jat": {
+   "bytes": 2446,
+   "error": "Amf3Error: unsupported marker 0x46 at 195",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 196,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiShengJi.dat": {
+   "bytes": 3255,
+   "error": "Amf3Error: unsupported marker 0x13 at 339",
+   "format": "raw",
+   "marker": "0xe6",
+   "offset": 340,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiShengJi.jat": {
+   "bytes": 5133,
+   "error": "Amf3Error: unsupported marker 0x3f at 366",
+   "format": "raw",
+   "marker": "0xe3",
+   "offset": 367,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiXiangGuan.dat": {
+   "bytes": 38,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/BaoShiXiangGuan.jat": {
+   "bytes": 41,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/BaoShiXiaoGuo.dat": {
+   "bytes": 513,
+   "error": "Amf3Error: unsupported marker 0x32 at 274",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 275,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoShiXiaoGuo.jat": {
+   "bytes": 760,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x81",
+   "offset": 374,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoZang.dat": {
+   "bytes": 523,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/BaoZang.jat": {
+   "bytes": 1122,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/BaoZangXianLu.dat": {
+   "bytes": 132,
+   "error": "Amf3Error: unsupported marker 0x7c at 92",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 93,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BaoZangXianLu.jat": {
+   "bytes": 146,
+   "error": "Amf3Error: unsupported marker 0x7c at 92",
+   "format": "raw",
+   "marker": "0x39",
+   "offset": 93,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BossTiaoZhan.dat": {
+   "bytes": 4412,
+   "error": "Amf3Error: unsupported marker 0x00 at 669",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 670,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/BossTiaoZhan.jat": {
+   "bytes": 6642,
+   "error": "Amf3Error: unsupported marker 0x28 at 668",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 669,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/CdBiao.jat": {
+   "bytes": 5565,
+   "error": "Amf3Error: unsupported marker 0x97 at 63",
+   "format": "raw",
+   "marker": "0x38",
+   "offset": 64,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ChuShengZuoBiaoPeiZhibBiao.dat": {
+   "bytes": 1435,
+   "error": "Amf3Error: unsupported marker 0x00 at 68",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 69,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ChuShengZuoBiaoPeiZhibBiao.jat": {
+   "bytes": 4801,
+   "error": "Amf3Error: unsupported marker 0x0d at 68",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 69,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ChuanSongBiao.dat": {
+   "bytes": 490,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ChuanSongBiao.jat": {
+   "bytes": 3493,
+   "error": "Amf3Error: unsupported marker 0x0b at 24",
+   "format": "raw",
+   "marker": "0x6c",
+   "offset": 25,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DaZuoPeiZhiBiao.dat": {
+   "bytes": 9191,
+   "error": "Amf3Error: unsupported marker 0x00 at 250",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 251,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DaZuoPeiZhiBiao.jat": {
+   "bytes": 5166,
+   "error": "Amf3Error: unsupported marker 0x00 at 94",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 95,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DaoFa.dat": {
+   "bytes": 25547,
+   "error": "Amf3Error: unsupported marker 0x2e at 561",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 562,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DaoJuBiao.dat": {
+   "bytes": 145072,
+   "error": "Amf3Error: unsupported marker 0x3c at 859",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 860,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DaoJuBiao.jat": {
+   "bytes": 1262725,
+   "error": "Amf3Error: unsupported marker 0x3c at 1100",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 1101,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DengJiLiBao.dat": {
+   "bytes": 957,
+   "error": "Amf3Error: unsupported marker 0x14 at 217",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 218,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DengJiLiBao.jat": {
+   "bytes": 1059,
+   "error": "Amf3Error: unsupported marker 0x00 at 231",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 232,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DiaoLuoShuaiJianBiao.dat": {
+   "bytes": 63,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/DiaoLuoShuaiJianBiao.jat": {
+   "bytes": 63,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/DiaoXiang.dat": {
+   "bytes": 103,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/DuiWuJiaCheng.dat": {
+   "bytes": 145,
+   "error": "Amf3Error: unsupported marker 0x3f at 58",
+   "format": "raw",
+   "marker": "0xb9",
+   "offset": 59,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/DuiWuJiaCheng.jat": {
+   "bytes": 124,
+   "error": "Amf3Error: unsupported marker 0x0d at 81",
+   "format": "raw",
+   "marker": "0x64",
+   "offset": 82,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/F1.dat": {
+   "bytes": 2022,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0c",
+   "offset": 242,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FaBaoBiao.dat": {
+   "bytes": 475857,
+   "error": "Amf3Error: unsupported marker 0x00 at 292",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 293,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FaBaoChuZhanGeWei.dat": {
+   "bytes": 48,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/FaBaoJiLian.dat": {
+   "bytes": 17269,
+   "error": "Amf3Error: unsupported marker 0x0d at 509",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 510,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FaBaoRongHeCiShu.dat": {
+   "bytes": 53,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/FaBaoRongHeHuaFei.dat": {
+   "bytes": 3242,
+   "format": "raw",
+   "seconds": 0.002,
+   "status": "ok",
+   "values": 258
+  },
+  "game/sys_config/FaBaoShengJiJingYanBiao.dat": {
+   "bytes": 1617,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 121
+  },
+  "game/sys_config/FaBaoShouJi.dat": {
+   "bytes": 7426,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 417,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FaBaoShouJixiaohao.dat": {
+   "bytes": 116853,
+   "error": "Amf3Error: unsupported marker 0x0d at 895",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 896,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FenBaoMonster.dat": {
+   "bytes": 2733,
+   "error": "Amf3Error: unsupported marker 0x15 at 68",
+   "format": "raw",
+   "marker": "0x6d",
+   "offset": 69,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FenBaoXinXi.dat": {
+   "bytes": 211,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/FenBaoYaBiao.dat": {
+   "bytes": 13907,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 400,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FenBaoYaHuaFei.dat": {
+   "bytes": 1321,
+   "error": "Amf3Error: unsupported marker 0x2a at 82",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 83,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FengCeHuoDong.dat": {
+   "bytes": 1531,
+   "error": "Amf3Error: unsupported marker 0x1f at 180",
+   "format": "raw",
+   "marker": "0x6a",
+   "offset": 181,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FengShenGuaiWu.dat": {
+   "bytes": 238,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x82",
+   "offset": 70,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FengShenGuaiWu.jat": {
+   "bytes": 44,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/FengShenGuiZe.jat": {
+   "bytes": 98,
+   "error": "Amf3Error: unsupported marker 0x0b at 64",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 65,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FengShenTianShen.dat": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/sys_config/FengShenYuXi.dat": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/sys_config/FengShenZhan.dat": {
+   "bytes": 455,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/FengShenZhan.jat": {
+   "bytes": 854,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/FengShenZhiWei.dat": {
+   "bytes": 263,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x19",
+   "offset": 99,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FengShenZhiWei.jat": {
+   "bytes": 759,
+   "error": "Amf3Error: unsupported marker 0x65 at 213",
+   "format": "raw",
+   "marker": "0x65",
+   "offset": 214,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/FuHuoYinDao.dat": {
+   "bytes": 1475,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x79",
+   "offset": 207,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiChuangJian.dat": {
+   "bytes": 48,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/GongHuiChuangJian.jat": {
+   "bytes": 69,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/GongHuiMuBiao.jat": {
+   "bytes": 337,
+   "error": "Amf3Error: unsupported marker 0x11 at 81",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 82,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiQiZhiBiao.dat": {
+   "bytes": 13020,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 673,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiQiZhiBiao.jat": {
+   "bytes": 18563,
+   "error": "Amf3Error: unsupported marker 0x19 at 613",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 614,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiRenWu.jat": {
+   "bytes": 5702,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 163,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiRenWuEWaiJiangLi.jat": {
+   "bytes": 3875,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 170,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiRenWuJiangLi.jat": {
+   "bytes": 16470,
+   "error": "Amf3Error: unsupported marker 0x2c at 156",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 157,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiZhiWei.dat": {
+   "bytes": 678,
+   "error": "Amf3Error: unsupported marker 0x00 at 244",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 245,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongHuiZhiWei.jat": {
+   "bytes": 540,
+   "error": "Amf3Error: unsupported marker 0x00 at 265",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 266,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongNengDengJi.dat": {
+   "bytes": 1847,
+   "error": "Amf3Error: unsupported marker 0x1b at 57",
+   "format": "raw",
+   "marker": "0x66",
+   "offset": 58,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongNengQiDai.dat": {
+   "bytes": 3513,
+   "error": "Amf3Error: unsupported marker 0x63 at 227",
+   "format": "raw",
+   "marker": "0x74",
+   "offset": 228,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GongNengQiDai2.dat": {
+   "bytes": 1930,
+   "error": "Amf3Error: unsupported marker 0x0b at 156",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 157,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/Gongnengfenbubiao.dat": {
+   "bytes": 13619,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 184,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/Gongnengfenbubiao.jat": {
+   "bytes": 1445,
+   "error": "Amf3Error: unsupported marker 0x37 at 217",
+   "format": "raw",
+   "marker": "0x48",
+   "offset": 218,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaJiPeiZhi.jat": {
+   "bytes": 214,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/GuaiWuAi.dat": {
+   "bytes": 795,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 358,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaiWuAi.jat": {
+   "bytes": 15797,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x82",
+   "offset": 226,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaiWuBiao.dat": {
+   "bytes": 492580,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1827,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaiWuBiao.jat": {
+   "bytes": 535091,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 1985,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaiWuGongCheng.dat": {
+   "bytes": 2282,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 301,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/GuaiWuGongCheng.jat": {
+   "bytes": 2439,
+   "error": "Amf3Error: unsupported marker 0x0f at 275",
+   "format": "raw",
+   "marker": "0x4d",
+   "offset": 276,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HongJunTiLiHuiFu.dat": {
+   "bytes": 808,
+   "error": "Amf3Error: unsupported marker 0x0b at 399",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 400,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HongJunXianJing.dat": {
+   "bytes": 122199,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 786,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HongJunXianJingTiLi.dat": {
+   "bytes": 46,
+   "error": "IndexError: index out of range",
+   "format": "raw",
+   "marker": null,
+   "offset": 46,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HongJunXianJingxiaohao.dat": {
+   "bytes": 283,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 31
+  },
+  "game/sys_config/HuoDongDaoJuLiBiao.dat": {
+   "bytes": 6113,
+   "error": "Amf3Error: unsupported marker 0x0f at 48",
+   "format": "raw",
+   "marker": "0x35",
+   "offset": 49,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongGuaiWuLiBiao.dat": {
+   "bytes": 1861,
+   "error": "Amf3Error: unsupported marker 0x13 at 47",
+   "format": "raw",
+   "marker": "0xe5",
+   "offset": 48,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongJiangLiFaBaoBiao.dat": {
+   "bytes": 1847,
+   "error": "Amf3Error: unsupported marker 0x13 at 56",
+   "format": "raw",
+   "marker": "0xe9",
+   "offset": 57,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongJiangLiLieBiao.dat": {
+   "bytes": 6372,
+   "error": "Amf3Error: unsupported marker 0x87 at 69",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 70,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongJiaoBiao.dat": {
+   "bytes": 117,
+   "error": "Amf3Error: unsupported marker 0x0d at 46",
+   "format": "raw",
+   "marker": "0xe6",
+   "offset": 47,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongKaiQi.dat": {
+   "bytes": 374,
+   "error": "Amf3Error: unsupported marker 0x07 at 123",
+   "format": "raw",
+   "marker": "0x68",
+   "offset": 124,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoDongTiaoJian.dat": {
+   "bytes": 2368,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 194,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoYueDu.dat": {
+   "bytes": 1515,
+   "error": "Amf3Error: unsupported marker 0x65 at 136",
+   "format": "raw",
+   "marker": "0x64",
+   "offset": 137,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/HuoYueJiangLi.dat": {
+   "bytes": 206,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/JiNengBiao.dat": {
+   "bytes": 2240331,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1921,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JiNengBiao.jat": {
+   "bytes": 5922854,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1778,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JiNengBiao_new.jat": {
+   "bytes": 1333071,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 1311,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JiNengBiaotest.jat": {
+   "bytes": 4287835,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 1607,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JiangLiLieBiao.dat": {
+   "bytes": 192,
+   "error": "Amf3Error: unsupported marker 0x0d at 71",
+   "format": "raw",
+   "marker": "0xe7",
+   "offset": 72,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JiangLiMoBan.dat": {
+   "bytes": 259,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 9
+  },
+  "game/sys_config/JiangXingTu.jat": {
+   "bytes": 353263,
+   "error": "Amf3Error: unsupported marker 0x29 at 623",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 624,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingJiChangZuoBiao.dat": {
+   "bytes": 67,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/JingJiCiShuGouMai.dat": {
+   "bytes": 1999,
+   "error": "Amf3Error: unsupported marker 0x0d at 214",
+   "format": "raw",
+   "marker": "0x02",
+   "offset": 215,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingJiPaiHang.dat": {
+   "bytes": 204,
+   "error": "Amf3Error: unsupported marker 0x07 at 121",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 122,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingJiPaiMingJiangLi.dat": {
+   "bytes": 4653,
+   "error": "Amf3Error: unsupported marker 0x96 at 140",
+   "format": "raw",
+   "marker": "0xf1",
+   "offset": 141,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingJiPaiMingJiangLixianshi.dat": {
+   "bytes": 753,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/JingJiPaiMingXianShi.dat": {
+   "bytes": 205,
+   "error": "Amf3Error: unsupported marker 0x64 at 52",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 53,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingJichangjiqiren.dat": {
+   "bytes": 196745,
+   "error": "Amf3Error: unsupported marker 0xa6 at 425",
+   "format": "raw",
+   "marker": "0x2d",
+   "offset": 426,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JingYanShuaiJianBiao.dat": {
+   "bytes": 1476,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 152
+  },
+  "game/sys_config/JingYanShuaiJianBiao.jat": {
+   "bytes": 2421,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 152
+  },
+  "game/sys_config/JuQingFuBen.dat": {
+   "bytes": 2859,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x11",
+   "offset": 597,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JuQingFuBen.jat": {
+   "bytes": 5749,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 939,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/JuQingSaoDang.dat": {
+   "bytes": 565,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 47
+  },
+  "game/sys_config/JuQingXinXi.dat": {
+   "bytes": 25,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/KaPaiJiangLi.dat": {
+   "bytes": 145,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb9 in position 1: invalid start byte",
+   "format": "raw",
+   "marker": "0x3f",
+   "offset": 58,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/KaPaihuafei.dat": {
+   "bytes": 48,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/KaiGeFeiYongBiao.dat": {
+   "bytes": 8661,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 114,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/KaiGeFeiYongBiao.jat": {
+   "bytes": 9530,
+   "error": "Amf3Error: unsupported marker 0x07 at 100",
+   "format": "raw",
+   "marker": "0x30",
+   "offset": 101,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/KuaiJieJianXinXi.dat": {
+   "bytes": 766,
+   "error": "Amf3Error: unsupported marker 0x1f at 63",
+   "format": "raw",
+   "marker": "0x42",
+   "offset": 64,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/Language.jat": {
+   "bytes": 3353,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 28
+  },
+  "game/sys_config/LiBao.dat": {
+   "bytes": 3557,
+   "error": "Amf3Error: unsupported marker 0x64 at 297",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 298,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LiBao.jat": {
+   "bytes": 3447,
+   "error": "Amf3Error: unsupported marker 0x30 at 366",
+   "format": "raw",
+   "marker": "0x33",
+   "offset": 367,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LiHe.dat": {
+   "bytes": 12671,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 394,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LiHe.jat": {
+   "bytes": 57257,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 441,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingDiZhan.dat": {
+   "bytes": 169,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/LingDiZhan.jat": {
+   "bytes": 495,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/LingDiZhanMap.jat": {
+   "bytes": 2256,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 557,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingJiangBiao.dat": {
+   "bytes": 23788,
+   "error": "Amf3Error: unsupported marker 0xfa at 258",
+   "format": "raw",
+   "marker": "0x89",
+   "offset": 259,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingJiangSuiPian.dat": {
+   "bytes": 1040,
+   "error": "Amf3Error: unsupported marker 0xce at 91",
+   "format": "raw",
+   "marker": "0x10",
+   "offset": 92,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingJiangSuiPianShunXu.dat": {
+   "bytes": 96,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/sys_config/LingQiBiao.dat": {
+   "bytes": 29936,
+   "error": "Amf3Error: unsupported marker 0x00 at 408",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingQiGeWei.dat": {
+   "bytes": 503,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 50
+  },
+  "game/sys_config/LingQiLeiXing.dat": {
+   "bytes": 285,
+   "error": "Amf3Error: unsupported marker 0x13 at 46",
+   "format": "raw",
+   "marker": "0xe6",
+   "offset": 47,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingQiLu.dat": {
+   "bytes": 642,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 214,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/LingQiPinZhi.dat": {
+   "bytes": 125,
+   "error": "Amf3Error: unsupported marker 0x32 at 54",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 55,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/Map.dat": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/sys_config/MapLine.dat": {
+   "bytes": 6308,
+   "error": "Amf3Error: unsupported marker 0x0e at 528",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 529,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MapLine.jat": {
+   "bytes": 8910,
+   "error": "Amf3Error: unsupported marker 0x1e at 303",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 304,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MiDuXianShi.dat": {
+   "bytes": 100,
+   "error": "Amf3Error: unsupported marker 0x0d at 64",
+   "format": "raw",
+   "marker": "0xe6",
+   "offset": 65,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MuBiao.dat": {
+   "bytes": 88378,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 389,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MuBiaoGongNeng.dat": {
+   "bytes": 884,
+   "error": "Amf3Error: unsupported marker 0x07 at 161",
+   "format": "raw",
+   "marker": "0x6d",
+   "offset": 162,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MuBiaoPingFen.dat": {
+   "bytes": 5220,
+   "error": "Amf3Error: unsupported marker 0x86 at 94",
+   "format": "raw",
+   "marker": "0x70",
+   "offset": 95,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/MuBiaoPingFenYanSe.dat": {
+   "bytes": 111,
+   "error": "Amf3Error: unsupported marker 0x31 at 49",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 50,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/NpcLieBiao.jat": {
+   "bytes": 14983,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0d",
+   "offset": 182,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PKChengFa.dat": {
+   "bytes": 65,
+   "error": "Amf3Error: unsupported marker 0x63 at 56",
+   "format": "raw",
+   "marker": "0x66",
+   "offset": 57,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PaiHangBiao.dat": {
+   "bytes": 58,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/PinZhiXiShuDuiYingBiao.dat": {
+   "bytes": 14653,
+   "error": "Amf3Error: unsupported marker 0x00 at 232",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 233,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PkYeJian.dat": {
+   "bytes": 67,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/PoZhenBiao.dat": {
+   "bytes": 16508,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 373,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenBiao.jat": {
+   "bytes": 18609,
+   "error": "Amf3Error: unsupported marker 0x00 at 385",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 386,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenMonster.dat": {
+   "bytes": 4319,
+   "error": "Amf3Error: unsupported marker 0x15 at 72",
+   "format": "raw",
+   "marker": "0x6d",
+   "offset": 73,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenMonster.jat": {
+   "bytes": 4319,
+   "error": "Amf3Error: unsupported marker 0x15 at 66",
+   "format": "raw",
+   "marker": "0x6d",
+   "offset": 67,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenShuaXin.dat": {
+   "bytes": 18009,
+   "error": "Amf3Error: unsupported marker 0x14 at 73",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 74,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenShuaXin.jat": {
+   "bytes": 18009,
+   "error": "Amf3Error: unsupported marker 0x14 at 73",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 74,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/PoZhenXinXi.dat": {
+   "bytes": 59,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/PoZhenXinXi.jat": {
+   "bytes": 59,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/QiTianDengRuJiangLi.dat": {
+   "bytes": 1284,
+   "error": "Amf3Error: unsupported marker 0x1d at 103",
+   "format": "raw",
+   "marker": "0x73",
+   "offset": 104,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/QiangHuaXiaoGuo.dat": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/sys_config/QiangHuaXiaoGuo.jat": {
+   "bytes": 549,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x81",
+   "offset": 310,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/RenWuDuiHua.jat": {
+   "bytes": 8274,
+   "error": "Amf3Error: unsupported marker 0x82 at 1403",
+   "format": "raw",
+   "marker": "0x0d",
+   "offset": 1404,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShaGuaiXiuZhengBiao.dat": {
+   "bytes": 1559,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x2e",
+   "offset": 195,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShaGuaiXiuZhengBiao.jat": {
+   "bytes": 1559,
+   "error": "Amf3Error: unsupported marker 0x30 at 187",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 188,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenJiangBiao.jat": {
+   "bytes": 30390,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 794,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuQiYi.dat": {
+   "bytes": 2566,
+   "error": "Amf3Error: unsupported marker 0x78 at 125",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 126,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuQiYi.jat": {
+   "bytes": 3133,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 154,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuWuPin.dat": {
+   "bytes": 49971,
+   "error": "Amf3Error: unsupported marker 0x14 at 259",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 260,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuWuPin.jat": {
+   "bytes": 50680,
+   "error": "Amf3Error: unsupported marker 0x32 at 264",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 265,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuXiangGuan.dat": {
+   "bytes": 201,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ShenShuXiangGuan.jat": {
+   "bytes": 201,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ShenShuZuBao.dat": {
+   "bytes": 7276,
+   "error": "Amf3Error: unsupported marker 0x7d at 441",
+   "format": "raw",
+   "marker": "0x3c",
+   "offset": 442,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShenShuZuBao.jat": {
+   "bytes": 9927,
+   "error": "Amf3Error: unsupported marker 0x81 at 473",
+   "format": "raw",
+   "marker": "0x4b",
+   "offset": 474,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ShengJiLengQue.dat": {
+   "bytes": 87,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 6
+  },
+  "game/sys_config/ShiJian.dat": {
+   "bytes": 468,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 33
+  },
+  "game/sys_config/ShouCangJiangLi.dat": {
+   "bytes": 20,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/TEST.jat": {
+   "bytes": 1123,
+   "error": "Amf3Error: unsupported marker 0x6d at 187",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 188,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/TaskZhuXianRenWu.jat": {
+   "bytes": 66782,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 538,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/TiLiGouMai.dat": {
+   "bytes": 1218,
+   "error": "Amf3Error: unsupported marker 0x0f at 40",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 41,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/TiaoZhanJiangLi.dat": {
+   "bytes": 119,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/Vip.dat": {
+   "bytes": 8233,
+   "error": "Amf3Error: unsupported marker 0x19 at 235",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 236,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/VipTeQuan.dat": {
+   "bytes": 869,
+   "error": "Amf3Error: unsupported marker 0x1e at 71",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 72,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/VipTeQuan.jat": {
+   "bytes": 2528,
+   "error": "Amf3Error: unsupported marker 0x07 at 335",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 336,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/VipXinXi.dat": {
+   "bytes": 882,
+   "error": "Amf3Error: unsupported marker 0x32 at 408",
+   "format": "raw",
+   "marker": "0x0e",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/VipXinXi.jat": {
+   "bytes": 882,
+   "error": "Amf3Error: unsupported marker 0x87 at 401",
+   "format": "raw",
+   "marker": "0x67",
+   "offset": 402,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/VipZhuanPan.dat": {
+   "bytes": 472,
+   "error": "Amf3Error: unsupported marker 0x00 at 85",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 86,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/WangChengBaZhu.dat": {
+   "bytes": 132,
+   "error": "Amf3Error: unsupported marker 0x0d at 118",
+   "format": "raw",
+   "marker": "0xe7",
+   "offset": 119,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/WuPinChuShouBiao.dat": {
+   "bytes": 53800,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 282,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/WuPinChuShouBiao.jat": {
+   "bytes": 114016,
+   "error": "Amf3Error: unsupported marker 0x97 at 334",
+   "format": "raw",
+   "marker": "0x38",
+   "offset": 335,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/WuPinLeiXingPaiXuBiao.dat": {
+   "bytes": 103,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 11
+  },
+  "game/sys_config/WuPinLingQu.dat": {
+   "bytes": 926,
+   "error": "Amf3Error: unsupported marker 0x15 at 279",
+   "format": "raw",
+   "marker": "0x46",
+   "offset": 280,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/WuPinYouXiaoQi.dat": {
+   "bytes": 55,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/WuPinYouXiaoQi.jat": {
+   "bytes": 55,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/XianFaJiHuo.dat": {
+   "bytes": 41,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/XianFaJingJie.dat": {
+   "bytes": 2936,
+   "error": "Amf3Error: unsupported marker 0x28 at 589",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 590,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuDiTu.dat": {
+   "bytes": 22611,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x09",
+   "offset": 443,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuGuaiWu.dat": {
+   "bytes": 13500,
+   "error": "Amf3Error: unsupported marker 0x0f at 194",
+   "format": "raw",
+   "marker": "0x58",
+   "offset": 195,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuSanXian.dat": {
+   "bytes": 472,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 52
+  },
+  "game/sys_config/XianFuShaiXuan.dat": {
+   "bytes": 1837,
+   "error": "Amf3Error: unsupported marker 0x00 at 65",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 66,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuShiJian.dat": {
+   "bytes": 3192,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 289,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuTiKu.dat": {
+   "bytes": 7847,
+   "error": "Amf3Error: unsupported marker 0x31 at 400",
+   "format": "raw",
+   "marker": "0xe4",
+   "offset": 401,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianFuTiLi.dat": {
+   "bytes": 1864,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 152
+  },
+  "game/sys_config/XianFuZhanDou.dat": {
+   "bytes": 172,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 94,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XianShangHuoDong.dat": {
+   "bytes": 834,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/XiaoGuoBiao.dat": {
+   "bytes": 121888,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1227,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/XiaoGuoBiao.jat": {
+   "bytes": 670649,
+   "error": "Amf3Error: unsupported marker 0x15 at 1406",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 1407,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/YinDao.dat": {
+   "bytes": 3425,
+   "error": "Amf3Error: unsupported marker 0x0e at 278",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 279,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/YuanShenBiao.dat": {
+   "bytes": 1134,
+   "error": "Amf3Error: unsupported marker 0x00 at 468",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 469,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/YuanShenJiaSu.dat": {
+   "bytes": 1932,
+   "error": "Amf3Error: unsupported marker 0x18 at 66",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 67,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/YuanShenShuaXin.dat": {
+   "bytes": 1048,
+   "error": "Amf3Error: unsupported marker 0x14 at 67",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 68,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/YuanShenXinXi.dat": {
+   "bytes": 83,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZaiXianJiangLi.dat": {
+   "bytes": 75,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZhanLiXiShu.jat": {
+   "bytes": 660,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xd0 in position 5: invalid continuation byte",
+   "format": "raw",
+   "marker": "0x6e",
+   "offset": 67,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhanLiXiShuBiao.dat": {
+   "bytes": 303,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb1 in position 1: invalid start byte",
+   "format": "raw",
+   "marker": "0x3f",
+   "offset": 87,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhanLiXiShuBiao.jat": {
+   "bytes": 544,
+   "error": "Amf3Error: unsupported marker 0x19 at 82",
+   "format": "raw",
+   "marker": "0xe7",
+   "offset": 83,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhanliPingFen.jat": {
+   "bytes": 5220,
+   "error": "Amf3Error: unsupported marker 0x82 at 91",
+   "format": "raw",
+   "marker": "0x2c",
+   "offset": 92,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhanliTishi.jat": {
+   "bytes": 1529,
+   "error": "Amf3Error: unsupported marker 0x75 at 300",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 301,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhenYingGuanXiBiao.dat": {
+   "bytes": 103,
+   "error": "Amf3Error: unsupported marker 0x00 at 53",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 54,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhenYingGuanXiBiao.jat": {
+   "bytes": 148,
+   "error": "Amf3Error: unsupported marker 0x00 at 95",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 96,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhongHeHuoDong.dat": {
+   "bytes": 4612,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 543,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuJueBiao.dat": {
+   "bytes": 7734,
+   "error": "Amf3Error: unsupported marker 0x81 at 354",
+   "format": "raw",
+   "marker": "0x48",
+   "offset": 355,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuJueShuXingBiao.dat": {
+   "bytes": 15070,
+   "error": "Amf3Error: unsupported marker 0x11 at 420",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 421,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuJueShuXingBiao.jat": {
+   "bytes": 17974,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 665,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianBiao.dat": {
+   "bytes": 5991,
+   "error": "Amf3Error: unsupported marker 0x17 at 513",
+   "format": "raw",
+   "marker": "0xe4",
+   "offset": 514,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianBiaoChepai.dat": {
+   "bytes": 48,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/ZhuXianGuaiWu.dat": {
+   "bytes": 2429,
+   "error": "Amf3Error: unsupported marker 0x0d at 154",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 155,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianRenWu.jat": {
+   "bytes": 142515,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1353,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianRenWu2.jat": {
+   "bytes": 87675,
+   "error": "Amf3Error: unsupported marker 0x57 at 970",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 971,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianShuaXin.dat": {
+   "bytes": 584,
+   "error": "Amf3Error: unsupported marker 0x14 at 78",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 79,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuXianXinXi.dat": {
+   "bytes": 74,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZhuangBeiFenJieBiao.dat": {
+   "bytes": 5545,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0e",
+   "offset": 197,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiFuJiaShuXingBiao.dat": {
+   "bytes": 393530,
+   "error": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe6 in position 1: unexpected end of data",
+   "format": "raw",
+   "marker": "0x3f",
+   "offset": 8910,
+   "seconds": 0.001,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiFuJiaShuXingBiao.jat": {
+   "bytes": 200063,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 2704,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiFuJiaShuXingsuijiBiao.jat": {
+   "bytes": 66308,
+   "error": "Amf3Error: unsupported marker 0x3f at 365",
+   "format": "raw",
+   "marker": "0xe4",
+   "offset": 366,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiQiangHua.jat": {
+   "bytes": 360273,
+   "error": "Amf3Error: unsupported marker 0x00 at 722",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 723,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiTaoZhuangBiao.jat": {
+   "bytes": 608,
+   "error": "Amf3Error: unsupported marker 0x0d at 278",
+   "format": "raw",
+   "marker": "0x74",
+   "offset": 279,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiYanSe.dat": {
+   "bytes": 249,
+   "error": "Amf3Error: unsupported marker 0x00 at 66",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 67,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZhuangBeiYanSe.jat": {
+   "bytes": 420,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0f",
+   "offset": 105,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZiYuanDian.dat": {
+   "bytes": 3120,
+   "error": "Amf3Error: unsupported marker 0x1b at 414",
+   "format": "raw",
+   "marker": "0x40",
+   "offset": 415,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZiYuanDian.jat": {
+   "bytes": 14832,
+   "error": "Amf3Error: unsupported marker 0x83 at 538",
+   "format": "raw",
+   "marker": "0x74",
+   "offset": 539,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZiYuanDianFenBu.dat": {
+   "bytes": 44513,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1679,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZiYuanDianFenBu.jat": {
+   "bytes": 63035,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1708,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuBaoDiaoLuoBiao.dat": {
+   "bytes": 564560,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1976,
+   "seconds": 0.001,
+   "status": "fail"
+  },
+  "game/sys_config/ZuBaoDiaoLuoBiao.jat": {
+   "bytes": 766426,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 2036,
+   "seconds": 0.001,
+   "status": "fail"
+  },
+  "game/sys_config/ZuBaoShiXian.jat": {
+   "bytes": 759,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZuWuCiShuGouMai.jat": {
+   "bytes": 110,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 11
+  },
+  "game/sys_config/ZuWuFuBen.jat": {
+   "bytes": 7809,
+   "error": "Amf3Error: unsupported marker 0x0f at 995",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 996,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuWuShengJiBiao.jat": {
+   "bytes": 131576,
+   "error": "Amf3Error: unsupported marker 0x0e at 280",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 281,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuWuShuxing.jat": {
+   "bytes": 7521,
+   "error": "Amf3Error: unsupported marker 0x1e at 592",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 593,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuoJiBiao.dat": {
+   "bytes": 54326,
+   "error": "Amf3Error: unsupported marker 0x64 at 631",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 632,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuoJiBiao.jat": {
+   "bytes": 156489,
+   "error": "Amf3Error: unsupported marker 0xa7 at 814",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 815,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuoJifuhuo.jat": {
+   "bytes": 53,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZuoQiDaoJiShi.dat": {
+   "bytes": 16,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/ZuoQiGaoJiJiNeng.dat": {
+   "bytes": 292,
+   "error": "Amf3Error: unsupported marker 0x15 at 149",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 150,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ZuoQiJinJieJiangLiBiao.dat": {
+   "bytes": 813,
+   "error": "Amf3Error: unsupported marker 0xbd at 212",
+   "format": "raw",
+   "marker": "0x84",
+   "offset": 213,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/baiduyingyin.jat": {
+   "bytes": 194,
+   "error": "Amf3Error: unsupported marker 0x0f at 176",
+   "format": "raw",
+   "marker": "0x73",
+   "offset": 177,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/bangpaifuben.jat": {
+   "bytes": 774,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/bangpaifubenboss.jat": {
+   "bytes": 1685,
+   "error": "Amf3Error: unsupported marker 0x0f at 423",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 424,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/beishulingjiang.jat": {
+   "bytes": 55,
+   "error": "error: unpack requires a buffer of 8 bytes",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 54,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/bianqiang.jat": {
+   "bytes": 3245,
+   "error": "Amf3Error: unsupported marker 0x83 at 561",
+   "format": "raw",
+   "marker": "0x59",
+   "offset": 562,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/bossmijing.jat": {
+   "bytes": 1469,
+   "error": "Amf3Error: unsupported marker 0x0f at 617",
+   "format": "raw",
+   "marker": "0x47",
+   "offset": 618,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/bossmijingpeizhi.jat": {
+   "bytes": 125,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/cangbaoge.jat": {
+   "bytes": 4862,
+   "error": "Amf3Error: unsupported marker 0x00 at 1015",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 1016,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/chaojihuiyuan.jat": {
+   "bytes": 77,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/chenghao.jat": {
+   "bytes": 29367,
+   "error": "Amf3Error: unsupported marker 0x32 at 584",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 585,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/chengjiuzhuizong.jat": {
+   "bytes": 2153,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 418,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/cooldown.dat": {
+   "bytes": 1745,
+   "format": "raw",
+   "seconds": 0.001,
+   "status": "ok",
+   "values": 87
+  },
+  "game/sys_config/dafuwengduihuan.jat": {
+   "bytes": 914,
+   "error": "Amf3Error: unsupported marker 0x87 at 170",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 171,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/dafuwengguanggao.jat": {
+   "bytes": 56,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 3
+  },
+  "game/sys_config/dafuwengjiage.jat": {
+   "bytes": 2598,
+   "error": "Amf3Error: unsupported marker 0x07 at 139",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 140,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/dafuwengzhubiao.jat": {
+   "bytes": 4093,
+   "error": "Amf3Error: unsupported marker 0x25 at 78",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 79,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/dafuwengzuanshi.jat": {
+   "bytes": 36,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/danaobaodian.jat": {
+   "bytes": 2946,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x81",
+   "offset": 199,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/danyaoBiao.dat": {
+   "bytes": 1661,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 292,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/dengjiqianzhuang.jat": {
+   "bytes": 167,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 13
+  },
+  "game/sys_config/dengluguanggao.jat": {
+   "bytes": 966,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 271,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/denglulibao.jat": {
+   "bytes": 249,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 8
+  },
+  "game/sys_config/dengluqijiangli.jat": {
+   "bytes": 61,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/duihuanxianzhi.jat": {
+   "bytes": 34,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/duoxuanlibao.jat": {
+   "bytes": 2662,
+   "error": "Amf3Error: unsupported marker 0x81 at 386",
+   "format": "raw",
+   "marker": "0x3c",
+   "offset": 387,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/fabao.dat": {
+   "bytes": 496578,
+   "error": "Amf3Error: unsupported marker 0x00 at 429",
+   "format": "raw",
+   "marker": "0x0c",
+   "offset": 430,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/fengqiang.jat": {
+   "bytes": 475,
+   "error": "Amf3Error: unsupported marker 0x17 at 240",
+   "format": "raw",
+   "marker": "0x37",
+   "offset": 241,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/fubenboss.jat": {
+   "bytes": 16698,
+   "error": "Amf3Error: unsupported marker 0x0f at 810",
+   "format": "raw",
+   "marker": "0x5a",
+   "offset": 811,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/fubenmoney.jat": {
+   "bytes": 82,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/sys_config/gaojijiandingbiao.jat": {
+   "bytes": 393,
+   "error": "Amf3Error: unsupported marker 0x21 at 126",
+   "format": "raw",
+   "marker": "0x6a",
+   "offset": 127,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/goods.dat": {
+   "bytes": 352694,
+   "error": "Amf3Error: unsupported marker 0x66 at 433",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 434,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/goods.jat": {
+   "bytes": 1313608,
+   "error": "Amf3Error: unsupported marker 0x0e at 1115",
+   "format": "raw",
+   "marker": "0x10",
+   "offset": 1116,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/guangyi.jat": {
+   "bytes": 2466,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 670,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/hefuhuodong.jat": {
+   "bytes": 14073,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 343,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/huoyuejiangli.jat": {
+   "bytes": 264,
+   "error": "Amf3Error: unsupported marker 0x50 at 71",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 72,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/husong.jat": {
+   "bytes": 710,
+   "error": "Amf3Error: unsupported marker 0x3f at 223",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 224,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/husonglujing.jat": {
+   "bytes": 501,
+   "error": "Amf3Error: unsupported marker 0x2c at 121",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 122,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/husongshuangbei.jat": {
+   "bytes": 45,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/init_zhcn_GongHuiChuangJian.jat": {
+   "bytes": 48,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/init_zhcn_GongHuiQiZhiBiao.jat": {
+   "bytes": 13020,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 675,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/init_zhcn_GongHuiZhiWei.jat": {
+   "bytes": 831,
+   "error": "Amf3Error: unsupported marker 0x00 at 274",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 275,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/init_zhcn_LiBao.jat": {
+   "bytes": 4155,
+   "error": "Amf3Error: unsupported marker 0x84 at 674",
+   "format": "raw",
+   "marker": "0x27",
+   "offset": 675,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/init_zhcn_ZhuangBeiFuJiaShuXingBiao.jat": {
+   "bytes": 69446,
+   "error": "Amf3Error: unsupported marker 0x00 at 1934",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 1935,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/init_zhcn_ZhuangBeiYanSe.jat": {
+   "bytes": 218,
+   "error": "Amf3Error: unsupported marker 0x0f at 92",
+   "format": "raw",
+   "marker": "0x23",
+   "offset": 93,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jiandingshuxingzhanshibiao.jat": {
+   "bytes": 736,
+   "error": "Amf3Error: unsupported marker 0x11 at 144",
+   "format": "raw",
+   "marker": "0x63",
+   "offset": 145,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jianglipeizhi.jat": {
+   "bytes": 1016,
+   "error": "Amf3Error: unsupported marker 0x61 at 164",
+   "format": "raw",
+   "marker": "0x65",
+   "offset": 165,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jiesuanjiangli.jat": {
+   "bytes": 1084,
+   "error": "Amf3Error: unsupported marker 0x27 at 100",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 101,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jifenjianglibiao.jat": {
+   "bytes": 802,
+   "error": "Amf3Error: unsupported marker 0xa1 at 150",
+   "format": "raw",
+   "marker": "0xc8",
+   "offset": 151,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jifenpaihangbiao.jat": {
+   "bytes": 398,
+   "error": "Amf3Error: unsupported marker 0x3d at 69",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 70,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jiguan.jat": {
+   "bytes": 3347,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x13",
+   "offset": 217,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jindi.jat": {
+   "bytes": 7288,
+   "error": "Amf3Error: unsupported marker 0x3c at 782",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 783,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jinengshubiao.jat": {
+   "bytes": 125048,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0e",
+   "offset": 334,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/jisuanbiao.jat": {
+   "bytes": 42,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/junxianbiao.jat": {
+   "bytes": 1046,
+   "error": "Amf3Error: unsupported marker 0x0f at 213",
+   "format": "raw",
+   "marker": "0x70",
+   "offset": 214,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifuchoujiang..jat": {
+   "bytes": 476,
+   "error": "Amf3Error: unsupported marker 0x07 at 367",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 368,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifuchoujiang.jat": {
+   "bytes": 546,
+   "error": "Amf3Error: unsupported marker 0x0f at 379",
+   "format": "raw",
+   "marker": "0x39",
+   "offset": 380,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifuhuodong.jat": {
+   "bytes": 3438,
+   "error": "Amf3Error: unsupported marker 0x48 at 195",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 196,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifupaihang.jat": {
+   "bytes": 3967,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 258,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifupaihang2.jat": {
+   "bytes": 3576,
+   "error": "Amf3Error: unsupported marker 0x50 at 205",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 206,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifuzaixian.jat": {
+   "bytes": 1134,
+   "error": "Amf3Error: unsupported marker 0x78 at 85",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 86,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kaifuzuoqi.jat": {
+   "bytes": 259,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 145,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/kuafu.jat": {
+   "bytes": 300,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/kuafuboss.jat": {
+   "bytes": 1613,
+   "error": "Amf3Error: unsupported marker 0x0e at 626",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 627,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/laofuid.jat": {
+   "bytes": 29,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 3
+  },
+  "game/sys_config/leidengLiBao.jat": {
+   "bytes": 857,
+   "error": "Amf3Error: unsupported marker 0x75 at 621",
+   "format": "raw",
+   "marker": "0x61",
+   "offset": 622,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/lixiandazuo.dat": {
+   "bytes": 3230,
+   "error": "Amf3Error: unsupported marker 0x00 at 74",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 75,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/maplist.dat": {
+   "bytes": 5218,
+   "error": "Amf3Error: unsupported marker 0x00 at 185",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 186,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/meiren.jat": {
+   "bytes": 83443,
+   "error": "Amf3Error: unsupported marker 0x14 at 633",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 634,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/meirenfuhuo.jat": {
+   "bytes": 53,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/meirenlingqu.jat": {
+   "bytes": 602,
+   "error": "Amf3Error: unsupported marker 0x17 at 390",
+   "format": "raw",
+   "marker": "0x6c",
+   "offset": 391,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/meirihuodong.jat": {
+   "bytes": 1495,
+   "error": "Amf3Error: unsupported marker 0x1e at 202",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 203,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/meirihuoyue.jat": {
+   "bytes": 4144,
+   "error": "Amf3Error: unsupported marker 0x75 at 366",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 367,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/monster.dat": {
+   "bytes": 1492435,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 1859,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/name.dat": {
+   "bytes": 16635,
+   "format": "raw",
+   "seconds": 0.003,
+   "status": "ok",
+   "values": 5
+  },
+  "game/sys_config/newkaifupaihang.jat": {
+   "bytes": 6123,
+   "error": "Amf3Error: unsupported marker 0x00 at 215",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 216,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/npc.dat": {
+   "bytes": 10483,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 176,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/paihangbang.jat": {
+   "bytes": 469,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 164,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/paihangbangjcsx.jat": {
+   "bytes": 60,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/paihangjianglibiao.jat": {
+   "bytes": 998,
+   "error": "Amf3Error: unsupported marker 0x07 at 211",
+   "format": "raw",
+   "marker": "0x32",
+   "offset": 212,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pantaoyuanmappeizhi.jat": {
+   "bytes": 161,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/pantaoyuanzhengduozhan.jat": {
+   "bytes": 1495,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 479,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pingfen.jat": {
+   "bytes": 5003,
+   "error": "Amf3Error: unsupported marker 0x85 at 99",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 100,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pkbiao.jat": {
+   "bytes": 750,
+   "error": "Amf3Error: unsupported marker 0x0d at 167",
+   "format": "raw",
+   "marker": "0x66",
+   "offset": 168,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pvpjianglibiao.jat": {
+   "bytes": 998,
+   "error": "Amf3Error: unsupported marker 0xf5 at 211",
+   "format": "raw",
+   "marker": "0x18",
+   "offset": 212,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pvpjiqiren.jat": {
+   "bytes": 135009,
+   "error": "Amf3Error: unsupported marker 0x19 at 393",
+   "format": "raw",
+   "marker": "0x6a",
+   "offset": 394,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pvptianzhanxianshi.jat": {
+   "bytes": 157,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 83,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/pvptiaozhanci.jat": {
+   "bytes": 196,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 21
+  },
+  "game/sys_config/pvptiaozhanditu.jat": {
+   "bytes": 50,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/pvptiaozhanjiangli.jat": {
+   "bytes": 130,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/pvptiaozhanshuazhanli.jat": {
+   "bytes": 403,
+   "error": "Amf3Error: unsupported marker 0x3f at 113",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 114,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qh.dat": {
+   "bytes": 225978,
+   "error": "Amf3Error: unsupported marker 0x00 at 537",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 538,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qh_zhcn_ZhuangBeiQiangHua.jat": {
+   "bytes": 226014,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 578,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qidashengluanzhan.jat": {
+   "bytes": 10194,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x0e",
+   "offset": 1703,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qidashengmappeizhi.jat": {
+   "bytes": 165,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/qishengMap.jat": {
+   "bytes": 591,
+   "error": "Amf3Error: unsupported marker 0x0d at 198",
+   "format": "raw",
+   "marker": "0x31",
+   "offset": 199,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qishengzhan.jat": {
+   "bytes": 601,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/qishengzhiwei.jat": {
+   "bytes": 664,
+   "error": "Amf3Error: unsupported marker 0x49 at 160",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 161,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/qizhanbingqi.jat": {
+   "bytes": 1837,
+   "error": "Amf3Error: unsupported marker 0x0b at 661",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 662,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/s1.dat": {
+   "bytes": 3594,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x1d",
+   "offset": 242,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shanmishangdianjiage.jat": {
+   "bytes": 66,
+   "error": "Amf3Error: unsupported marker 0x81 at 47",
+   "format": "raw",
+   "marker": "0x3e",
+   "offset": 48,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shanmizhuanpanjiage.jat": {
+   "bytes": 66,
+   "error": "Amf3Error: unsupported marker 0x81 at 47",
+   "format": "raw",
+   "marker": "0x3e",
+   "offset": 48,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shenmishangdian.jat": {
+   "bytes": 4493,
+   "error": "Amf3Error: unsupported marker 0x23 at 268",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 269,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shenmishangdianshuaxin.jat": {
+   "bytes": 50,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/shenmizhuanpan.jat": {
+   "bytes": 7801,
+   "error": "Amf3Error: unsupported marker 0x1d at 224",
+   "format": "raw",
+   "marker": "0x63",
+   "offset": 225,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shenmizhuanpanjiage.jat": {
+   "bytes": 66,
+   "error": "Amf3Error: unsupported marker 0x81 at 47",
+   "format": "raw",
+   "marker": "0x3e",
+   "offset": 48,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/shoujidenglujiangli.jat": {
+   "bytes": 88,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/shuxingdan.jat": {
+   "bytes": 728,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 159,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/skill.dat": {
+   "bytes": 1804850,
+   "error": "Amf3Error: unsupported marker 0x00 at 1919",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 1920,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/talk.dat": {
+   "bytes": 130555,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 409,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/task.dat": {
+   "bytes": 3,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 1
+  },
+  "game/sys_config/taskRiChangRenWu.dat": {
+   "bytes": 18927,
+   "error": "Amf3Error: unsupported marker 0x15 at 144",
+   "format": "raw",
+   "marker": "0x23",
+   "offset": 145,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWu.jat": {
+   "bytes": 9642,
+   "error": "Amf3Error: unsupported marker 0x27 at 157",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 158,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuEWaiJiangLi.dat": {
+   "bytes": 3530,
+   "error": "Amf3Error: unsupported marker 0xfd at 200",
+   "format": "raw",
+   "marker": "0x00",
+   "offset": 201,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuEWaiJiangLi.jat": {
+   "bytes": 3783,
+   "error": "Amf3Error: unsupported marker 0x9e at 205",
+   "format": "raw",
+   "marker": "0xc2",
+   "offset": 206,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuEWaiJiangLibangpai.jat": {
+   "bytes": 3428,
+   "error": "Amf3Error: unsupported marker 0x8f at 187",
+   "format": "raw",
+   "marker": "0xa1",
+   "offset": 188,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuJiangLi.dat": {
+   "bytes": 13796,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 141,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuJiangLi.jat": {
+   "bytes": 15490,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 140,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWuJiangLibangpai.jat": {
+   "bytes": 13796,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 140,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskRiChangRenWubangpai.jat": {
+   "bytes": 4910,
+   "error": "Amf3Error: unsupported marker 0x17 at 141",
+   "format": "raw",
+   "marker": "0x23",
+   "offset": 142,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskTaoFaRenWu.dat": {
+   "bytes": 7594,
+   "error": "Amf3Error: unsupported marker 0x0f at 411",
+   "format": "raw",
+   "marker": "0x54",
+   "offset": 412,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskTaoFaRenWu.jat": {
+   "bytes": 15352,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 565,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/taskZhuXianRenWu.dat": {
+   "bytes": 47933,
+   "error": "Amf3Error: unsupported marker 0x46 at 477",
+   "format": "raw",
+   "marker": "0x0a",
+   "offset": 478,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/teleport.dat": {
+   "bytes": 3458,
+   "error": "Amf3Error: unsupported marker 0x0b at 44",
+   "format": "raw",
+   "marker": "0x6d",
+   "offset": 45,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/tiangonghecheng.jat": {
+   "bytes": 2847,
+   "error": "Amf3Error: unsupported marker 0x1d at 285",
+   "format": "raw",
+   "marker": "0x37",
+   "offset": 286,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/touxianbiao.jat": {
+   "bytes": 1788,
+   "error": "Amf3Error: unsupported marker 0x81 at 585",
+   "format": "raw",
+   "marker": "0x07",
+   "offset": 586,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/touzie.jat": {
+   "bytes": 74,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 7
+  },
+  "game/sys_config/vipbiao.jat": {
+   "bytes": 4712,
+   "error": "Amf3Error: unsupported marker 0x45 at 579",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 580,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/vipchoujiang.jat": {
+   "bytes": 772,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 149,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/viplingjiang.jat": {
+   "bytes": 107,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/sys_config/vipshouci.dat": {
+   "bytes": 137,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/weibofenxiang.jat": {
+   "bytes": 727,
+   "error": "Amf3Error: unsupported marker 0x0e at 469",
+   "format": "raw",
+   "marker": "0x04",
+   "offset": 470,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/wenxintishi.jat": {
+   "bytes": 1362,
+   "error": "Amf3Error: unsupported marker 0x00 at 205",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 206,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/wnlibao.jat": {
+   "bytes": 38,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 2
+  },
+  "game/sys_config/xianjie.jat": {
+   "bytes": 1442,
+   "error": "Amf3Error: unsupported marker 0x15 at 229",
+   "format": "raw",
+   "marker": "0x78",
+   "offset": 230,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/xuliehao.jat": {
+   "bytes": 142748,
+   "format": "raw",
+   "seconds": 0.064,
+   "status": "ok",
+   "values": 10201
+  },
+  "game/sys_config/xunbaocishujiangli.jat": {
+   "bytes": 131,
+   "error": "Amf3Error: unsupported marker 0x1e at 56",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 57,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/xunbaojiage.jat": {
+   "bytes": 66,
+   "error": "Amf3Error: unsupported marker 0x81 at 47",
+   "format": "raw",
+   "marker": "0x3e",
+   "offset": 48,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/xunbaojilv.jat": {
+   "bytes": 7965,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x01",
+   "offset": 251,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/xunbaozhanshi.jat": {
+   "bytes": 851,
+   "error": "Amf3Error: unsupported marker 0x1b at 104",
+   "format": "raw",
+   "marker": "0x7a",
+   "offset": 105,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/yindao.jat": {
+   "bytes": 36263,
+   "error": "Amf3Error: unsupported marker 0x81 at 312",
+   "format": "raw",
+   "marker": "0xe0",
+   "offset": 313,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/yongjiuxianshi.jat": {
+   "bytes": 96,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 4
+  },
+  "game/sys_config/youhuiquan.jat": {
+   "bytes": 535,
+   "error": "Amf3Error: unsupported marker 0x86 at 143",
+   "format": "raw",
+   "marker": "0x52",
+   "offset": 144,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/yuanshenshuxingbiao.jat": {
+   "bytes": 8980,
+   "error": "IndexError: list index out of range",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 338,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/yuekaqianzhuang.jat": {
+   "bytes": 393,
+   "format": "raw",
+   "seconds": 0.0,
+   "status": "ok",
+   "values": 32
+  },
+  "game/sys_config/zaixianjiangli.jat": {
+   "bytes": 636,
+   "error": "Amf3Error: unsupported marker 0x8e at 172",
+   "format": "raw",
+   "marker": "0x08",
+   "offset": 173,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/zhengxiangyindao.jat": {
+   "bytes": 404,
+   "error": "Amf3Error: unsupported marker 0x29 at 137",
+   "format": "raw",
+   "marker": "0x43",
+   "offset": 138,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/ziyuanzhuihui.jat": {
+   "bytes": 977,
+   "error": "Amf3Error: unsupported marker 0x93 at 203",
+   "format": "raw",
+   "marker": "0x44",
+   "offset": 204,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/zuduifuben.jat": {
+   "bytes": 2967,
+   "error": "Amf3Error: unsupported marker 0x81 at 887",
+   "format": "raw",
+   "marker": "0x55",
+   "offset": 888,
+   "seconds": 0.0,
+   "status": "fail"
+  },
+  "game/sys_config/zuoqi.dat": {
+   "bytes": 55292,
+   "error": "Amf3Error: unsupported marker 0x64 at 644",
+   "format": "raw",
+   "marker": "0x06",
+   "offset": 645,
+   "seconds": 0.0,
+   "status": "fail"
+  }
+ },
+ "summary": {
+  "by_status": {
+   "fail": 600,
+   "ok": 128
+  },
+  "failing_markers": {
+   "0x00": 167,
+   "0x01": 73,
+   "0x04": 32,
+   "0x06": 67,
+   "0x08": 18,
+   "0x0a": 13,
+   "0x0c": 5,
+   "0x31": 8,
+   "0x42": 10,
+   "0x44": 14,
+   "0x46": 12,
+   "0x47": 8,
+   "0x5a": 6,
+   "0x66": 4,
+   "0x67": 9,
+   "0x6d": 5,
+   "0x7a": 6,
+   "0x81": 7,
+   "0xe0": 10,
+   "0xe7": 4
+  },
+  "files": 728
+ }
+}

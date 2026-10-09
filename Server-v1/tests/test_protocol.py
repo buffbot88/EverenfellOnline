@@ -23,7 +23,7 @@ from db import Store
 from game import amf3
 from game.amf3 import ByteArray, Obj
 from game.cipher import SimpleEncrypt, new_key
-from game.protocol import Session, frame
+from game.protocol import DEFAULT_MAP_TYPE, Session, frame
 
 # Live-captured first frame from the original client (bridge LOG_PACKETS=1).
 CAPTURED_INITKEY = bytes.fromhex('00000009060f494e49544b4559')
@@ -126,14 +126,58 @@ class TestVectors(unittest.TestCase):
         env = ['10001', [1, [1, 2, None, 'UTC', False, None], [0, 0], []]]
         self.assertEqual(amf3.decode(amf3.encode(env)), env)
 
+    def test_amf3_traits_reference_reuses_the_class(self):
+        # Two anonymous-class objects sharing one sealed trait set: the second
+        # object writes a traits REFERENCE (header bit1 clear, index << 2), not
+        # the member list again. Ignoring that desynced the legacy tables.
+        # 0x09 dense[2] -> 0x0A inline traits 0x23 (1 sealed member, sealed) "a"
+        # then value 1; second object 0x0A header 0x01 (object, traits ref 0).
+        # Object header 0x13 = 1 sealed member | traits-inline 0x02 | object-inline 0x01.
+        # Second object header 0x01 = object-inline with traits ref index 0.
+        raw = (b'\x09\x05\x01'
+               b'\x0a\x13\x01' + b'\x03a' + b'\x04\x01'
+               b'\x0a\x01' + b'\x04\x02')
+        out = amf3.decode(raw)
+        self.assertEqual(out, [{'a': 1}, {'a': 2}])
+
+    def test_amf3_typed_vectors_and_dictionary(self):
+        # Vector<int> [-1, 2]: marker 0x0D, U29 len<<1|1 = 5, fixed flag 0.
+        vi = b'\x0d\x05\x00' + struct.pack('>i', -1) + struct.pack('>i', 2)
+        self.assertEqual(amf3.decode(vi), [-1, 2])
+        # Vector<double> [1.5]: marker 0x0F, len 1, fixed 1.
+        vd = b'\x0f\x03\x01' + struct.pack('>d', 1.5)
+        self.assertEqual(amf3.decode(vd), [1.5])
+        # Dictionary {'k': 3}: 0x11, count 1 (header 0x03), weak 0, key, value.
+        dct = b'\x11\x03\x00' + b'\x06\x03k' + b'\x04\x03'
+        self.assertEqual(amf3.decode(dct), [('k', 3)])
+
+    def test_amf3_date_marker(self):
+        # 0x08 is the AMF3 Date marker: U29 (odd = inline) + big-endian ms.
+        # The legacy config tables embed these, which is what stopped
+        # MapLine.dat decoding (the mapType source for command 21000).
+        raw = b'\x08\x01' + struct.pack('>d', 1386633600000.0)
+        self.assertEqual(amf3.decode(raw), 1386633600000.0)
+
+    def test_amf3_date_reference_reuses_the_object(self):
+        # An even U29 is a reference into the object table, not a value. The
+        # dense array itself takes slot 0, so the date is slot 1 -> U29 0x02.
+        raw = (b'\x09\x05\x01' + b'\x08\x01' + struct.pack('>d', 5.0)
+               + b'\x08\x02')
+        self.assertEqual(amf3.decode(raw), [5.0, 5.0])
+
 
 def make_session(store=None):
+    kwargs = {} if store is None else {
+        'create_role': (lambda a, s, n, j, x, f: store.create_character(
+            a, s, n, job=j, sex=x, face=f)),
+        'save_role_state': store.update_character_state,
+    }
     return Session(conn_id=7, check_sign=check_sign,
                    get_roles=(lambda u, s: store.list_roles(u, s)) if store
                    else (lambda u, s: []),
                    get_role_settings=(lambda r, u, s: store.get_role_settings(r, u, s))
                    if store else (lambda r, u, s: None),
-                   server_start_ms=1234567890000)
+                   server_start_ms=1234567890000, **kwargs)
 
 
 class TestHandshake(unittest.TestCase):
@@ -300,6 +344,22 @@ class TestCaptureDecoder(unittest.TestCase):
         self.assertEqual(decoded[1][1][0], '10003')
         self.assertEqual(decoded[1][1][1][2], ['5', 45, 31])
 
+    def test_frame_reader_skips_socket_policy_on_either_side(self):
+        # Live capture: the client sends <policy-file-request/> and Java
+        # answers raw <cross-domain-policy> XML (no length prefix).
+        req = b'<policy-file-request/>\x00'
+        reply = (b'<cross-domain-policy><allow-access-from domain="*" '
+                 b'to-ports="8000-8889"/></cross-domain-policy>\x00')
+        frames, used = decode_tap.read_frames(req, allow_policy=True)
+        self.assertEqual(frames, [('policy', req)])
+        self.assertEqual(used, len(req))
+        frames, used = decode_tap.read_frames(reply + frame(b'data'),
+                                              allow_policy=True)
+        self.assertEqual(frames[0], ('policy', reply))
+        self.assertEqual(frames[1], ('frame', b'data'))
+        self.assertEqual(list(decode_tap.decode_server(frames[:1])),
+                         [('policy', reply)])
+
     def test_frame_reader_handles_fragment_and_coalesced_frames(self):
         one, two = b'first', b'second'
         data = frame(one) + frame(two) + frame(b'incomplete')[:7]
@@ -344,10 +404,69 @@ class TestWorldInit(unittest.TestCase):
         result = amf3.decode(out[0][4:])
         self.assertEqual(result, ['21000', [1, 1, 1]])
 
-        # Unknown or unowned roles/maps must not receive a made-up scene reply.
+        # An unknown/unowned role id still gets nothing (no role to place).
         self.assertIsNone(session.change_stage([21000, '999']))
+        # A map the legacy table does not list still gets the frame Java always
+        # sends; the type falls back to the documented default rather than
+        # leaving the client with no scene entry at all.
         store.update_character_state(role_id, map_id='999')
-        self.assertIsNone(session.change_stage([21000, str(role_id)]))
+        fallback = amf3.decode(session.change_stage(
+            [21000, str(role_id)])[4:])
+        self.assertEqual(fallback, ['21000', [1, 1, DEFAULT_MAP_TYPE]])
+
+    def test_map5_change_pushes_scene_entry_and_role_hp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', map_id='5', map_x=44,
+            map_y=33, hp=5226, mp=1811, max_hp=5466, max_mp=1811)
+        session = make_session(store)
+        session.authed_user, session.server_id = 'hero', 'fu1304'
+        session.feed(CAPTURED_INITKEY)
+        out = session.feed(frame(session.cipher.encode(
+            amf3.encode([20000, [str(role_id), '5']]))))
+        self.assertEqual(len(out), 3)
+        decoded = [amf3.decode(o[4:]) for o in out]
+        self.assertEqual(decoded[0], ['20000', [1, '5', [44, 33]]])
+        self.assertEqual(decoded[1], ['21000', [1, 1, 1]])
+        self.assertEqual(decoded[2], ['12004', [str(role_id), 5226, 5466, 1811, 1811]])
+
+    def test_stage_and_movement_persist_to_db(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        s.feed(CAPTURED_INITKEY)
+
+        # 20000: the client's requested stage is authoritative and is saved.
+        s.feed(frame(s.cipher.encode(amf3.encode([20000, [str(role_id), '5']]))))
+        role = store.get_character(str(role_id), 'hero', 'fu1304')
+        self.assertEqual(role['map_id'], '5')
+        self.assertEqual(role['map_x'], 57)
+        self.assertEqual(role['map_y'], 148)
+
+        # 42001: movement updates the stored coordinates, no reply invented.
+        move = [42001, [str(role_id), 'normal003', [43, 32], [], 1]]
+        self.assertIsNone(s.move(move))
+        role = store.get_character(str(role_id), 'hero', 'fu1304')
+        self.assertEqual((role['map_x'], role['map_y']), (43, 32))
+
+        # enter_world now reports the persisted stage, not the defaults.
+        entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
+        self.assertEqual(entry[1][2], ['5', 43, 32])
+
+    def test_move_without_coordinates_is_ignored(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store)
+        self.assertIsNone(s.move([42001, [str(role_id), 'normal003']]))
+        self.assertIsNone(store.get_character(
+            str(role_id), 'hero', 'fu1304')['map_x'])
 
     def test_java_capture_role_stage_and_money_values(self):
         cleanups = []
@@ -393,7 +512,50 @@ class TestWorldInit(unittest.TestCase):
         self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 
+class TestCreateRole(unittest.TestCase):
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.s = make_session(self.store)
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+
+    def create(self, name):
+        req = [10002, ['hero', name, 'C', 0, 'C', False, 'fu1304', 'gmthai']]
+        return self.s.create_role(req)
+
+    def result(self, name):
+        return amf3.decode(self.create(name)[4:])
+
+    def test_valid_cjk_name_creates_role(self):
+        env = self.result('孫悟空')
+        self.assertEqual(env[0], '10002')
+        self.assertEqual(env[1][0], 1)
+        role = env[1][1]
+        self.assertEqual(role[1:4], ['孫悟空', 'C', 0])
+        self.assertEqual(role[4:6], [1, None])
+
+    def test_ascii_name_rejected_like_java_2001(self):
+        # Live capture: Java answered [0, 2001] ROLE_NAME_NO_ALLOW for 'stress'.
+        self.assertEqual(self.result('stress'), ['10002', [0, 2001]])
+
+    def test_empty_and_s_names_rejected(self):
+        self.assertEqual(self.result(''), ['10002', [0, 2001]])
+        self.assertEqual(self.result('s孫悟空'), ['10002', [0, 2001]])
+        self.assertEqual(self.result('悟空!'), ['10002', [0, 2001]])
+
+    def test_duplicate_name_is_2002(self):
+        self.result('孫悟空')
+        self.assertEqual(self.result('孫悟空'), ['10002', [0, 2002]])
+
+    def test_fifth_role_is_2005(self):
+        for name in ('悟空壹', '悟空貳', '悟空參', '悟空肆'):
+            self.assertEqual(self.result(name)[1][0], 1)
+        self.assertEqual(self.result('悟空伍'), ['10002', [0, 2005]])
+
+
 class TestStore(unittest.TestCase):
+
     def test_account_roundtrip(self):
         cleanups = []
         self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
@@ -415,6 +577,109 @@ class TestStore(unittest.TestCase):
         # a brand-new Sessions object over the same DB = a "restart"
         self.assertEqual(Sessions(st).get(tok)['uid'], 'hero')
         self.assertIsNone(Sessions(st).get('nope'))
+
+
+class TestCreateRoleWire(unittest.TestCase):
+    """Command 10002 with the request shape captured from the live client."""
+
+    def _reply(self, out):
+        from game.amf3 import decode as amf3_decode
+        (n,) = struct.unpack('>I', out[:4])
+        return amf3_decode(out[4:4 + n])
+
+    def test_create_role_success_duplicate_and_empty_name(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        st = temp_store(cleanups)
+        st.create_account('hero', hash_password('pw'))
+        sess = Session(conn_id=8, check_sign=check_sign,
+                       get_roles=lambda u, s: [dict(r) for r in st.list_roles(u, s)],
+                       server_start_ms=1,
+                       create_role=lambda a, sid, n, j, x, f: st.create_character(
+                           a, sid, n, job=j, sex=x, face=f))
+        # 'Stress' starts with S, which Java rejects (checkInputName2), so
+        # the success case uses a CJK name like a real client would.
+        req = ['hero', '孫悟空', 'A', 0, 'A', False, 'fu1304', 'gmthai']
+
+        ok = self._reply(sess.create_role([10002, req]))
+        self.assertEqual(ok[0], '10002')
+        self.assertEqual(ok[1][0], 1)
+        role = ok[1][1]
+        self.assertEqual([role[1], role[2], role[3], role[4], role[6]],
+                         ['孫悟空', 'A', 0, 1, 'A'])
+        self.assertEqual([r['name'] for r in st.list_roles('hero', 'fu1304')],
+                         ['孫悟空'])
+
+        dup = self._reply(sess.create_role([10002, req]))
+        self.assertEqual(dup[1], [0, 2002])
+        # Java has no 2003: empty names are 2001 nameIllegal.
+        empty = self._reply(sess.create_role([10002, ['hero', '', 'A', 0, 'A',
+                                                      False, 'fu1304', 'gmthai']]))
+        self.assertEqual(empty[1], [0, 2001])
+        ascii_name = self._reply(sess.create_role(
+            [10002, ['hero', 'stress', 'A', 0, 'A', False, 'fu1304', 'gmthai']]))
+        self.assertEqual(ascii_name[1], [0, 2001])
+
+
+class TestMigratedRoleStage(unittest.TestCase):
+    """A role migrated from MySQL: the role_stage row, not characters, wins.
+
+    The source is dntg.role_stage row 'fu0UR1-10-0-1' (map 2 at 10,150 with
+    144/96 hp/mp), which has no equivalent in the characters columns.
+    """
+
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.role_id = self.store.create_character(
+            'stress', 'fu1304', 'Tuan565.酆芷○訪蕊', job='B', sex=1, face='B',
+            level=7, exp=1310)
+        self.store.save_role_stage(
+            self.role_id, map_id='2', map_x=10, map_y=150, hp=144, mp=96,
+            max_hp=144, max_mp=96, ti_li=1)
+        self.s = make_session(self.store)
+        self.s.authed_user, self.s.server_id = 'stress', 'fu1304'
+
+    def test_list_roles_prefers_the_stage_row(self):
+        role = self.store.list_roles('stress', 'fu1304')[0]
+        # legacy_id is NULL here because the migration tool, not this
+        # constructor, writes it; the stage join is what this test covers.
+        self.assertIsNone(role['legacy_id'])
+        self.assertEqual(
+            [role['map_id'], role['map_x'], role['map_y'], role['hp'],
+             role['mp'], role['max_hp'], role['max_mp']],
+            ['2', 10, 150, 144, 96, 144, 96])
+        self.assertEqual(role['level'], 7)
+
+    def test_enter_world_reports_the_migrated_stage(self):
+        entry = amf3.decode(self.s.enter_world([10003, str(self.role_id)])[4:])
+        self.assertEqual(entry[0], '10003')
+        self.assertEqual(entry[1][2], ['2', 10, 150])
+        # level/exp come from the migrated role row.
+        self.assertEqual(entry[1][1][1], 7)
+        self.assertEqual(entry[1][1][2], 1310)
+
+    def test_apply_stage_keeps_migrated_coordinates(self):
+        apply = amf3.decode(
+            self.s.apply_stage([20000, [str(self.role_id), '']])[4:])
+        self.assertEqual(apply, ['20000', [1, '2', [10, 150]]])
+
+    def test_bootstrap_pushes_hp_mp_from_the_stage_row(self):
+        frames = self.s.apply_stage_bootstrap([20000, [str(self.role_id), '']])
+        self.assertIsInstance(frames, tuple)
+        decoded = [amf3.decode(f[4:]) for f in frames]
+        self.assertEqual(decoded[0], ['20000', [1, '2', [10, 150]]])
+        # The scene entry is pushed for map 2 too, not only for map 5.
+        self.assertEqual(decoded[1], ['21000', [1, 1, DEFAULT_MAP_TYPE]])
+        self.assertEqual(decoded[-1], ['12004', [str(self.role_id), 144, 144,
+                                                 96, 96]])
+
+    def test_empty_stage_blobs_stay_null(self):
+        stage = self.store.get_role_stage(self.role_id)
+        for column in ('buff', 'props', 'map_node', 'meiren_info',
+                       'zuoqi_info', 'copy_info'):
+            self.assertIsNone(stage[column], column)
 
 
 if __name__ == '__main__':

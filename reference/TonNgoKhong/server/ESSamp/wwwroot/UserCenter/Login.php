@@ -2,7 +2,7 @@
 
 <!DOCTYPE html>
 <?php 
-  include_once "../configuration/config.inc.php";
+  include_once dirname(__FILE__)."/../configuration/config.inc.php";
 ?> 
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />

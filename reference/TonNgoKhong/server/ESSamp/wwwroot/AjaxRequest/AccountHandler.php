@@ -1,6 +1,6 @@
 <?php
 error_reporting(0);
-require_once ('../configuration/config.inc.php');
+require_once (dirname(__FILE__).'/../configuration/config.inc.php');
 $Action = $_POST["Action"];
 $uName = $_POST["uName"];
 $uPas = $_POST["uPas"];

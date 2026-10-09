@@ -1,0 +1,62 @@
+{
+ "commands": {},
+ "modules": [
+  {
+   "class": "com.kernel.data.dao.AbsBaseDao",
+   "kind": "Dao",
+   "methods": {},
+   "refs": [
+    "com.kernel.data.accessor.AccessType",
+    "com.kernel.data.accessor.AccessorManager",
+    "com.kernel.data.accessor.GlobalIdentity",
+    "com.kernel.data.accessor.IDbAccessor",
+    "com.kernel.data.accessor.database.ibatis.IIBatisDatabaseAccessor",
+    "com.kernel.data.dao.AbsBaseDao",
+    "com.kernel.data.dao.IAdvancedDaoOperation",
+    "com.kernel.data.dao.IDaoContext",
+    "com.kernel.data.dao.IParamDaoOperation"
+   ]
+  },
+  {
+   "class": "com.kernel.data.dao.AbsCacheDao",
+   "kind": "Dao",
+   "methods": {},
+   "refs": [
+    "com.kernel.data.accessor.AccessType",
+    "com.kernel.data.accessor.AccessorManager",
+    "com.kernel.data.accessor.IDbAccessor",
+    "com.kernel.data.dao.AbsBaseDao",
+    "com.kernel.data.dao.AbsCacheDao",
+    "com.kernel.data.dao.ICacheInitDaoOperation",
+    "com.kernel.data.dao.IEntity",
+    "com.kernel.data.dao.QueryParamMap"
+   ]
+  },
+  {
+   "class": "com.kernel.data.dao.AbsDao",
+   "kind": "Dao",
+   "methods": {},
+   "refs": [
+    "com.kernel.data.accessor.AccessType",
+    "com.kernel.data.accessor.AccessorManager",
+    "com.kernel.data.accessor.database.ibatis.IbatisDatabaseAccessor",
+    "com.kernel.data.dao.AbsBaseDao",
+    "com.kernel.data.dao.AbsDao",
+    "com.kernel.data.dao.IAdvancedDaoOperation",
+    "com.kernel.data.dao.IDaoContext",
+    "com.kernel.data.dao.IDaoOperation",
+    "com.kernel.data.dao.IParamDaoOperation",
+    "com.kernel.data.dao.QueryParamMap"
+   ]
+  },
+  {
+   "class": "com.kernel.easyaction.BaseEasyAction",
+   "kind": "Action",
+   "methods": {},
+   "refs": [
+    "com.kernel.easyaction.BaseEasyAction"
+   ]
+  }
+ ],
+ "errors": []
+}

@@ -17,10 +17,10 @@ Legacy game server 127.0.0.1:8008 (MINA NioSocketAcceptor, TcpNoDelay)
 
 - **Endpoint is flashvar-driven, not hardcoded.** `Gamelogin.php` passes
   `ip:'127.0.0.1', sport:'8008'` (plus `uid/t/sign/seid='fu1304'/pid='gmthai'`);
-  `gamesession.php` + `client/src/flashvars.js` mirror this. Ruffle's
-  `socketProxy` matches the host:port the SWF requests, so no SWF change is
-  needed — `client/src/player.js` registers `127.0.0.1:8008` and
-  `localhost:8008` → bridge URL (`?bridge=` overrides, `?nobridge=1` opts out).
+  `gamesession.php` mirrors this. Ruffle's `socketProxy` matches the host:port
+  the SWF requests, so no SWF change is needed. The web-client wiring that
+  registered `127.0.0.1:8008` and `localhost:8008` → bridge URL lived in
+  `client/src/player.js`, which is no longer in this checkout (historical).
 - **Ruffle socket path is the documented websockify dialect.** Ruffle wiki
   ("How can I connect to a TCPSocket or XMLSocket from the web") prescribes
   `socketProxy: [{host, port, proxyUrl}]` against a websockify-style proxy:

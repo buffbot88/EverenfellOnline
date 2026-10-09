@@ -33,6 +33,7 @@ Deviations from the original (all logged, to refine against the live client):
   - role entries: shape unknown, so only the empty-roles case is served.
 """
 import logging
+import re
 import struct
 import time
 
@@ -59,10 +60,13 @@ CMD_APPLY_STAGE = 20000
 CMD_CHANGE_STAGE = 21000
 CMD_MONEY = 32010
 
-# MapLine-back.csv in the original Java config: map_id -> MapLineConfig.mapType.
-# Populate exact map types as their map lines are ported; unknown maps do not
-# receive a fabricated scene-type value.
-MAP_TYPES = {'5': 1}
+# Java sends MapLineConfig.maptype in 21000 on every stage entry:
+#   StageServiceImpl.roleEnterStage -> { Integer(1), stage.getLineNo(),
+#                                        MapLineConfig.getMapType() }
+# so the frame is [1, lineNo, mapType]. It is read from MapLine.jat via
+# game/config.py. Maps missing from the table fall back to DEFAULT_MAP_TYPE and
+# every fallback is logged, so a guess never passes silently as data.
+DEFAULT_MAP_TYPE = 1
 CMD_ROLE_EWAI = 12011
 CMD_FIGHTING = 12010
 CMD_RECIVE_YB = 35011
@@ -73,17 +77,45 @@ CMD_VIP = 62000
 CMD_ZUWU = 111000
 CMD_ZUWUFUBEN = 108001
 CMD_ROLE_SETTINGS = 13000
+CMD_MOVE = 42001
+# Observed on the wire but with no captured reply or confirmed semantics yet;
+# logged so a live run shows the real post-entry command sequence.
+CMD_UNKNOWN_OBSERVED = frozenset({19000, 24002, 40000, 42005, 43000, 53021})
 
 
 def frame(payload: bytes) -> bytes:
     return struct.pack('>I', len(payload)) + payload
 
 
+# Approximation of NameFieldCheck.REGX_CHAR (CJK-only name rule): names must
+# be CJK characters and must not start with s/S (checkInputName2 bytecode).
+# The sensitive-word list (CheckNameUtil/MinganciUtil) has no portable
+# equivalent, so it is an open gap, not a silent pass.
+_ROLE_NAME_RE = re.compile(
+    '[\u3400-\u4db5\u4e00-\u9fa5\u9fa6-\u9fbb\uf900-\ufa2d'
+    '\U00020000-\U0002a6d6\uff00-\uffef\u2e80-\u2eff\u3000-\u303f'
+    '\u31c0-\u31ef\u3100-\u312d]+')
+
+# Java caps roles per account+server at 4 (UserRoleServiceImpl.createRole).
+MAX_ROLES_PER_ACCOUNT = 4
+
+
+def check_role_name(name):
+    """Port of NameFieldCheck.checkInputName2 minus the word-filter list."""
+    if not name or not isinstance(name, str):
+        return False
+    if name[0] in ('s', 'S'):
+        return False
+    return _ROLE_NAME_RE.fullmatch(name) is not None
+
+
 class Session:
     def __init__(self, conn_id, check_sign, get_roles, server_start_ms,
                  gm_open=False, tz_raw_offset=0, tz_id='UTC',
-                 get_role_settings=None):
+                 get_role_settings=None, create_role=None, save_role_state=None,
+                 config=None):
         self.conn_id = conn_id
+        self.config = config
         self.buf = bytearray()
         self.cipher = None
         self.key = None
@@ -92,6 +124,8 @@ class Session:
         self.check_sign = check_sign
         self.get_roles = get_roles
         self.get_role_settings = get_role_settings or (lambda role_id, user, server: None)
+        self.create_role_cb = create_role or (lambda *args: None)
+        self.save_role_state = save_role_state or (lambda *args, **kwargs: False)
         self.server_start_ms = server_start_ms
         self.gm_open = gm_open
         self.tz_raw_offset = tz_raw_offset
@@ -158,12 +192,17 @@ class Session:
         if cmd_num == CMD_ENTER_WORLD:
             return self.enter_world(msg)
         if cmd_num == CMD_CREATE_ROLE:
-            log.warning('conn %d: createRole not yet served (shape TBD)', self.conn_id)
-            return None
+            return self.create_role(msg)
         if cmd_num == CMD_GETTIME:
             return frame(amf3_encode(['19001', int(time.time() * 1000)]))
+        if cmd_num == CMD_MOVE:
+            return self.move(msg)
+        if cmd_num in CMD_UNKNOWN_OBSERVED:
+            log.info('conn %d: observed command %r (no handler yet)',
+                     self.conn_id, cmd)
+            return None
         if cmd_num == CMD_APPLY_STAGE:
-            return self.apply_stage(msg)
+            return self.apply_stage_bootstrap(msg)
         if cmd_num == CMD_CHANGE_STAGE:
             return self.change_stage(msg)
         if cmd_num == CMD_MONEY:
@@ -191,6 +230,29 @@ class Session:
         log.warning('conn %d: unknown command %r payload=%r (ignored)',
                       self.conn_id, cmd, msg)
         return None
+
+    def create_role(self, msg):
+        """Command 10002: reply ['10002', [1, role]] or ['10002', [0, code]].
+
+        Request is [10002, [account, name, job, sex, face, flag, serverId, pid]]
+        (captured live). Role and error shapes follow CreateRoleOutput and
+        RoleErrorCode bytecode.
+        """
+        try:
+            acct, name, job, sex, face, _flag, server_id = msg[1][:7]
+        except (TypeError, ValueError):
+            return frame(amf3_encode(['10002', [0, 2001]]))
+        acct = self.authed_user or acct
+        # Java has no 2003: bad names (including empty) are 2001 nameIllegal.
+        if not check_role_name(name):
+            return frame(amf3_encode(['10002', [0, 2001]]))
+        if len(self.get_roles(acct, server_id)) >= MAX_ROLES_PER_ACCOUNT:
+            return frame(amf3_encode(['10002', [0, 2005]]))
+        role_id = self.create_role_cb(acct, server_id, name, job, sex, face)
+        if role_id is None:
+            return frame(amf3_encode(['10002', [0, 2002]]))
+        role = [str(role_id), name, str(job), sex, 1, None, face]
+        return frame(amf3_encode(['10002', [1, role]]))
 
     @staticmethod
     def role_info(r):
@@ -321,7 +383,50 @@ class Session:
         map_id = target_map or str(role.get('map_id') or '0')
         x = role.get('map_x') if role.get('map_x') is not None else 57
         y = role.get('map_y') if role.get('map_y') is not None else 148
+        # The client's requested stage is authoritative; persist it so a
+        # reconnect/enter-world returns the role where it actually is.
+        if target_map:
+            self.save_role_state(role_id, map_id=map_id, map_x=x, map_y=y)
         return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
+
+    def move(self, msg):
+        """Command 42001: persist the role's reported position; no reply shape evidenced."""
+        args = self.safe(msg, 1, [])
+        role_id = str(self.safe(args, 0, '') or '')
+        pos = self.safe(args, 2, None)
+        x = self.safe(pos, 0) if isinstance(pos, list) else None
+        y = self.safe(pos, 1) if isinstance(pos, list) else None
+        if not role_id or x is None or y is None:
+            log.info('conn %d: move for %r without coordinates (ignored)',
+                     self.conn_id, role_id)
+            return None
+        log.info('conn %d: move role=%r -> (%s, %s)', self.conn_id, role_id, x, y)
+        self.save_role_state(role_id, map_x=int(x), map_y=int(y))
+        return None
+
+    def apply_stage_bootstrap(self, msg):
+        """Reply to 20000, then push the scene entry and role HP/MP like Java."""
+        reply = self.apply_stage(msg)
+        if reply is None:
+            return None
+        args = self.safe(msg, 1, [])
+        role_id = str(self.safe(args, 0, '') or '')
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = next((r for r in roles if str(r.get('id')) == role_id), None)
+        frames = [reply]
+        target = str(self.safe(args, 1, '') or role.get('map_id') or '')
+        # Java always sends this on stage entry, for every map, not just the
+        # ones we have a captured type for.
+        map_type = self.map_type_for(target)
+        frames.append(frame(amf3_encode(['21000', [1, 1, map_type]])))
+        snapshot = self.monster_snapshot_frame(target)
+        if snapshot is not None:
+            frames.append(snapshot)
+        hp = [role.get(k) for k in ('hp', 'max_hp', 'mp', 'max_mp')]
+        if all(v is not None for v in hp):
+            frames.append(frame(amf3_encode(
+                ['12004', [str(role['id']), *hp]])))
+        return tuple(frames) if len(frames) > 1 else reply
 
     def change_stage(self, msg):
         """Acknowledge the role's scene entry with line number and map type."""
@@ -332,11 +437,32 @@ class Session:
         if role is None:
             return None
         map_id = str(role.get('map_id') or '')
-        if map_id not in MAP_TYPES:
-            log.warning('conn %d: scene entry map %r has no known map type',
-                        self.conn_id, map_id)
+        map_type = self.map_type_for(map_id)
+        frames = [frame(amf3_encode(['21000', [1, 1, map_type]]))]
+        snapshot = self.monster_snapshot_frame(map_id)
+        if snapshot is not None:
+            frames.append(snapshot)
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def monster_snapshot_frame(self, map_id):
+        """23002 monster snapshot from monster.mm, or None when the map has no spawns."""
+        if self.config is None:
             return None
-        return frame(amf3_encode(['21000', [1, 1, MAP_TYPES[map_id]]]))
+        records = self.config.monster_snapshot(map_id)
+        if not records:
+            return None
+        log.info('conn %d: map %s snapshot with %d monsters',
+                 self.conn_id, map_id, len(records))
+        return frame(amf3_encode(['23002', records]))
+
+    def map_type_for(self, map_id):
+        """MapLine maptype for a map; logs and uses DEFAULT_MAP_TYPE when unknown."""
+        map_type = self.config.map_type(map_id) if self.config is not None else None
+        if map_type is None:
+            map_type = DEFAULT_MAP_TYPE
+            log.info('conn %d: map %r has no known MapLine type, using %d',
+                     self.conn_id, map_id, map_type)
+        return map_type
 
     def money_info(self, role=None):
         if role is None:

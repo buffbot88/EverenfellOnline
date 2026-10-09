@@ -13,6 +13,7 @@ import time
 
 from auth import Sessions, check_sign
 from db import Store
+from game.config import DEFAULT_CONFIG_DIR, GameConfig
 from game.protocol import Session as GameSession
 from web import serve as serve_web
 
@@ -32,7 +33,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             check_sign=self.server.check_sign,
             get_roles=self.server.get_roles,
             server_start_ms=self.server.server_start_ms,
-            get_role_settings=self.server.get_role_settings)
+            get_role_settings=self.server.get_role_settings,
+            create_role=self.server.create_role,
+            save_role_state=self.server.save_role_state,
+            config=self.server.game_config)
         log.info('game conn from %s', self.client_address)
         try:
             while True:
@@ -40,6 +44,14 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 if not data:
                     break
                 for out in sess.feed(data):
+                    if self.server.log_frames:
+                        from game.amf3 import decode as _amf3_decode
+                        try:
+                            log.info('conn %d: -> %r', sess.conn_id,
+                                     _amf3_decode(out[4:]))
+                        except Exception:
+                            log.info('conn %d: -> %d raw bytes',
+                                     sess.conn_id, len(out))
                     self.request.sendall(out)
         except (ConnectionResetError, BrokenPipeError, ValueError) as e:
             log.info('game conn closed: %s', e)
@@ -51,7 +63,11 @@ def main():
     ap.add_argument('--game', default='127.0.0.1:8008')
     ap.add_argument('--web', default='127.0.0.1:8080')
     ap.add_argument('--captcha', action='store_true')
+    ap.add_argument('--config-dir', default=DEFAULT_CONFIG_DIR,
+                    help='legacy config tree (sys_config/MapLine.jat, map_config/)')
     ap.add_argument('--debug', action='store_true')
+    ap.add_argument('--log-frames', action='store_true',
+                    help='log decoded server->client frames (diagnosis)')
     ap.add_argument('--add-char', metavar='ACCOUNT:NAME',
                     help='create a character for an account, then exit')
     ap.add_argument('--server-id', default='fu1304',
@@ -84,6 +100,11 @@ def main():
         dict(r)
         for r in store.list_roles(u, s)]
     tcpd.get_role_settings = store.get_role_settings
+    tcpd.create_role = lambda acct, sid, name, job, sex, face: store.create_character(
+        acct, sid, name, job=job, sex=sex, face=face)
+    tcpd.save_role_state = store.update_character_state
+    tcpd.log_frames = a.log_frames
+    tcpd.game_config = GameConfig(a.config_dir)
     tcpd.server_start_ms = int(time.time() * 1000)
 
     import threading

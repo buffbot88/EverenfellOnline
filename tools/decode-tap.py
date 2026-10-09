@@ -28,7 +28,7 @@ def parse_log(path):
 
 def read_frames(data, allow_policy=False):
     frames, offset = [], 0
-    if allow_policy and data.startswith(b'<policy-file-request'):
+    if allow_policy and data.startswith(b'<'):
         end = data.find(b'\x00')
         if end < 0:
             return frames, offset
@@ -77,7 +77,7 @@ def decode_client(frames, key):
 
 def summarize(path):
     for conn, stream in parse_log(path).items():
-        srv, srv_used = read_frames(bytes(stream['S>C']))
+        srv, srv_used = read_frames(bytes(stream['S>C']), allow_policy=True)
         cli, cli_used = read_frames(bytes(stream['C>S']), allow_policy=True)
         key = next((value.decode('ascii') for kind, value in srv
                     if kind == 'frame' and len(value) == 36), None)

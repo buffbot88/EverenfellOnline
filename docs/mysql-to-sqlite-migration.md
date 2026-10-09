@@ -40,8 +40,11 @@ one currency row.
 | `role_stage.*` | `role_stage.*` | Same names as Java (see below). |
 | `role_account.tongqian` / `bind_lingshi` | `characters.tongqian` / `bind_lingshi` | The only two currency columns the legacy table has. |
 
-`role_stage` is a **separate table** mirroring Java's 23 columns, not extra
-columns on `characters`. `db.Store.list_roles` joins it and lets the stage row
+`role_stage` is a **separate table** mirroring Java's `role_stage` columns, not extra
+columns on `characters`. The SQLite table has 21 columns including `role_id`. The
+migration copies 18 of the 20 non-key columns; `pk_info` and
+`fly_count_refresh_time` are not in the migration's column list and keep their
+defaults. `db.Store.list_roles` joins it and lets the stage row
 win (`COALESCE(s.col, c.col)`), so `10003` (enter world) and `20000` (apply
 stage) report the real map, coordinates and HP/MP instead of defaults.
 

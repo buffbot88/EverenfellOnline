@@ -3,6 +3,10 @@
 How the original client talks to the legacy server, and how the bridge fits
 in. Every claim is labelled. Nothing here invents packets.
 
+> **Status (2026-10-09):** the target client is now the Flash projector, which
+> opens native sockets to `127.0.0.1:8008` (see [knowledge.md](../knowledge.md)).
+> The Ruffle + bridge path below is historical evidence, kept for the wire facts.
+
 ```
 Ruffle (original Main.swf, unmodified)
   ↓  flash.net.Socket → matched by socketProxy host/port
@@ -159,9 +163,9 @@ on (`Security.loadPolicyFile()`, `flash.net.URLStream` streaming and
 expects after login that the original server pushed. The MPlayer.swf sidecar
 (second Ruffle instance) was tried and made it worse — reverted.
 
-## Next step for world entry
+## Next step for world entry (historical, 2026-10-07)
 
-Boot the real stack (ESSamp Apache+MySQL, then `server.bat` under jre6),
+Superseded by the projector path. Original plan, for reference: boot the real stack (ESSamp Apache+MySQL, then `server.bat` under jre6),
 open `player.html` with a logged-in session, and watch the bridge log: expect
 `CLIENT->SERVER INITKEY`, then the server's first reply bytes — the first
 genuinely unknown protocol data, to be captured with `LOG_PACKETS=1`.

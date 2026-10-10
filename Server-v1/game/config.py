@@ -63,17 +63,19 @@ def _number(value):
 
 
 def parse_item_attributes(text):
-    """(qh stars, fujia ids) from a role_equip_slot.attributes blob.
+    """(qh stars, fujia pairs) from a role_equip_slot.attributes blob.
 
     GoodsEquipVo.getGoodsAttributes reads this JSON; qhxingxing pairs are
-    [star, count] and fjattrstr maps a slot to '<fujiaId>@<count>'. Stored rows
-    sometimes carry a backslash-escaped copy of fjattrstr, so this scans the
-    text instead of requiring strict JSON.
+    [star, count] and fjattrstr maps a slot to '<fujiaId>@<count>' (Java
+    consumes them as Integer[2] pairs). Stored rows sometimes carry a
+    backslash-escaped copy of fjattrstr, so this scans the text instead
+    of requiring strict JSON.
     """
     text = text or ''
     match = _QH_STARS.search(text)
     stars = [int(s) for s in _QH_PAIR.findall(match.group(1))] if match else []
-    return stars, [int(i) for i in _FUJIA_PAIR.findall(text)]
+    pairs = [(int(fid), int(cnt)) for fid, cnt in _FUJIA_PAIR.findall(text)]
+    return stars, pairs
 
 
 def load_equip_attribute_table(path):
@@ -86,6 +88,25 @@ def load_equip_attribute_table(path):
     if not isinstance(rows, list):
         raise ValueError(f'{path}: expected a list of equipment rows')
     return {str(r['id']): r for r in rows if isinstance(r, dict) and r.get('id')}
+
+
+def load_fujia_random_table(path):
+    """Rows of ZhuangBeiFuJiaShuXingsuijiBiao.jat keyed by 'fujiaid-level'.
+
+    Java keys EquipRandomConfig as str(fujiaid) + '-' + str(level)
+    (EquipFuJiaRandomConfigExportServiceImpl.getKey); each row carries the
+    shuxing bag key and its per-count value.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of fujia random rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('fujiaid') is None \
+                or row.get('level') is None:
+            continue
+        table['%s-%s' % (row['fujiaid'], row['level'])] = row
+    return table
 
 
 def load_shuxingdan_table(path):
@@ -171,6 +192,7 @@ class GameConfig:
         self._zuoji = None
         self._equip = None
         self._shuxingdan = None
+        self._fujia_random = None
 
     @property
     def map_lines_path(self):
@@ -293,14 +315,49 @@ class GameConfig:
                 self._shuxingdan = {}
         return self._shuxingdan
 
+    def fujia_random_table(self):
+        """ZhuangBeiFuJiaShuXingsuijiBiao rows keyed 'fujiaid-level'."""
+        if self._fujia_random is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuangBeiFuJiaShuXingsuijiBiao.jat')
+            try:
+                self._fujia_random = load_fujia_random_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad fujia random table: %s', e)
+                self._fujia_random = {}
+        return self._fujia_random
+
+    def fujia_attribute_map(self, pairs, level):
+        """Random 附加 affix bonuses for one item's fujia pairs at its fujia level.
+
+        Port of EquipAttributeService.getEquipFuJiaAttribute: key each
+        pair as '<fujiaid>-<level>' (the item's ZhuangBeiFuJiaShuXingBiao
+        `level` cell) and add shuxinValue * count under the row's shuxing
+        bag key. Keys like mb/mbdk feed resist formulas, not the 12000
+        map; flat keys (physicdamage, ...) merge with the gear bag.
+        """
+        table = self.fujia_random_table()
+        totals = {}
+        for fid, count in pairs or []:
+            row = table.get('%s-%s' % (fid, level))
+            if row is None:
+                log.warning('fujia %s-%s has no random row; skipped', fid, level)
+                continue
+            name = row.get('shuxing')
+            value = _number(row.get('value')) * (count or 0)
+            if name and value:
+                totals[name] = totals.get(name, 0.0) + value
+        return totals
+
     def equip_attribute_map(self, items):
         """Summed gear attribute map for equipped items.
 
         Port of EquipAttributeService.getEquipAttributeAll over a role's
         role_equip_slot rows: per item the flat base columns plus every 强化
         star's starN<attr>, all scaled by the rare level's Njichubili rate
-        (getEquipBaseAttribute/getEquipQianghuaAttribute). Random 附加 affixes
-        are a separate lookup and are not included yet.
+        (getEquipBaseAttribute/getEquipQianghuaAttribute), plus the random
+        附加 affixes keyed '<fujiaid>-<level>' (getEquipFuJiaAttribute).
         """
         table = self.equip_table()
         totals = {}
@@ -311,13 +368,15 @@ class GameConfig:
                             item.get('goods_id'))
                 continue
             rate = _number(row.get('%sjichubili' % int(item.get('rare_level') or 0))) or 1.0
-            stars, _fujia = parse_item_attributes(item.get('attributes'))
+            stars, pairs = parse_item_attributes(item.get('attributes'))
             for name in EQUIP_ATTRIBUTE_NAMES:
                 value = _number(row.get(name))
                 for star in stars:
                     value += _number(row.get('star%d%s' % (star, name)))
                 if value:
                     totals[name] = totals.get(name, 0.0) + value * rate
+            for name, value in self.fujia_attribute_map(pairs, row.get('level')).items():
+                totals[name] = totals.get(name, 0.0) + value
         return totals
 
     def shuxingdan_attribute_map(self, attribute_ids):

@@ -6,10 +6,9 @@ Key ids come from AbsFightAttribute.changeAttribute call sites (captured
 never recorded as changed, which is why Java's entry push omits it.
 
 Each value is the jar's formula (GongJiFormula, FangYuFormula, BaoJiFormula,
-ShanBiFormula, GongjiSuduFormula, ShenFaFormula, MaxShanBiValFormula) with
-its effect slots left empty: equipment/effects are not in the migrated data,
-so a role's attributes here are its ZhuJueShuXingBiao level row plus the
-persisted max_mp, exactly what our data model knows.
+ShanBiFormula, GongjiSuduFormula, ShenFaFormula, MaxShanBiValFormula) over
+the level row plus the migrated gear/dan bags; effect slots stay empty
+(VIP/title/meiren/buff bags are not migrated yet).
 """
 
 

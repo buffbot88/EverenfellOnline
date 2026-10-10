@@ -153,9 +153,12 @@ class Session:
                  gm_open=False, tz_raw_offset=-18000000,
                  tz_id='America/New_York',
                  get_role_settings=None, create_role=None, save_role_state=None,
+                 get_role_equip=None, get_role_attr_buffs=None,
                  config=None):
         self.conn_id = conn_id
         self.config = config
+        self.get_role_equip = get_role_equip or (lambda role_id: [])
+        self.get_role_attr_buffs = get_role_attr_buffs or (lambda role_id: [])
         self.buf = bytearray()
         self.cipher = None
         self.key = None
@@ -443,6 +446,41 @@ class Session:
             self.save_role_state(role_id, map_id=map_id, map_x=x, map_y=y)
         return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
 
+    def role_bags(self, role):
+        """No-effect attribute bags for a role: gear + shuxingdan pills.
+
+        Port of RoleFactoryHelper's replace*Attribute sequence over the
+        migrated role_equip / role_attribute_buff rows; empty sources
+        yield no bags, exactly Java's empty-bag behavior.
+        """
+        bags = []
+        if self.config is None or role is None:
+            return bags
+        try:
+            items = self.get_role_equip(role.get('id')) or []
+        except Exception:
+            items = []
+        if items:
+            bags.append(self.config.equip_attribute_map(items))
+        try:
+            buffs = self.get_role_attr_buffs(role.get('id')) or []
+        except Exception:
+            buffs = []
+        ids = [b.get('attribute_id') for b in buffs if b.get('attribute_id')]
+        if ids:
+            bags.append(self.config.shuxingdan_attribute_map(ids))
+        return [b for b in bags if b]
+
+    def role_attribute_map(self, role):
+        """12000 map for a role: level row + gear/dan bags (empty effect)."""
+        if role is None or self.config is None:
+            return None
+        row = self.config.role_attribute_row(role.get('level'))
+        if row is None:
+            return None
+        return entry_attribute_map(row, role.get('max_mp'),
+                                   bags=self.role_bags(role))
+
     def _owned_actor(self, actor_id):
         """Return the owned role dict when actor_id is a role or issued pet."""
         if not actor_id:
@@ -557,8 +595,9 @@ class Session:
                            int(row.get('zhenqi') or 0)]])))
             # Java writes the map as an AMF3 object (marker 0x0A), not an
             # ECMA array; Obj produces the same shape on the wire.
-            frames.append(frame(amf3_encode(
-                ['12000', Obj(entry_attribute_map(row, role.get('max_mp')))])))
+            attrs = self.role_attribute_map(role)
+            if attrs is not None:
+                frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
         return tuple(frames) if len(frames) > 1 else reply
 
     def change_stage(self, msg):
@@ -646,7 +685,7 @@ class Session:
             0,                                    # alive (DEAD state absent)
             role.get('sex') if role.get('sex') is not None else 0,
             level,
-            float(entry_attribute_map(level_row, role.get('max_mp'))['7']),
+            float(self.role_attribute_map(role)['7']),
             '0',                                  # getQizhanbinqiId null -> '0'
         ]
         return frame(amf3_encode(['23009', [record]]))
@@ -721,10 +760,8 @@ class Session:
         """Command 12000: role attribute map (StageInfoAction.info -> send2One)."""
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else None
-        row = (self.config.role_attribute_row(role.get('level'))
-               if role is not None and self.config is not None else None)
-        if row is None:
+        attrs = self.role_attribute_map(role)
+        if attrs is None:
             log.info('conn %d: 12000 without role/level row (ignored)', self.conn_id)
             return None
-        return frame(amf3_encode(
-            ['12000', Obj(entry_attribute_map(row, role.get('max_mp')))]))
+        return frame(amf3_encode(['12000', Obj(attrs)]))

@@ -49,10 +49,10 @@ class ItemAttributeParseTest(unittest.TestCase):
     def test_stars_and_fujia_ids(self):
         stars, fujia = parse_item_attributes(CAPTURED_GEAR[9][2])
         self.assertEqual(stars, [])
-        self.assertEqual(fujia, [8])
+        self.assertEqual(fujia, [(8, 5)])
         stars, fujia = parse_item_attributes(CAPTURED_GEAR[8][2])
         self.assertEqual(stars, [])
-        self.assertEqual(fujia, [9, 11, 13, 15])
+        self.assertEqual(fujia, [(9, 5), (11, 5), (13, 5), (15, 5)])
 
     def test_escaped_blob_still_yields_stars(self):
         stars, fujia = parse_item_attributes(CAPTURED_GEAR[1][2])
@@ -91,6 +91,15 @@ class EquipAttributeChainTest(unittest.TestCase):
 
     def test_unknown_goods_is_skipped_not_faked(self):
         self.assertEqual(self.cfg.equip_attribute_map([{'goods_id': 'nope'}]), {})
+
+    def test_fujia_random_lookup_keys_on_id_and_level(self):
+        affix = self.cfg.fujia_attribute_map([(8, 5)], 4)
+        self.assertAlmostEqual(affix.get('mb', 0.0), 0.02, places=6)
+        affix = self.cfg.fujia_attribute_map(
+            [(9, 5), (11, 5), (13, 5), (15, 5)], 3)
+        for key in ('mbdk', 'yxdk', 'bhdk', 'xxdk'):
+            self.assertAlmostEqual(affix.get(key, 0.0), 0.015, places=6)
+        self.assertEqual(self.cfg.fujia_attribute_map([(8, 5)], 99), {})
 
     def test_shuxingdan_pill_row(self):
         self.assertEqual(self.cfg.shuxingdan_attribute_map(['sm_001']),
@@ -132,9 +141,8 @@ class FormulaTest(unittest.TestCase):
         figure meiren.jat carries for nvwa075."""
         row = {'physicdamage': 800, 'physicdefence': 400, 'critical': 150,
                'volt': 150, 'attackrate': 1, 'velocity': 550, 'dunshudian': 1}
-        gear = self.cfg.gear if False else None        # documented, not asserted
-        self.assertIsNone(gear)
-        self.assertAlmostEqual(entry_attribute_map(row, bags=[{'physicdamage': 1122.0}])['2'],
+        bags = [{'physicdamage': 127.8}, {'physicdamage': 1122.0}]
+        self.assertAlmostEqual(entry_attribute_map(row, bags=bags)['2'],
                                2049.8, places=4)
 
 

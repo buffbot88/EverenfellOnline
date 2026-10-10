@@ -103,7 +103,7 @@ def selected_role_ids(mysql, users):
 
 
 def role_filter(role_ids):
-    """WHERE fragment limiting role_stage/role_account to the selected roles."""
+    """WHERE fragment limiting per-role tables to the selected roles."""
     if not role_ids:
         return 'where 0'
     return f'where user_role_id in ({quote_list(role_ids)})'
@@ -115,11 +115,15 @@ def plan_counts(mysql, users):
     where = {'account': f' where name in ({quote_list(users)})',
              'user_role': f' where user_id in ({quote_list(users)})',
              'role_stage': ' ' + role_filter(role_ids),
-             'role_account': ' ' + role_filter(role_ids)}
+             'role_account': ' ' + role_filter(role_ids),
+             'role_equip_slot': ' ' + role_filter(role_ids),
+             'role_attribute_buff': ' ' + role_filter(role_ids)}
     tables = {'account': ('caonima', 'account'),
               'user_role': ('dntg', 'user_role'),
               'role_stage': ('dntg', 'role_stage'),
-              'role_account': ('dntg', 'role_account')}
+              'role_account': ('dntg', 'role_account'),
+              'role_equip_slot': ('dntg', 'role_equip_slot'),
+              'role_attribute_buff': ('dntg', 'role_attribute_buff')}
     counts = {}
     for label, (db, table) in tables.items():
         rows = mysql.query(db, f'select count(*) from {table}{where[label]}')
@@ -132,6 +136,7 @@ def migrate(mysql, db_path, users, dry_run=False):
     report = {'users': ','.join(users), 'accounts_added': 0, 'accounts_skipped': 0,
               'roles_added': 0, 'roles_skipped': 0,
               'stages_written': 0, 'currency_written': 0,
+              'equip_written': 0, 'attr_buffs_written': 0,
               'roles_missing_account': [], 'notes': []}
     accounts = mysql.query('caonima',
                            'select ' + ','.join(ACCOUNT_COLS) + ' from account'
@@ -148,11 +153,20 @@ def migrate(mysql, db_path, users, dry_run=False):
                          'free_fly_count from role_stage ' + role_where)
     currency = mysql.query('dntg', 'select user_role_id,tongqian,bind_lingshi'
                                   ' from role_account ' + role_where)
+    equips = mysql.query('dntg', 'select user_role_id,slot_num,goods_id,'
+                                 'rare_level,item_level,attributes'
+                                 ' from role_equip_slot ' + role_where
+                                 + ' order by user_role_id,slot_num')
+    attr_buffs = mysql.query('dntg', 'select user_role_id,attribute_id,count'
+                                     ' from role_attribute_buff ' + role_where
+                                     + ' order by user_role_id,attribute_id')
     if dry_run:
         report['accounts_added'] = len(accounts)
         report['roles_added'] = len(roles)
         report['stages_written'] = len(stages)
         report['currency_written'] = len(currency)
+        report['equip_written'] = len(equips)
+        report['attr_buffs_written'] = len(attr_buffs)
         return report
 
     # Back up before writing anything.
@@ -235,6 +249,42 @@ def migrate(mysql, db_path, users, dry_run=False):
                 f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [local_id, *values])
             report['stages_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_equip(role_id INTEGER NOT NULL,'
+                     ' slot_num INTEGER NOT NULL, goods_id TEXT NOT NULL,'
+                     ' rare_level INTEGER DEFAULT 0, item_level INTEGER DEFAULT 0,'
+                     ' attributes TEXT, PRIMARY KEY(role_id, slot_num))')
+        conn.execute('CREATE TABLE IF NOT EXISTS role_attr_buff(role_id INTEGER NOT NULL,'
+                     ' attribute_id TEXT NOT NULL, count INTEGER DEFAULT 0,'
+                     ' PRIMARY KEY(role_id, attribute_id))')
+        for row in equips:
+            user_role_id, slot_num, goods_id, rare_level, item_level, \
+                attributes = (row + [None] * 6)[:6]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_equip(role_id, slot_num, goods_id,'
+                ' rare_level, item_level, attributes)'
+                ' VALUES(?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, slot_num) DO UPDATE SET'
+                ' goods_id=excluded.goods_id, rare_level=excluded.rare_level,'
+                ' item_level=excluded.item_level, attributes=excluded.attributes',
+                (local_id, as_int(slot_num) or 0, goods_id,
+                 as_int(rare_level) or 0, as_int(item_level) or 0, attributes))
+            report['equip_written'] += 1
+        for row in attr_buffs:
+            user_role_id, attribute_id, count = (row + [None] * 3)[:3]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not attribute_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_attr_buff(role_id, attribute_id, count)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id, attribute_id) DO UPDATE SET'
+                ' count=excluded.count',
+                (local_id, attribute_id, as_int(count) or 0))
+            report['attr_buffs_written'] += 1
 
         for user_role_id, tongqian, bind_lingshi in currency:
             local_id = legacy_to_local.get(user_role_id)

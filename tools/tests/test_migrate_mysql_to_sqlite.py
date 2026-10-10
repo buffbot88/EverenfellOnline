@@ -70,10 +70,12 @@ class FakeMySql:
 
 
 class ScopeTest(unittest.TestCase):
-    def test_plan_counts_covers_the_four_tables(self):
+    def test_plan_counts_covers_the_six_tables(self):
         counts = mig.plan_counts(FakeMySql(['7']), ['stress'])
         self.assertEqual(counts, {'account': 1, 'user_role': 1,
-                                  'role_stage': 1, 'role_account': 1})
+                                  'role_stage': 1, 'role_account': 1,
+                                  'role_equip_slot': 1,
+                                  'role_attribute_buff': 1})
 
     def test_stage_and_currency_counts_follow_the_selected_roles(self):
         fake = FakeMySql(['7', '9'])
@@ -110,6 +112,11 @@ class FakeDataMySql:
                      None, 1, 1, 1, None, None, None, 0]]
         if 'from role_account' in sql:
             return [['7', '1000', '50']]
+        if 'from role_equip_slot' in sql:
+            return [['7', '0', 'zj0201', '2', '7',
+                     '{"fjattrstr":"{}","qhxingxing":"[[1,1]]"}']]
+        if 'from role_attribute_buff' in sql:
+            return [['7', 'sm_001', '3']]
         raise AssertionError(f'unexpected query: {sql}')
 
 
@@ -144,6 +151,12 @@ class MigrateCharactersTest(unittest.TestCase):
         stage = conn.execute('SELECT * FROM role_stage').fetchone()
         self.assertEqual(stage['map_id'], '2')
         self.assertEqual(stage['shanbi_val'], 1)
+        equip = conn.execute('SELECT * FROM role_equip').fetchone()
+        self.assertEqual(equip['goods_id'], 'zj0201')
+        self.assertEqual(equip['rare_level'], 2)
+        buff = conn.execute('SELECT * FROM role_attr_buff').fetchone()
+        self.assertEqual(buff['attribute_id'], 'sm_001')
+        self.assertEqual(buff['count'], 3)
         conn.close()
 
 

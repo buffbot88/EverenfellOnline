@@ -50,6 +50,23 @@ CREATE TABLE IF NOT EXISTS role_stage (
   fly_count_refresh_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS role_equip (
+  role_id INTEGER NOT NULL,
+  slot_num INTEGER NOT NULL,
+  goods_id TEXT NOT NULL,
+  rare_level INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  PRIMARY KEY(role_id, slot_num),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS role_attr_buff (
+  role_id INTEGER NOT NULL,
+  attribute_id TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, attribute_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   legacy_id TEXT,
@@ -230,6 +247,54 @@ class Store:
                 ' WHERE c.account=? AND c.server_id=? ORDER BY c.id',
                 (account, server_id)).fetchall()
             return [dict(row) for row in rows]
+
+    def get_role_equip(self, role_id):
+        """Equipped rows for a role (legacy role_equip_slot subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT slot_num, goods_id, rare_level, item_level, attributes'
+                ' FROM role_equip WHERE role_id=? ORDER BY slot_num',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_equip(self, role_id, items):
+        """Replace a role's equipped rows; items carry slot/goods/levels/blob."""
+        with self.lock:
+            self.db.execute('DELETE FROM role_equip WHERE role_id=?',
+                            (str(role_id),))
+            for item in items or []:
+                self.db.execute(
+                    'INSERT INTO role_equip(role_id, slot_num, goods_id,'
+                    ' rare_level, item_level, attributes)'
+                    ' VALUES(?,?,?,?,?,?)',
+                    (str(role_id), item.get('slot_num'), item.get('goods_id'),
+                     item.get('rare_level') or 0, item.get('item_level') or 0,
+                     item.get('attributes')))
+            self.db.commit()
+            return True
+
+    def get_role_attr_buffs(self, role_id):
+        """Attribute-pill rows for a role (legacy role_attribute_buff subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT attribute_id, count FROM role_attr_buff'
+                ' WHERE role_id=? ORDER BY attribute_id',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_attr_buffs(self, role_id, buffs):
+        """Replace a role's attribute-pill rows; buffs carry id + count."""
+        with self.lock:
+            self.db.execute('DELETE FROM role_attr_buff WHERE role_id=?',
+                            (str(role_id),))
+            for buff in buffs or []:
+                self.db.execute(
+                    'INSERT INTO role_attr_buff(role_id, attribute_id, count)'
+                    ' VALUES(?,?,?)',
+                    (str(role_id), buff.get('attribute_id'),
+                     buff.get('count') or 0))
+            self.db.commit()
+            return True
 
     def get_role_stage(self, role_id):
         with self.lock:

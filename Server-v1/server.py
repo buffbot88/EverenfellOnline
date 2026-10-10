@@ -36,6 +36,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_role_settings=self.server.get_role_settings,
             create_role=self.server.create_role,
             save_role_state=self.server.save_role_state,
+            get_role_equip=self.server.get_role_equip,
+            get_role_attr_buffs=self.server.get_role_attr_buffs,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
             config=self.server.game_config)
@@ -111,6 +113,8 @@ def main():
     tcpd.create_role = lambda acct, sid, name, job, sex, face: store.create_character(
         acct, sid, name, job=job, sex=sex, face=face)
     tcpd.save_role_state = store.update_character_state
+    tcpd.get_role_equip = store.get_role_equip
+    tcpd.get_role_attr_buffs = store.get_role_attr_buffs
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id

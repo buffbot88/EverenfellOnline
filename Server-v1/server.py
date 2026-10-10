@@ -36,6 +36,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_role_settings=self.server.get_role_settings,
             create_role=self.server.create_role,
             save_role_state=self.server.save_role_state,
+            tz_raw_offset=self.server.tz_raw_offset,
+            tz_id=self.server.tz_id,
             config=self.server.game_config)
         log.info('game conn from %s', self.client_address)
         try:
@@ -68,6 +70,12 @@ def main():
     ap.add_argument('--debug', action='store_true')
     ap.add_argument('--log-frames', action='store_true',
                     help='log decoded server->client frames (diagnosis)')
+    ap.add_argument('--tz-offset', type=int, default=-18000000,
+                    help='client TimeZone.rawOffset in ms (the captured Java '
+                         'server sent America/New_York: -18000000)')
+    ap.add_argument('--tz-id', default='America/New_York',
+                    help='client TimeZone ID/displayName (captured value: '
+                         'America/New_York)')
     ap.add_argument('--add-char', metavar='ACCOUNT:NAME',
                     help='create a character for an account, then exit')
     ap.add_argument('--server-id', default='fu1304',
@@ -104,6 +112,8 @@ def main():
         acct, sid, name, job=job, sex=sex, face=face)
     tcpd.save_role_state = store.update_character_state
     tcpd.log_frames = a.log_frames
+    tcpd.tz_raw_offset = a.tz_offset
+    tcpd.tz_id = a.tz_id
     tcpd.game_config = GameConfig(a.config_dir)
     tcpd.server_start_ms = int(time.time() * 1000)
 

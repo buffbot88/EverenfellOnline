@@ -46,3 +46,6 @@ MKO_Client/config.json
 # ── Local agent metadata ──
 .freebuff/
 /reference
+.aider*
+/reference
+/output

@@ -55,12 +55,15 @@ Faithful to the bytecode recovered from `dntg_start.jar` (see
    `AmfResponseEncoder` never encrypts and nothing in the jar calls `encode()`
 
 Served commands: `10001` login (sign check + role list), `10002` createRole
-(recognised, not yet answered — its wire shape is unrecovered, so in-game
-character creation is not possible yet; use `--add-char`). The login result's
-TimeZone slot is an AMF3 object carrying `rawOffset`, as
-`ServerInfoVO.decode()` requires. Role entries are sent as AMF3 objects, but
-the **field names inside a role are unverified** — the client has never
-reached the screen that reads them.
+(validation + error codes from bytecode; success shape matches
+`CreateRoleOutput`), enter-world `10003`, map change `20000`, role settings
+`13000`, scene entry `21000` with `23002` monster snapshot and `23009` mount
+pet, plus the world-entry stat pushes (`12004`/`12005`/`12050`/`12000`) and
+SQLite-backed `32010`/`12011`. The login result's TimeZone slot is an AMF3
+object carrying `rawOffset`, as `ServerInfoVO.decode()` requires. Each role
+is a positional `Object[8]` per `GetRoleOutput.roleInfo` (see
+`docs/protocol.md`); full parity status lives in
+`docs/java-python-parity-audit.md`.
 
 ## Layout
 
@@ -69,4 +72,4 @@ reached the screen that reads them.
 - `game/amf3.py` — AMF3 codec (incl. anonymous objects)
 - `game/cipher.py` — `SimpleEncrypt`
 - `auth.py` / `db.py` / `web.py` — sign, SQLite store, account API
-- `tests/` — `python3 -m unittest discover -s tests` (15 tests)
+- `tests/` — `python3 -m unittest discover -s tests` (101 tests)

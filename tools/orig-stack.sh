@@ -12,13 +12,13 @@
 # Alias to client/public/ruffle/ (no copies, no Vite).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRV="$ROOT/TonNgoKhong/server"
+SRV="$ROOT/reference/TonNgoKhong/server"
 LOGDIR="$ROOT/output/orig-stack"
 MYSQL="$SRV/ESSamp/MySQL5/bin/mysqld.exe"
 MYSQLADMIN="$SRV/ESSamp/MySQL5/bin/mysql.exe"
 JAVA="$SRV/jre6/bin/java.exe"
 HTTPD="$SRV/ESSamp/Apache2/bin/httpd.exe"
-BRIDGE="${BRIDGE:-1}"
+BRIDGE="${BRIDGE:-0}"   # client/ is not in this checkout; the shim is browser-only
 mkdir -p "$LOGDIR"
 
 pid_on_port() { netstat -ano 2>/dev/null | grep -E "LISTENING" | grep -E ":$1 " | awk '{print $NF}' | sort -u | head -1; }
@@ -81,11 +81,15 @@ cat >>"$LOGDIR/httpd.conf" <<EOF
 AddType application/wasm .wasm
 EOF
 # Access log for the swap-chain trace (which SWF/data URL loads, in order).
+# Apache resolves paths as Windows ones: a Git-Bash /c/... path is read as
+# C:/c/... and Apache then dies with "Unable to open logs".
+WIN_ACCESS="$(cygpath -m "$LOGDIR/access.log")"
 cat >>"$LOGDIR/httpd.conf" <<EOF
-CustomLog "$LOGDIR/access.log" common
+CustomLog "$WIN_ACCESS" common
 EOF
 # Serve the Ruffle runtime from Apache itself (no Vite, no copies).
-cat >>"$LOGDIR/httpd.conf" <<EOF
+if [ -f "$WIN_RUFFLE/ruffle.js" ]; then
+  cat >>"$LOGDIR/httpd.conf" <<EOF
 
 # --- orig-stack: Ruffle runtime for the supplied Flash client ---
 Alias /ruffle "$WIN_RUFFLE"
@@ -96,6 +100,7 @@ Alias /ruffle "$WIN_RUFFLE"
   Allow from all
 </Directory>
 EOF
+fi
 "$HTTPD" -f "$LOGDIR/httpd.conf" -X >"$LOGDIR/apache.log" 2>&1 &
 echo $! >"$LOGDIR/apache.pid"
 wait_port 80 60 apache || { echo "Apache failed - PHP login pages unavailable (game server still up)"; }

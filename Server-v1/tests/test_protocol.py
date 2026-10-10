@@ -23,6 +23,7 @@ from db import Store
 from game import amf3
 from game.amf3 import ByteArray, Obj
 from game.cipher import SimpleEncrypt, new_key
+from game.config import GameConfig
 from game.protocol import DEFAULT_MAP_TYPE, Session, frame
 
 # Live-captured first frame from the original client (bridge LOG_PACKETS=1).
@@ -166,12 +167,14 @@ class TestVectors(unittest.TestCase):
         self.assertEqual(amf3.decode(raw), [5.0, 5.0])
 
 
-def make_session(store=None):
+def make_session(store=None, config=None):
     kwargs = {} if store is None else {
         'create_role': (lambda a, s, n, j, x, f: store.create_character(
             a, s, n, job=j, sex=x, face=f)),
         'save_role_state': store.update_character_state,
     }
+    if config is not None:
+        kwargs['config'] = config
     return Session(conn_id=7, check_sign=check_sign,
                    get_roles=(lambda u, s: store.list_roles(u, s)) if store
                    else (lambda u, s: []),
@@ -426,11 +429,13 @@ class TestWorldInit(unittest.TestCase):
         session.feed(CAPTURED_INITKEY)
         out = session.feed(frame(session.cipher.encode(
             amf3.encode([20000, [str(role_id), '5']]))))
-        self.assertEqual(len(out), 3)
+        self.assertEqual(len(out), 4)
         decoded = [amf3.decode(o[4:]) for o in out]
         self.assertEqual(decoded[0], ['20000', [1, '5', [44, 33]]])
         self.assertEqual(decoded[1], ['21000', [1, 1, 1]])
         self.assertEqual(decoded[2], ['12004', [str(role_id), 5226, 5466, 1811, 1811]])
+        # Tap order continues with the shanbi value (none stored for this role).
+        self.assertEqual(decoded[3], ['12005', [0]])
 
     def test_stage_and_movement_persist_to_db(self):
         cleanups = []
@@ -448,11 +453,20 @@ class TestWorldInit(unittest.TestCase):
         self.assertEqual(role['map_x'], 57)
         self.assertEqual(role['map_y'], 148)
 
-        # 42001: movement updates the stored coordinates, no reply invented.
-        move = [42001, [str(role_id), 'normal003', [43, 32], [], 1]]
-        self.assertIsNone(s.move(move))
+        # 40000: the tile step is authoritative and is saved.
+        step = [40000, [43, 32, 1, 2, str(role_id)]]
+        self.assertIsNone(s.tile_step(step))
         role = store.get_character(str(role_id), 'hero', 'fu1304')
         self.assertEqual((role['map_x'], role['map_y']), (43, 32))
+
+        # 42001: pixel movement echoes the server broadcast but never
+        # persists (capture carries pixels like [2610, 1005], not tiles).
+        echo = s.skill_move(
+            [42001, [str(role_id), 'normal003', [2610, 1005],
+                      [[2670, 1005, 3.14159, 0, 659]], 1]])
+        role = store.get_character(str(role_id), 'hero', 'fu1304')
+        self.assertEqual((role['map_x'], role['map_y']), (43, 32))
+        self.assertEqual(amf3.decode(echo[4:])[0], '42001')
 
         # enter_world now reports the persisted stage, not the defaults.
         entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
@@ -464,7 +478,8 @@ class TestWorldInit(unittest.TestCase):
         store = temp_store(cleanups)
         role_id = store.create_character('hero', 'fu1304', 'SunWukong', job='C')
         s = make_session(store)
-        self.assertIsNone(s.move([42001, [str(role_id), 'normal003']]))
+        self.assertIsNone(s.skill_move([42001, [str(role_id), 'normal003']]))
+        self.assertIsNone(s.tile_step([40000, [43, 32]]))
         self.assertIsNone(store.get_character(
             str(role_id), 'hero', 'fu1304')['map_x'])
 
@@ -672,14 +687,245 @@ class TestMigratedRoleStage(unittest.TestCase):
         self.assertEqual(decoded[0], ['20000', [1, '2', [10, 150]]])
         # The scene entry is pushed for map 2 too, not only for map 5.
         self.assertEqual(decoded[1], ['21000', [1, 1, DEFAULT_MAP_TYPE]])
-        self.assertEqual(decoded[-1], ['12004', [str(self.role_id), 144, 144,
+        # Tap order after the scene entry: hp/mp, then shanbi. This session
+        # has no config, so the 12050/12000 pushes that follow are skipped.
+        self.assertEqual(decoded[2], ['12004', [str(self.role_id), 144, 144,
                                                  96, 96]])
+        self.assertEqual(decoded[3], ['12005', [0]])
+        self.assertEqual(len(decoded), 4)
 
     def test_empty_stage_blobs_stay_null(self):
         stage = self.store.get_role_stage(self.role_id)
         for column in ('buff', 'props', 'map_node', 'meiren_info',
                        'zuoqi_info', 'copy_info'):
             self.assertIsNone(stage[column], column)
+
+
+class TestWorldEntryStats(unittest.TestCase):
+    """Captured world-entry stats pushes: 12004 -> 12005 -> 12050 -> 12000.
+
+    Order comes from the Java tap (docs/java-python-parity-audit.md); payload
+    shapes from StageInfoAction.info, FightOutputWrapper.outputAttributeChange
+    and ZhujueAttributeExportServiceImpl bytecode.
+    """
+
+    LEVEL = 5
+
+    def build(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'Wukong', job='A', sex=0, face=1,
+            level=self.LEVEL, exp=0, hp=120, mp=60, max_hp=120,
+            max_mp=60, zhenqi=77)
+        cfg_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cfg_dir, ignore_errors=True)
+        os.makedirs(os.path.join(cfg_dir, 'sys_config'))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'ZhuJueShuXingBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(level=self.LEVEL, mana=96, physicdamage=200,
+                    physicdefence=50, critical=10, volt=7, attackrate=3,
+                    velocity=520, dunshudian=12.7, jiangu=0.25,
+                    zhenqi=100000)]))
+        s = make_session(store, config=GameConfig(cfg_dir))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return s, role_id
+
+    def test_entry_pushes_the_captured_stats_sequence(self):
+        s, role_id = self.build()
+        decoded = [amf3.decode(f[4:]) for f in
+                   s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        self.assertEqual([d[0] for d in decoded],
+                         ['20000', '21000', '12004', '12005', '12050', '12000'])
+        self.assertEqual(decoded[3], ['12005', [0]])    # shanbi_val: none stored
+        self.assertEqual(decoded[4], ['12050', [77, 100000]])  # zhenqi, cap
+        self.assertEqual(decoded[5][1], {
+            '1': 60.0,    # persisted max_mp wins over the level row's mana
+            '2': 200.0,   # physicdamage; effect slots are empty in migration
+            '3': 62.5,    # physicdefence*(1+jiangu) = 50*1.25
+            '4': 10.0,
+            '5': 7.0,
+            '6': 3.0,
+            '7': 520.0,
+            '10': 12.0,   # MaxShanBiValFormula casts dunshudian to int
+        })
+
+    def test_client_can_request_the_attribute_map(self):
+        s, _ = self.build()
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(amf3.encode([12000, []]))))
+        self.assertEqual(len(out), 1)
+        decoded = amf3.decode(out[0][4:])
+        self.assertEqual(decoded[0], '12000')
+        self.assertEqual(decoded[1]['7'], 520.0)
+
+    def test_without_a_level_row_only_the_first_four_are_pushed(self):
+        s, role_id = self.build()
+        s.config = None
+        decoded = [amf3.decode(f[4:]) for f in
+                   s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        self.assertEqual([d[0] for d in decoded],
+                         ['20000', '21000', '12004', '12005'])
+
+
+class TestZuoQiPetFrame(unittest.TestCase):
+    """Captured 23009 (tap line 9): the mount pet at scene entry.
+
+    Layout from ZuoQiPet.getMsgData bytecode, values from the capture
+    (rank 1, hp/max 500, level 30 via maxlv clamp, pet at 43,32 for a role
+    at 44,33), placement from RoleEventManager.createZuoQiPetEnterStage +
+    AoiStage.getSurroundValidPoint's AExtendOffs order.
+    """
+
+    MOUNTED = '{"id":1,"hp":500,"deadTime":0,"useTime":0,"rideOrNo":false}'
+    LEVEL = 56
+
+    def build(self, zuoqi_info=MOUNTED):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 's0.萬俊◆一刀', job='C', sex=0, face='C',
+            level=self.LEVEL, exp=10692892, hp=5466, mp=1811, max_hp=5466,
+            max_mp=1811, zhenqi=565260)
+        store.save_role_stage(role_id, map_id='5', map_x=44, map_y=33,
+                              shanbi_val=1, zuoqi_info=zuoqi_info)
+        cfg_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cfg_dir, ignore_errors=True)
+        os.makedirs(os.path.join(cfg_dir, 'sys_config'))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'ZuoJiBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(stratum='001', ridelv=1, maxlv=30, meinvhp=100,
+                    meinvatt=20),
+                Obj(stratum='001', ridelv=30, maxlv=30, meinvhp=500,
+                    meinvatt=100)]))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'ZhuJueShuXingBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(level=self.LEVEL, mana=1811, physicdamage=2049,
+                    physicdefence=996, critical=191, volt=196,
+                    attackrate=147, velocity=550, dunshudian=0,
+                    zhenqi=100000)]))
+        # A fully walkable path grid around the captured role position.
+        os.makedirs(os.path.join(cfg_dir, 'map_config', '5'))
+        with open(os.path.join(cfg_dir, 'map_config', '5', 'path.mm'), 'wb') as f:
+            f.write(struct.pack('>ii', 60, 60) + bytes([1]) * (60 * 60))
+        s = make_session(store, config=GameConfig(cfg_dir))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return s, role_id
+
+    def bootstrap(self, s, role_id):
+        return [amf3.decode(f[4:]) for f in
+                s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+
+    def test_entry_pushes_the_captured_mount_frame(self):
+        s, role_id = self.build()
+        decoded = self.bootstrap(s, role_id)
+        self.assertEqual([d[0] for d in decoded],
+                         ['20000', '21000', '23009', '12004', '12005',
+                          '12050', '12000'])
+        record = decoded[2][1][0]
+        self.assertEqual(len(record), 14)
+        self.assertTrue(record[0].startswith('zuoqi_5_'))
+        # 1..13: rank, curHp (clamped), maxHp from meinvhp, owner id/name,
+        # surround point, no buffs, alive, sex, pet level (56 clamped to 30),
+        # the owner's move speed, and the '0' ride-weapon id.
+        self.assertEqual(record[1:], [
+            1, 500.0, 500.0, str(role_id), 's0.萬俊◆一刀', 43, 32,
+            None, 0, 0, 30, 550.0, '0'])
+
+    def test_without_zuoqi_info_no_mount_frame(self):
+        s, role_id = self.build(zuoqi_info=None)
+        decoded = self.bootstrap(s, role_id)
+        self.assertEqual([d[0] for d in decoded],
+                         ['20000', '21000', '12004', '12005', '12050',
+                          '12000'])
+
+    def test_riding_or_dead_mount_is_not_spawned(self):
+        for info in ('{"id":1,"hp":500,"rideOrNo":true}',
+                     '{"id":1,"hp":0,"rideOrNo":false}',
+                     '{"id":0,"hp":500,"rideOrNo":false}',
+                     'not json'):
+            s, role_id = self.build(zuoqi_info=info)
+            cmds = [d[0] for d in self.bootstrap(s, role_id)]
+            self.assertNotIn('23009', cmds, info)
+
+    def test_unknown_rank_is_skipped_not_invented(self):
+        s, role_id = self.build(
+            zuoqi_info='{"id":9,"hp":500,"rideOrNo":false}')
+        with self.assertLogs('game', level='INFO'):
+            cmds = [d[0] for d in self.bootstrap(s, role_id)]
+        self.assertNotIn('23009', cmds)
+
+    def test_zuoqi_info_reply_shape(self):
+        s, role_id = self.build()
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(
+            amf3.encode([12102, str(role_id)]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]),
+                         ['12102', [1, 30, None, None, 0, 0, 0, None]])
+
+    def test_zuoqi_info_reply_without_a_mount_is_all_defaults(self):
+        s, role_id = self.build(zuoqi_info=None)
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(
+            amf3.encode([12102, str(role_id)]))))
+        self.assertEqual(amf3.decode(out[0][4:]),
+                         ['12102', [0, 0, None, None, 0, 0, 0, None]])
+
+
+class TestLiveScene(unittest.TestCase):
+    """Slice 1: tile steps persist, pixel moves echo, skill fire is logged."""
+
+    def build(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', map_id='5', map_x=44,
+            map_y=33)
+        s = make_session(store)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        s.feed(CAPTURED_INITKEY)
+        return s, store, str(role_id)
+
+    def test_tile_step_persists_owned_role_only(self):
+        s, store, role_id = self.build()
+        self.assertIsNone(s.tile_step([40000, [45, 33, 1, 2, role_id]]))
+        role = store.get_character(role_id, 'hero', 'fu1304')
+        self.assertEqual((role['map_x'], role['map_y']), (45, 33))
+        self.assertIsNone(s.tile_step([40000, [46, 33, 0, 2, 'm_64_93']]))
+        role = store.get_character(role_id, 'hero', 'fu1304')
+        self.assertEqual((role['map_x'], role['map_y']), (45, 33))
+
+    def test_skill_move_echoes_capture_shape_without_db_write(self):
+        s, store, role_id = self.build()
+        out = s.skill_move([42001, [role_id, 'normal003', [2610, 1005],
+                                    [[2670, 1005, 3.141592653589793, 0, 659]], 1]])
+        env = amf3.decode(out[4:])
+        self.assertEqual(env, ['42001', [1, role_id, 'normal003', [2610, 1005],
+                                        [[2670, 1005, 3.141592653589793, 0, 659]],
+                                        1, None]])
+        role = store.get_character(role_id, 'hero', 'fu1304')
+        self.assertEqual((role['map_x'], role['map_y']), (44, 33))
+        self.assertIsNone(s.skill_move([42001, ['m_64_96', 'monster06']]))
+
+    def test_skill_fire_logs_without_inventing_damage(self):
+        s, _, role_id = self.build()
+        self.assertIsNone(s.skill_fire(
+            [42002, [role_id, 'normal003', 0, ['m_64_96'], None, 1]]))
+        self.assertIsNone(s.skill_fire([42002, [['m_64_96']]]))
+        self.assertIsNone(s.skill_fire(
+            [42002, ['nobody', 'normal003', 0, ['m_64_96'], None, 1]]))
+
+    def test_jump_and_teleport_log_without_reply(self):
+        s, _, _ = self.build()
+        self.assertIsNone(s.jump([40001, []]))
+        self.assertIsNone(s.teleport([40100, []]))
 
 
 if __name__ == '__main__':

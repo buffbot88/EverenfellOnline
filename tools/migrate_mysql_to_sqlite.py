@@ -203,11 +203,12 @@ def migrate(mysql, db_path, users, dry_run=False):
                         f'{legacy_id} ({user_id})')
                 cur = conn.execute(
                     'INSERT INTO characters(legacy_id, account, server_id, name,'
-                    ' job, sex, face, level, exp, created)'
-                    ' VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    ' job, sex, face, level, exp, zhenqi, shengwang, created)'
+                    ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                     (legacy_id, user_id, server_id, name, job or 'A',
                      as_int(sex) or 0, face, as_int(level) or 1,
-                     as_int(exp), int(time.time())))
+                     as_int(exp), as_int(zhenqi), as_int(shengwang),
+                     int(time.time())))
                 legacy_to_local[legacy_id] = cur.lastrowid
                 report['roles_added'] += 1
         conn.commit()

@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS characters (
   bind_lingshi INTEGER,
   lingshi INTEGER,
   recive_yb INTEGER,
+  zhenqi INTEGER,
+  shengwang INTEGER,
   created INTEGER NOT NULL,
   UNIQUE(account, server_id, name)
 );
@@ -93,6 +95,10 @@ CHARACTER_COLUMNS = {
     'bind_lingshi': 'INTEGER',
     'lingshi': 'INTEGER',
     'recive_yb': 'INTEGER',
+    # user_role.zhenqi/shengwang (UserRole entity; the migrator already reads
+    # both but only stored them once these columns existed).
+    'zhenqi': 'INTEGER',
+    'shengwang': 'INTEGER',
 }
 
 # role_stage columns accepted by save_role_stage (legacy MySQL names).
@@ -215,7 +221,11 @@ class Store:
                 ' COALESCE(s.hp, c.hp) AS hp, COALESCE(s.mp, c.mp) AS mp,'
                 ' COALESCE(s.max_hp, c.max_hp) AS max_hp,'
                 ' COALESCE(s.max_mp, c.max_mp) AS max_mp,'
-                ' c.tongqian, c.bind_lingshi, c.lingshi, c.recive_yb, c.created'
+                ' c.tongqian, c.bind_lingshi, c.lingshi, c.recive_yb,'
+                ' c.zhenqi, c.shengwang,'
+                ' COALESCE(s.shanbi_val, 0) AS shanbi_val,'
+                ' s.zuoqi_info AS zuoqi_info,'
+                ' c.created'
                 ' FROM characters c LEFT JOIN role_stage s ON s.role_id=c.id'
                 ' WHERE c.account=? AND c.server_id=? ORDER BY c.id',
                 (account, server_id)).fetchall()

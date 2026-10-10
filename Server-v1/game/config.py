@@ -8,6 +8,7 @@ edits the tables; it only reports what the legacy server would load.
 """
 import logging
 import os
+import struct
 
 from .amf3 import decode as amf3_decode
 
@@ -45,6 +46,68 @@ def load_monsters(path):
     return [r for r in records if isinstance(r, dict)]
 
 
+def load_zuoji_table(path):
+    """Rows of sys_config/ZuoJiBiao.jat keyed by (int(stratum), int(ridelv)).
+
+    Java keys ZuoQiConfig by String.valueOf(int(stratum)) and its level
+    configs by int(ridelv) (ZuoQiConfigExportServiceImpl bytecode); every
+    row carries both plus maxlv/meinvhp/meinvatt.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of ZuoJiBiao rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('stratum') is None \
+                or row.get('ridelv') is None:
+            continue
+        table[(int(row['stratum']), int(row['ridelv']))] = row
+    return table
+
+
+# MapExportServiceImpl.configureDataResolve reads path.mm as a big-endian int32 width,
+# int32 height, then one unsigned byte per cell in row-major order (x wraps at width)
+# until EOF. PathInfoConfig.addPathNode treats a cell as walkable when (value & 31) != 0.
+WALKABLE_MASK = 31
+
+# Surround order for getSurroundValidPoint: MapExportServiceImpl always loads
+# maps with PathFinderType.AExtend, so PathInfoConfig.preprocess builds each
+# node's surrounds from OffConfigUtils.AExtendOffs (bytecode order).
+A_EXTEND_OFFS = ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0),
+                 (-1, 1), (0, 1), (1, 1))
+
+
+class PathGrid:
+    """Walkability grid from path.mm; cells past height*width (trailing bytes) are kept, as Java keeps them."""
+
+    def __init__(self, width, height, values):
+        self.width = width
+        self.height = height
+        self.values = values
+
+    def value(self, x, y):
+        index = y * self.width + x
+        if x < 0 or x >= self.width or index < 0 or index >= len(self.values):
+            return None
+        return self.values[index]
+
+    def walkable(self, x, y):
+        v = self.value(x, y)
+        return v is not None and (v & WALKABLE_MASK) != 0
+
+
+def load_path_grid(path):
+    """Parse one path.mm file into a PathGrid; raises ValueError on a truncated header or non-positive width."""
+    with open(path, 'rb') as f:
+        data = f.read()
+    if len(data) < 8:
+        raise ValueError(f'{path}: shorter than the 8-byte path.mm header')
+    width, height = struct.unpack('>ii', data[:8])
+    if width <= 0:
+        raise ValueError(f'{path}: width must be positive, got {width}')
+    return PathGrid(width, height, data[8:])
+
+
 class GameConfig:
     """Lazily loads the legacy tables from a config directory; missing files are reported, not faked."""
 
@@ -52,7 +115,10 @@ class GameConfig:
         self.config_dir = config_dir
         self._map_lines = None
         self._monsters = {}
+        self._path_grids = {}
         self._templates = None
+        self._zhujue = None
+        self._zuoji = None
 
     @property
     def map_lines_path(self):
@@ -73,6 +139,36 @@ class GameConfig:
             return None
         return int(row['maptype'])
 
+    def path_grid(self, map_id):
+        """Walkability grid for a map from map_config/<id>/path.mm, or None if the file is absent."""
+        key = str(map_id)
+        if key not in self._path_grids:
+            path = os.path.join(self.config_dir, 'map_config', key, 'path.mm')
+            self._path_grids[key] = load_path_grid(path) if os.path.isfile(path) else None
+        return self._path_grids[key]
+
+    @property
+    def zhujue_attributes_path(self):
+        return os.path.join(self.config_dir, 'sys_config', 'ZhuJueShuXingBiao.jat')
+
+    def role_attribute_row(self, level):
+        """ZhuJueShuXingBiao row for a level, or None when table/level is absent.
+
+        Drives the 12000 attribute map and the 12050 zhenqi cap (Java:
+        ZhujueAttributeExportServiceImpl.loadByLevel, config ZhuJueShuXingBiao.jat).
+        """
+        if self._zhujue is None:
+            path = self.zhujue_attributes_path
+            rows = _load(path) if os.path.isfile(path) else []
+            self._zhujue = {int(r['level']): r for r in rows
+                            if isinstance(r, dict) and r.get('level') is not None}
+            if not self._zhujue:
+                log.warning('no ZhuJueShuXingBiao table at %s; 12000/12050 unknown',
+                            path)
+        if level is None:
+            return None
+        return self._zhujue.get(int(level))
+
     def monsters(self, map_id):
         """Monster spawn records for a map (empty list if the map has no monster.mm)."""
         key = str(map_id)
@@ -80,6 +176,42 @@ class GameConfig:
             path = os.path.join(self.config_dir, 'map_config', key, 'monster.mm')
             self._monsters[key] = load_monsters(path) if os.path.isfile(path) else []
         return self._monsters[key]
+
+    def zuoqi_table(self):
+        """ZuoJiBiao rows keyed by (rank, level); empty when the file is absent."""
+        if self._zuoji is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'ZuoJiBiao.jat')
+            try:
+                self._zuoji = load_zuoji_table(path) if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad ZuoJiBiao table: %s', e)
+                self._zuoji = {}
+        return self._zuoji
+
+    def zuoqi_pet(self, rank, role_level):
+        """(pet_level, level_row) for a mount of `rank` owned by a level
+        `role_level` role, or None when the rank/level row is missing.
+
+        Port of RoleFactoryHelper.getZuoqiLevel + loadByRankLevel: the pet
+        level is the role level clamped to the rank's maxlv (ZuoQiConfig-
+        minLevel is never set in the jar, so the floor is 0) and the level
+        row supplies maxHp via meinvhp.
+        """
+        table = self.zuoqi_table()
+        if not table or rank is None or int(rank) <= 0:
+            return None
+        rank = int(rank)
+        # The config object is created once, from the rank's first row in
+        # file order, so maxlv is that row's (ZuoQiConfigExportServiceImpl).
+        maxlv = next((int(r.get('maxlv') or 0)
+                      for (rk, _lv), r in table.items() if rk == rank), None)
+        if maxlv is None:
+            return None
+        level = max(0, min(int(role_level or 0), maxlv))
+        row = table.get((rank, level))
+        if row is None:
+            return None
+        return level, row
 
     def monster_templates(self):
         """Monster template rows from sys_config/GuaiWuBiao.jat, keyed by template id."""
@@ -89,6 +221,40 @@ class GameConfig:
             self._templates = {str(r['id']): r for r in rows
                                if isinstance(r, dict) and r.get('id')}
         return self._templates
+
+    def monster_spawn_cells(self, map_id):
+        """Spawn cells whose monsters Java can create (template row required).
+
+        These cells are BEING-taken on stage entry, which is what
+        getSurroundValidPoint skips when placing a mount pet.
+        """
+        templates = self.monster_templates()
+        cells = set()
+        for group in self.monsters(map_id):
+            if templates.get(str(group.get('id'))) is None:
+                continue
+            for x, y, _dir in group.get('createPoints') or []:
+                cells.add((int(x), int(y)))
+        return cells
+
+    def surround_valid_point(self, map_id, x, y, occupied=()):
+        """Java's AoiStage.getSurroundValidPoint(point, false, BEING).
+
+        Returns the first walkable, untaken surround in A_EXTEND_OFFS order,
+        or None when the start cell has no PathNode (unwalkable/missing map).
+        Java random-walks when every surround is taken; without a scene
+        simulation this returns the original point, the same fallback Java's
+        wrapper uses when the search fails.
+        """
+        grid = self.path_grid(map_id)
+        if grid is None or not grid.walkable(x, y):
+            return None
+        taken = {(int(a), int(b)) for a, b in occupied}
+        for dx, dy in A_EXTEND_OFFS:
+            nx, ny = x + dx, y + dy
+            if grid.walkable(nx, ny) and (nx, ny) not in taken:
+                return nx, ny
+        return x, y
 
     def monster_snapshot(self, map_id):
         """23002 monster records for a map: one per spawn point, template stats from GuaiWuBiao.

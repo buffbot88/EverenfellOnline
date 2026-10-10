@@ -6,7 +6,10 @@ connects as latin1, and NULL arriving as the literal text `NULL`.
 """
 import importlib.util
 import os
+import shutil
+import sqlite3
 import sys
+import tempfile
 import unittest
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,6 +18,12 @@ _spec = importlib.util.spec_from_file_location(
     'migrate_mysql_to_sqlite', os.path.join(TOOLS, 'migrate_mysql_to_sqlite.py'))
 mig = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mig)
+
+# The migrator writes into an existing Server-v1 schema; load its DDL only.
+_db_spec = importlib.util.spec_from_file_location(
+    'mko_db', os.path.join(os.path.dirname(TOOLS), 'Server-v1', 'db.py'))
+mko_db = importlib.util.module_from_spec(_db_spec)
+_db_spec.loader.exec_module(mko_db)
 
 
 class ParseBatchTest(unittest.TestCase):
@@ -83,6 +92,59 @@ class ScopeTest(unittest.TestCase):
     def test_role_filter_matches_nothing_when_no_roles(self):
         self.assertEqual(mig.role_filter([]), 'where 0')
         self.assertEqual(mig.role_filter(['7']), "where user_role_id in ('7')")
+
+
+class FakeDataMySql:
+    """Answers migrate()'s four queries with parse_batch-shaped string rows."""
+
+    def query(self, database, sql):
+        if 'from account' in sql:
+            return [[3, 'stress', 'pw', None]]
+        if 'from user_role' in sql:
+            # ROLE_COLS: legacy_id, user_id, name, job, sex, exp, level, face,
+            # zhenqi, shengwang, server_id, created.
+            return [['7', 'stress', '悟空', 'A', '1', '1310', '7', '1',
+                     '565260', '987', 'fu1304', '2014-02-24 21:37:40']]
+        if 'from role_stage' in sql:
+            return [['7', '2', 10, 150, 144, 96, 144, 96, None, None, 1,
+                     None, 1, 1, 1, None, None, None, 0]]
+        if 'from role_account' in sql:
+            return [['7', '1000', '50']]
+        raise AssertionError(f'unexpected query: {sql}')
+
+
+class MigrateCharactersTest(unittest.TestCase):
+    """End-to-end copy into a temp SQLite: currencies must land on characters."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.db_path = os.path.join(self.tmp, 'mko.db')
+        conn = sqlite3.connect(self.db_path)
+        conn.executescript(mko_db.SCHEMA)
+        conn.close()
+
+    def test_role_currencies_and_stage_land_on_the_local_rows(self):
+        report = mig.migrate(FakeDataMySql(), self.db_path, ['stress'])
+        self.assertEqual(report['accounts_added'], 1)
+        self.assertEqual(report['roles_added'], 1)
+        self.assertEqual(report['stages_written'], 1)
+        self.assertEqual(report['currency_written'], 1)
+        self.assertEqual(report['roles_missing_account'], [])
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute('SELECT * FROM characters').fetchone()
+        self.assertEqual(row['legacy_id'], '7')
+        self.assertEqual(row['name'], '悟空')
+        self.assertEqual(row['zhenqi'], 565260)   # user_role.zhenqi -> column
+        self.assertEqual(row['shengwang'], 987)
+        self.assertEqual(row['tongqian'], 1000)   # role_account -> currency
+        self.assertEqual(row['bind_lingshi'], 50)
+        stage = conn.execute('SELECT * FROM role_stage').fetchone()
+        self.assertEqual(stage['map_id'], '2')
+        self.assertEqual(stage['shanbi_val'], 1)
+        conn.close()
 
 
 if __name__ == '__main__':

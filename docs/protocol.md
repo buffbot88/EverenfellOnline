@@ -67,23 +67,29 @@ Legacy game server 127.0.0.1:8008 (MINA NioSocketAcceptor, TcpNoDelay)
 
 ## Strongly inferred
 
-- Server→client framing mirrors client→server (u32be + encrypted AMF3;
-  `AmfResponseEncoder` uses `putInt` + allocate/flip/write). Unconfirmed:
-  the fake server never got a reply to forward.
+- Server→client framing is u32be length + **plaintext** AMF3 (supersedes the
+  old encrypted guess; see "Confirmed — login handshake" below).
+  Historical note: the fake server never got a reply to forward, so this was
+  once unconfirmed.
 - Message routing is by AMF3 object content, not numeric opcodes: `NetIoHandler`
   dispatches deserialized objects with session attrs `ip_key/account_key/
   role_key`; no opcode table found in jar strings.
 - `sign = md5(uid.'xianlingkey'.t)` (PHP) authenticates the web session; the
   socket `ticket` is likely issued after the socket login — exact link unknown.
 
-## Unknown
+## Unknown (Ruffle-era; partly superseded)
 
-- Login/world-entry packet fields, ticket issuance and key derivation (all
-  inside encrypted `tg.swf` + server login handler).
-- Server→client first bytes (need the real server).
+- Login/world-entry packet fields were unknown in the Ruffle era. Since then
+  `10001`/`10003`/`20000`/`21000`/`23002`/`23009`/`12000`-family shapes were
+  recovered from jar bytecode + the original-stack tap; see
+  `docs/java-python-parity-audit.md` and `docs/mount-23009-recovery.md`.
+- Server→client first bytes were captured from the original stack via the
+  tap (`output/orig-stack/tap-decoded.txt`); the plaintext-reply model is
+  confirmed below.
 - Whether Ruffle's `Socket` covers every API the game uses (only benign
   stubs seen so far: `URLStream` streaming, `Dictionary` weak keys,
-  `Loader` timing, `DateTimeFormatter`, `unloadAndStop`).
+  `Loader` timing, `DateTimeFormatter`, `unloadAndStop`). Ruffle is no
+  longer the target client; kept for wire-fact history.
 
 ## Confirmed — login handshake, end to end (2026-10-07)
 
@@ -150,18 +156,23 @@ SERVER->CLIENT len=124 09 15 01 06 0b "10001" 09 09 01 04 01 09 0d 01 05 <ms dou
 Unsigned clients get `[0, '16002']` (`InOutput.signError`) — also verified.
 Invalid/failed sign leaves the client on its loading screen; no AS3 error.
 
-## Open question — client stalls on its loading bar
+## Open question — projector stalls before the visual login screen
 
-The client renders its real splash (`Main.swf` → `PlatformLoader.swf` →
-`assets/tg.swf` → `data/tw_config.xml` → `assets/tw/lib.swf`, all 200) and its
-progress bar reaches ~99%, but it does not go on to request its UI SWFs
-(`assets/tw/gameui.swf`, `createUI.swf`, …) even after a successful login.
-Reaching the socket stage is also intermittent — some page loads never dial
-`8008` at all. Not yet explained; candidates: a Ruffle stub the loader waits
-on (`Security.loadPolicyFile()`, `flash.net.URLStream` streaming and
-`Loader.load()` timing are all logged as stubs), or a message the client
-expects after login that the original server pushed. The MPlayer.swf sidecar
-(second Ruffle instance) was tried and made it worse — reverted.
+Current blocker (see `knowledge.md`, "Open blocker"): the Flash projector
+reaches ~99% load but has not yet shown the visual login screen, and socket
+reachability to `:8008` is intermittent.
+
+Ruffle-era history for the same symptom: the client rendered its real splash
+(`Main.swf` → `PlatformLoader.swf` → `assets/tg.swf` → `data/tw_config.xml` →
+`assets/tw/lib.swf`, all 200) and its progress bar reached ~99%, but it did
+not go on to request its UI SWFs (`assets/tw/gameui.swf`, `createUI.swf`, …)
+even after a successful login. Reaching the socket stage was also
+intermittent — some page loads never dialled `8008` at all. Candidates then:
+a Ruffle stub the loader waited on (`Security.loadPolicyFile()`,
+`flash.net.URLStream` streaming and `Loader.load()` timing are all logged as
+stubs), or a message the client expected after login that the original server
+pushed. The MPlayer.swf sidecar (second Ruffle instance) was tried and made
+it worse — reverted.
 
 ## Next step for world entry (historical, 2026-10-07)
 

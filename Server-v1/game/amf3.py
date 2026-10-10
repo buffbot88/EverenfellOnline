@@ -224,20 +224,23 @@ class Reader:
         if not ref & 1:
             return self.objects[ref >> 1]
         dense = ref >> 1
-        assoc = {}
-        value = {'__assoc__': assoc, 'items': []} if assoc else []
+        # Reserve the reference slot first; the shape is finalized once the
+        # assoc entries show whether this is a dense list or an ECMA array.
+        value = []
         self.objects.append(value)
+        assoc = {}
         while True:
             k = self.string()
             if k == '':
                 break
             assoc[k] = self.read()
         items = [self.read() for _ in range(dense)]
-        if assoc:
-            value['items'] = items
+        if not assoc:
+            value.extend(items)
             return value
-        value.extend(items)
-        return value
+        # Back-references issued during the child reads above still point at
+        # the reserved list; cyclic keyed arrays do not occur in this traffic.
+        return {'__assoc__': assoc, 'items': items}
 
 
 class Writer:

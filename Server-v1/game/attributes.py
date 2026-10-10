@@ -14,8 +14,8 @@ persisted max_mp, exactly what our data model knows.
 
 
 def _gongji(base, perdamage=0.0, e6=0.0, e5=0.0):
-    """GongJiFormula: base + (1+perdamage)*e6 + e5, floor 1."""
-    return max(base + (1.0 + perdamage) * e6 + e5, 1.0)
+    """GongJiFormula: base*(1+perdamage+e6) + e5, floor 1 (jar bytecode)."""
+    return max(base * (1.0 + perdamage + e6) + e5, 1.0)
 
 
 def _fangyu(base, jiangu=0.0, e8=0.0, e7=0.0):

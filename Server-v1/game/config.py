@@ -8,6 +8,7 @@ edits the tables; it only reports what the legacy server would load.
 """
 import logging
 import os
+import re
 import struct
 
 from .amf3 import decode as amf3_decode
@@ -44,6 +45,55 @@ def load_monsters(path):
     if not isinstance(records, list):
         raise ValueError(f'{path}: expected a list of monster records')
     return [r for r in records if isinstance(r, dict)]
+
+
+# The eight flat attribute columns an equipment row can carry; ZuoQiConfig and
+# the attribute pills use the same names (EquipFuJiaAttributeConfig fields).
+EQUIP_ATTRIBUTE_NAMES = ('physicdamage', 'physicdefence', 'critical', 'volt',
+                         'velocity', 'attackrate', 'hitpoints', 'mana')
+
+_QH_STARS = re.compile(r'"qhxingxing"\s*:\s*"\[(.*?)\]"')
+_QH_PAIR = re.compile(r'\[(\d+)\s*,')
+_FUJIA_PAIR = re.compile(r'(\d+)@(\d+)')
+
+
+def _number(value):
+    """Config cells hold '' for 'no value'; that is zero, not an error."""
+    return 0.0 if value in ('', None) else float(value)
+
+
+def parse_item_attributes(text):
+    """(qh stars, fujia ids) from a role_equip_slot.attributes blob.
+
+    GoodsEquipVo.getGoodsAttributes reads this JSON; qhxingxing pairs are
+    [star, count] and fjattrstr maps a slot to '<fujiaId>@<count>'. Stored rows
+    sometimes carry a backslash-escaped copy of fjattrstr, so this scans the
+    text instead of requiring strict JSON.
+    """
+    text = text or ''
+    match = _QH_STARS.search(text)
+    stars = [int(s) for s in _QH_PAIR.findall(match.group(1))] if match else []
+    return stars, [int(i) for i in _FUJIA_PAIR.findall(text)]
+
+
+def load_equip_attribute_table(path):
+    """Rows of sys_config/ZhuangBeiFuJiaShuXingBiao.jat keyed by goods id.
+
+    This is EquipFuJiaAttributeConfig: the flat base columns, the Njichubili
+    rank rates and the starN<attr> 强化 columns EquipAttributeService reads.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of equipment rows')
+    return {str(r['id']): r for r in rows if isinstance(r, dict) and r.get('id')}
+
+
+def load_shuxingdan_table(path):
+    """Rows of sys_config/shuxingdan.jat (permanent attribute pills) by id."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of shuxingdan rows')
+    return {str(r['id']): r for r in rows if isinstance(r, dict) and r.get('id')}
 
 
 def load_zuoji_table(path):
@@ -119,6 +169,8 @@ class GameConfig:
         self._templates = None
         self._zhujue = None
         self._zuoji = None
+        self._equip = None
+        self._shuxingdan = None
 
     @property
     def map_lines_path(self):
@@ -212,6 +264,81 @@ class GameConfig:
         if row is None:
             return None
         return level, row
+
+    def equip_table(self):
+        """ZhuangBeiFuJiaShuXingBiao rows keyed by goods id; empty when absent."""
+        if self._equip is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuangBeiFuJiaShuXingBiao.jat')
+            try:
+                self._equip = load_equip_attribute_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad ZhuangBeiFuJiaShuXingBiao table: %s', e)
+                self._equip = {}
+            if not self._equip:
+                log.warning('no equipment attribute table at %s; 12000 has no gear',
+                            path)
+        return self._equip
+
+    def shuxingdan_table(self):
+        """shuxingdan.jat rows keyed by attribute id; empty when absent."""
+        if self._shuxingdan is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'shuxingdan.jat')
+            try:
+                self._shuxingdan = load_shuxingdan_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad shuxingdan table: %s', e)
+                self._shuxingdan = {}
+        return self._shuxingdan
+
+    def equip_attribute_map(self, items):
+        """Summed gear attribute map for equipped items.
+
+        Port of EquipAttributeService.getEquipAttributeAll over a role's
+        role_equip_slot rows: per item the flat base columns plus every 强化
+        star's starN<attr>, all scaled by the rare level's Njichubili rate
+        (getEquipBaseAttribute/getEquipQianghuaAttribute). Random 附加 affixes
+        are a separate lookup and are not included yet.
+        """
+        table = self.equip_table()
+        totals = {}
+        for item in items:
+            row = table.get(str(item.get('goods_id')))
+            if row is None:
+                log.warning('equipment %r has no attribute row; skipped',
+                            item.get('goods_id'))
+                continue
+            rate = _number(row.get('%sjichubili' % int(item.get('rare_level') or 0))) or 1.0
+            stars, _fujia = parse_item_attributes(item.get('attributes'))
+            for name in EQUIP_ATTRIBUTE_NAMES:
+                value = _number(row.get(name))
+                for star in stars:
+                    value += _number(row.get('star%d%s' % (star, name)))
+                if value:
+                    totals[name] = totals.get(name, 0.0) + value * rate
+        return totals
+
+    def shuxingdan_attribute_map(self, attribute_ids):
+        """Permanent attribute-pill bonuses for AttributeBuff rows.
+
+        Java resolves each role_attribute_buff.attribute_id through the dan
+        config and folds the row into the SHUXINGDAN bag
+        (RoleFactoryHelper.replaceShuxingdanAttribute).
+        """
+        table = self.shuxingdan_table()
+        totals = {}
+        for attribute_id in attribute_ids:
+            row = table.get(str(attribute_id))
+            if row is None:
+                log.warning('attribute id %r has no shuxingdan row', attribute_id)
+                continue
+            for name in EQUIP_ATTRIBUTE_NAMES + ('perdamage', 'jiangu'):
+                value = _number(row.get(name))
+                if value:
+                    totals[name] = totals.get(name, 0.0) + value
+        return totals
 
     def monster_templates(self):
         """Monster template rows from sys_config/GuaiWuBiao.jat, keyed by template id."""

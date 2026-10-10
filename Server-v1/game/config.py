@@ -181,6 +181,33 @@ def load_shuxingdan_table(path):
     return {str(r['id']): r for r in rows if isinstance(r, dict) and r.get('id')}
 
 
+def load_cd_table(path):
+    """Rows of sys_config/CdBiao.jat as {cdid: cdtimeMs}."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of CdBiao rows')
+    return {str(r['cdid']): int(r['cdtime']) for r in rows
+            if isinstance(r, dict) and r.get('cdid') is not None
+            and r.get('cdtime') is not None}
+
+
+def load_xiaoguo_table(path):
+    """Rows of sys_config/XiaoGuoBiao.jat (buff/effect configs) by effectid."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of XiaoGuoBiao rows')
+    return {str(r['effectid']): r for r in rows
+            if isinstance(r, dict) and r.get('effectid')}
+
+
+def load_jineng_table(path):
+    """Rows of sys_config/JiNengBiao.jat (skill configs) as a plain list."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of JiNengBiao rows')
+    return [r for r in rows if isinstance(r, dict)]
+
+
 def load_zuoji_table(path):
     """Rows of sys_config/ZuoJiBiao.jat keyed by (int(stratum), int(ridelv)).
 
@@ -261,6 +288,9 @@ class GameConfig:
         self._zuwu = None
         self._xishu = None
         self._vip = None
+        self._cd = None
+        self._xiaoguo = None
+        self._jineng = None
 
     @property
     def map_lines_path(self):
@@ -310,6 +340,67 @@ class GameConfig:
         if level is None:
             return None
         return self._zhujue.get(int(level))
+
+    def cd_time(self, cd_id):
+        """PublicCdConfig.cdTime for a cooldown id, or None when unknown.
+
+        Java: PublicCdExportServiceImpl over CdBiao.jat (t070 -> 700). Feeds
+        the 42005 dynamic cooldown with the role's live gongjisudu."""
+        if self._cd is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'CdBiao.jat')
+            self._cd = load_cd_table(path) if os.path.isfile(path) else {}
+            if not self._cd:
+                log.warning('no CdBiao table at %s; skill cooldowns unknown',
+                            path)
+        return self._cd.get(str(cd_id)) if cd_id else None
+
+    def buff_effect(self, effect_id):
+        """XiaoGuoBiao row for a buff id (vip010, birthprotect, ...), or None."""
+        if self._xiaoguo is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'XiaoGuoBiao.jat')
+            self._xiaoguo = (load_xiaoguo_table(path)
+                             if os.path.isfile(path) else {})
+            if not self._xiaoguo:
+                log.warning('no XiaoGuoBiao table at %s; buff configs unknown',
+                            path)
+        return self._xiaoguo.get(str(effect_id)) if effect_id else None
+
+    def buff_lasttime(self, effect_id):
+        """BuffConfig lasttime (ms) for a buff id, or None when not a timed buff."""
+        row = self.buff_effect(effect_id)
+        if row is None or row.get('lasttime') in (None, ''):
+            return None
+        return int(row['lasttime'])
+
+    def vip_buff_id(self, vip_level):
+        """XiaoGuoBiao buff id for a VIP level ('vip010' for 10), or None.
+
+        Ids are data (vip001..vip012, effectlevel '001'..'012', all
+        permanent); a level with no row sends no buff, exactly Java's
+        empty-source behavior."""
+        try:
+            level = int(vip_level or 0)
+        except (TypeError, ValueError):
+            return None
+        if level <= 0:
+            return None
+        buff_id = 'vip%03d' % level
+        return buff_id if self.buff_effect(buff_id) is not None else None
+
+    def skill_cd_id(self, category):
+        """JiNengBiao cd1 for a skill category ('normal003' -> 't070'), or None."""
+        if self._jineng is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'JiNengBiao.jat')
+            self._jineng = (load_jineng_table(path)
+                            if os.path.isfile(path) else [])
+            if not self._jineng:
+                log.warning('no JiNengBiao table at %s; skill cooldowns unknown',
+                            path)
+        for row in self._jineng:
+            if row.get('skilltype') == category and row.get('cd1'):
+                return str(row['cd1'])
+        return None
 
     def monsters(self, map_id):
         """Monster spawn records for a map (empty list if the map has no monster.mm)."""
@@ -481,13 +572,15 @@ class GameConfig:
         return self._mall
 
     def mall_sign(self):
-        """Cache-buster for 32000: the mall row count as a string.
+        """The 32000 sign: None, exactly like Java.
 
-        Java compares the client's sign against a framework-computed config
-        sign whose exact derivation is unresolved; any deterministic value
-        preserves the behavior (mismatch -> full list, match -> [-1, echo]).
+        ClasspathConfigureLoader.loadSign returns [null, path] and
+        AbsConfigureParser.init stores element 0, so the sign is null and
+        MallServiceImpl always takes the full-list branch (the [-1, echo]
+        path is unreachable: a null request takes the list branch first,
+        and any string .equals(null) is false).
         """
-        return str(sum(len(items) for items in self.mall_table().values()))
+        return None
 
     def mall_shop_list(self, category):
         """Raw mall rows for a modelid (the source map IS the row).

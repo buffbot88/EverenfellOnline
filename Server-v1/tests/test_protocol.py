@@ -432,13 +432,15 @@ class TestWorldInit(unittest.TestCase):
         session.feed(CAPTURED_INITKEY)
         out = session.feed(frame(session.cipher.encode(
             amf3.encode([20000, [str(role_id), '5']]))))
-        self.assertEqual(len(out), 4)
+        self.assertEqual(len(out), 5)
         decoded = [amf3.decode(o[4:]) for o in out]
         self.assertEqual(decoded[0], ['20000', [1, '5', [44, 33]]])
         self.assertEqual(decoded[1], ['21000', [1, 1, 1]])
         self.assertEqual(decoded[2], ['12004', [str(role_id), 5226, 5466, 1811, 1811]])
         # Tap order continues with the shanbi value (none stored for this role).
         self.assertEqual(decoded[3], ['12005', [0]])
+        # No level row is migrated, so the burst closes with 40501.
+        self.assertEqual(decoded[4], ['40501', str(role_id)])
 
     def test_stage_and_movement_persist_to_db(self):
         cleanups = []
@@ -697,7 +699,9 @@ class TestMigratedRoleStage(unittest.TestCase):
         self.assertEqual(decoded[2], ['12004', [str(self.role_id), 144, 144,
                                                  96, 96]])
         self.assertEqual(decoded[3], ['12005', [0]])
-        self.assertEqual(len(decoded), 4)
+        # 40501 needs no config: the fight-state notice always closes entry.
+        self.assertEqual(decoded[4], ['40501', str(self.role_id)])
+        self.assertEqual(len(decoded), 5)
 
     def test_empty_stage_blobs_stay_null(self):
         stage = self.store.get_role_stage(self.role_id)
@@ -743,7 +747,10 @@ class TestWorldEntryStats(unittest.TestCase):
         decoded = [amf3.decode(f[4:]) for f in
                    s.apply_stage_bootstrap([20000, [str(role_id), '']])]
         self.assertEqual([d[0] for d in decoded],
-                         ['20000', '21000', '12004', '12005', '12050', '12000'])
+                         ['20000', '21000', '12004', '12005', '12050', '12000',
+                          '40501'])
+        # 40501 is the bare role id (send2One), closing the entry burst.
+        self.assertEqual(decoded[6], ['40501', str(role_id)])
         self.assertEqual(decoded[3], ['12005', [0]])    # shanbi_val: none stored
         self.assertEqual(decoded[4], ['12050', [77, 100000]])  # zhenqi, cap
         self.assertEqual(decoded[5][1], {
@@ -772,7 +779,7 @@ class TestWorldEntryStats(unittest.TestCase):
         decoded = [amf3.decode(f[4:]) for f in
                    s.apply_stage_bootstrap([20000, [str(role_id), '']])]
         self.assertEqual([d[0] for d in decoded],
-                         ['20000', '21000', '12004', '12005'])
+                         ['20000', '21000', '12004', '12005', '40501'])
 
 
 class TestZuoQiPetFrame(unittest.TestCase):
@@ -831,7 +838,7 @@ class TestZuoQiPetFrame(unittest.TestCase):
         decoded = self.bootstrap(s, role_id)
         self.assertEqual([d[0] for d in decoded],
                          ['20000', '21000', '23009', '12004', '12005',
-                          '12050', '12000'])
+                          '12050', '12000', '40501'])
         record = decoded[2][1][0]
         self.assertEqual(len(record), 14)
         self.assertTrue(record[0].startswith('zuoqi_5_'))
@@ -847,7 +854,7 @@ class TestZuoQiPetFrame(unittest.TestCase):
         decoded = self.bootstrap(s, role_id)
         self.assertEqual([d[0] for d in decoded],
                          ['20000', '21000', '12004', '12005', '12050',
-                          '12000'])
+                          '12000', '40501'])
 
     def test_riding_or_dead_mount_is_not_spawned(self):
         for info in ('{"id":1,"hp":500,"rideOrNo":true}',
@@ -947,13 +954,15 @@ class TestPhase1InitBurst(unittest.TestCase):
         self.s = make_session(self.store, config=GameConfig(cfg))
         self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
 
-    def test_ping_replies_with_an_interval_int(self):
-        first = amf3.decode(self.s.ping()[4:])
-        self.assertEqual(first, ['19000', 0])
-        second = amf3.decode(self.s.ping()[4:])
-        self.assertEqual(second[0], '19000')
-        self.assertIsInstance(second[1], int)
-        self.assertGreaterEqual(second[1], 0)
+    def test_ping_replies_with_a_heartbeat_interval(self):
+        # PingVo.genInterval: 5000 + Random.nextInt(5000); the capture's
+        # 6830/8265/9018 all fall in [5000, 9999].
+        for _ in range(5):
+            env = amf3.decode(self.s.ping()[4:])
+            self.assertEqual(env[0], '19000')
+            self.assertIsInstance(env[1], int)
+            self.assertGreaterEqual(env[1], 5000)
+            self.assertLess(env[1], 10000)
 
     def test_vip_empty_role_is_all_zeros(self):
         env = amf3.decode(self.s.vip_info()[4:])
@@ -970,18 +979,17 @@ class TestPhase1InitBurst(unittest.TestCase):
         env = amf3.decode(self.s.vip_info()[4:])
         self.assertEqual(env[1][:2], [0, 0])  # Java zeroes day/week at level 0
 
-    def test_mall_sign_mismatch_sends_real_rows(self):
-        env = amf3.decode(self.s.mall_info([32000, ['stale', '1001']])[4:])
-        self.assertEqual(env[0], '32000')
-        self.assertEqual(env[1][0], 1)
-        self.assertTrue(env[1][2])  # real WuPinChuShouBiao rows
-        self.assertEqual(env[1][2][0]['modelid'], 1001)
-        self.assertIn('sellid', env[1][2][0])
-
-    def test_mall_matching_sign_sends_no_data(self):
-        sign = self.s.config.mall_sign()
-        env = amf3.decode(self.s.mall_info([32000, [sign, '1001']])[4:])
-        self.assertEqual(env, ['32000', [-1, sign]])
+    def test_mall_sends_list_with_null_sign_like_java(self):
+        # Java's sign is null (classpath loader), so every non-empty
+        # category request gets [1, None, raw rows].
+        for sign in ('stale', None):
+            env = amf3.decode(self.s.mall_info([32000, [sign, '1001']])[4:])
+            self.assertEqual(env[0], '32000')
+            self.assertEqual(env[1][0], 1)
+            self.assertIsNone(env[1][1])
+            self.assertTrue(env[1][2])  # real WuPinChuShouBiao rows
+            self.assertEqual(env[1][2][0]['modelid'], 1001)
+            self.assertIn('sellid', env[1][2][0])
 
     def test_mall_empty_category_has_no_reply_like_java(self):
         self.assertIsNone(self.s.mall_info([32000, ['x', '']]))
@@ -1001,6 +1009,104 @@ class TestPhase1InitBurst(unittest.TestCase):
         out = self.s.feed(frame(
             self.s.cipher.encode(amf3.encode([35011, None]))))
         self.assertEqual(amf3.decode(out[0][4:]), ['35011', 0])
+
+
+class TestEntryBuffs(unittest.TestCase):
+    """Phase 2 entry pushes: 42100 buff flush, 42005 skill cooldown, 40501.
+
+    Shapes from FightOutputWrapper.buffChange / skillReadyFire /
+    RoleEventManager.enterFightState2 bytecode; the entry order
+    (12000 -> 42100 -> 42005 -> 40501) from tap-decoded.txt lines 12-24.
+    """
+
+    LEVEL = 5
+
+    def build(self, vip_level=None):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character(
+            'hero', 'fu1304', 'Wukong', job='A', sex=0, face=1,
+            level=self.LEVEL, exp=0, hp=120, mp=60, max_hp=120,
+            max_mp=60, zhenqi=77)
+        if vip_level is not None:
+            store.save_role_vip(role_id, vip_level=vip_level)
+        cfg_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cfg_dir, ignore_errors=True)
+        os.makedirs(os.path.join(cfg_dir, 'sys_config'))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'ZhuJueShuXingBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(level=self.LEVEL, mana=96, physicdamage=200,
+                    physicdefence=50, critical=10, volt=7, attackrate=3,
+                    velocity=520, dunshudian=12.7, jiangu=0.25,
+                    zhenqi=100000)]))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'XiaoGuoBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([Obj(effectid='birthprotect', lasttime=10000),
+                                 Obj(effectid='vip010', effectlevel='010')]))
+        with open(os.path.join(cfg_dir, 'sys_config', 'CdBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([Obj(cdid='t070', cdtime=700)]))
+        with open(os.path.join(cfg_dir, 'sys_config', 'JiNengBiao.jat'),
+                   'wb') as f:
+            f.write(amf3.encode([Obj(skilltype='normal003', cd1='t070')]))
+        s = make_session(store, config=GameConfig(cfg_dir))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return s, role_id
+
+    def bootstrap(self, s, role_id):
+        return [amf3.decode(f[4:]) for f in
+                s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+
+    def test_vip_role_gets_vip_plus_birthprotect_then_fight_state(self):
+        s, role_id = self.build(vip_level=10)
+        decoded = self.bootstrap(s, role_id)
+        # No attack_skill on the role row, so 42005 is skipped, not faked.
+        self.assertEqual([d[0] for d in decoded],
+                         ['20000', '21000', '12004', '12005', '12050',
+                          '12000', '42100', '40501'])
+        buff = decoded[6]
+        self.assertEqual(buff[0], '42100')
+        self.assertEqual(buff[1][0], str(role_id))
+        self.assertIsNone(buff[1][2])  # no removals at entry
+        adds = buff[1][1]
+        # Capture order: vip buff first, birthprotect last; ids are the
+        # session-local buff_<stage>_<seq> shape (Java's counters are
+        # JVM-global and unreproducible).
+        self.assertEqual([a[1] for a in adds], ['vip010', 'birthprotect'])
+        self.assertEqual(adds[0], ['buff_1_1', 'vip010', -1.0, 1,
+                                   str(role_id)])
+        self.assertEqual(adds[1], ['buff_1_2', 'birthprotect', 10000.0, 1,
+                                   str(role_id)])
+        self.assertEqual(decoded[7], ['40501', str(role_id)])
+
+    def test_role_without_vip_gets_birthprotect_alone(self):
+        s, role_id = self.build()
+        decoded = self.bootstrap(s, role_id)
+        buff = next(d for d in decoded if d[0] == '42100')
+        self.assertEqual([a[1] for a in buff[1][1]], ['birthprotect'])
+
+    def test_skill_cd_uses_live_attack_speed(self):
+        s, role_id = self.build(vip_level=10)
+        roles = s.get_roles('hero', 'fu1304')
+        role = dict(next(r for r in roles
+                         if str(r.get('id')) == str(role_id)))
+        role['attack_skill'] = 'normal003'
+        env = amf3.decode(s.skill_cd_frame(role)[4:])
+        # attackrate 3 -> int(700 / (1 + 3/2000)) = int(698.95) = 698.
+        self.assertEqual(env, ['42005', ['normal003', 698]])
+
+    def test_skill_cd_skipped_without_role_skill_state(self):
+        s, role_id = self.build()
+        roles = s.get_roles('hero', 'fu1304')
+        role = next(r for r in roles if str(r.get('id')) == str(role_id))
+        with self.assertLogs('game', level='INFO'):
+            self.assertIsNone(s.skill_cd_frame(role))
+
+    def test_buff_value_tick_shape(self):
+        s, _ = self.build()
+        env = amf3.decode(s.buff_value_frame('r1', 'propbuff_1_3', 328576)[4:])
+        self.assertEqual(env, ['42102', ['r1', 'propbuff_1_3', 328576.0]])
 
 
 if __name__ == '__main__':

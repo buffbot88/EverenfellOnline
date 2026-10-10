@@ -34,12 +34,14 @@ Deviations from the original (all logged, to refine against the live client):
 """
 import json
 import logging
+import random
 import re
 import struct
 import time
 
 from .amf3 import Obj
 from .attributes import entry_attribute_map
+from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from .amf3 import decode as amf3_decode
 from .amf3 import encode as amf3_encode
 from .cipher import SimpleEncrypt, new_key
@@ -89,9 +91,12 @@ CMD_SKILL_MOVE = 42001
 CMD_MOVE = 42001
 CMD_SKILL_FIRE = 42002
 CMD_BUFF = 42100
+CMD_FIGHT_STATE = 40501
+CMD_SKILL_CD = 42005
+CMD_BUFF_VALUE = 42102
 # Observed on the wire but with no captured reply or confirmed semantics yet;
 # logged so a live run shows the real post-entry command sequence.
-CMD_UNKNOWN_OBSERVED = frozenset({24002, 42005, 43000, 53021})
+CMD_UNKNOWN_OBSERVED = frozenset({24002, 43000, 53021})
 
 
 def frame(payload: bytes) -> bytes:
@@ -162,7 +167,6 @@ class Session:
         self.get_role_equip = get_role_equip or (lambda role_id: [])
         self.get_role_attr_buffs = get_role_attr_buffs or (lambda role_id: [])
         self.get_role_vip = get_role_vip or (lambda role_id: None)
-        self._last_ping_ms = None
         self.buf = bytearray()
         self.cipher = None
         self.key = None
@@ -179,6 +183,14 @@ class Session:
         self.tz_id = tz_id
         self._scene_seq = 0
         self._pet_ids = set()
+        # Stage-instance tag and object sequence for buff ids. Java builds
+        # ids as buff_<stageId>_<n> off JVM-global counters (captured
+        # buff_64_101..108 then zuoqi_64_109); ours are session-local and
+        # restart per stage entry, which keeps them unique where the client
+        # matches them (42100 adds vs 42102/removes) without pretending to
+        # reproduce the server-global values.
+        self._stage_serial = 0
+        self._obj_seq = 0
 
     def feed(self, data: bytes):
         """Consume TCP bytes, return list of complete out-frames to send."""
@@ -564,6 +576,86 @@ class Session:
                  self.conn_id, actor, targets)
         return None
 
+    def next_buff_id(self, kind):
+        """IdUtil.nextString('buff'/'propbuff') shape for one stage object."""
+        self._obj_seq += 1
+        return f'{kind}_{self._stage_serial}_{self._obj_seq}'
+
+    def entry_buff_frame(self, role):
+        """42100 stage-entry buff list from the role's known state.
+
+        Ports buffChange's entry flush: the VIP buff when role_vip carries a
+        level with a XiaoGuoBiao row (vip010-style, permanent -> -1.0), then
+        the unconditional birthprotect (lasttime 10000, fresh -> full
+        remaining). Pool and exp-fold buffs live in unmigrated item state, so
+        they are absent here -- a role without them looks exactly like the
+        captured fresh role (probe-stress: birthprotect alone)."""
+        if role is None:
+            return None
+        wire_id = _wire_id(role)
+        adds = []
+        try:
+            vip = self.get_role_vip(role.get('id'))
+        except Exception:
+            vip = None
+        buff_id = (self.config.vip_buff_id((vip or {}).get('vip_level'))
+                   if self.config is not None else None)
+        if buff_id is not None:
+            adds.append(timed_buff(self.next_buff_id('buff'), buff_id, None,
+                                   1, wire_id))
+        else:
+            log.info('conn %d: no VIP buff for role %r (no vip row/mapping)',
+                     self.conn_id, wire_id)
+        lasttime = (self.config.buff_lasttime('birthprotect')
+                    if self.config is not None else None)
+        if lasttime is None:
+            log.info('conn %d: no birthprotect lasttime (no XiaoGuoBiao)',
+                     self.conn_id)
+        else:
+            adds.append(timed_buff(self.next_buff_id('buff'), 'birthprotect',
+                                   lasttime, 1, wire_id))
+        if not adds:
+            return None
+        return frame(amf3_encode(buff_change(wire_id, adds)))
+
+    def skill_cd_frame(self, role):
+        """42005 entry skill-cooldown [category, dynamicCd].
+
+        Ports FightServiceImpl.skillReadyFire's readyAttackSkill push: the
+        category is the role's ready attack skill (role state the 42000
+        skill list owns; unmigrated roles carry none and skip the frame
+        instead of inventing one), and the cooldown is int(cdtime /
+        (1 + gongjisudu/2000)) off CdBiao and the live 12000 attack speed.
+        """
+        if role is None or self.config is None:
+            return None
+        category = role.get('attack_skill')
+        if not category:
+            log.info('conn %d: no attack skill for role %r (no 42005)',
+                     self.conn_id, _wire_id(role))
+            return None
+        cd_id = self.config.skill_cd_id(category)
+        cdtime = self.config.cd_time(cd_id) if cd_id else None
+        attrs = self.role_attribute_map(role)
+        if cdtime is None or attrs is None:
+            log.info('conn %d: no cd/attributes for skill %r (no 42005)',
+                     self.conn_id, category)
+            return None
+        return frame(amf3_encode(
+            ['42005', [str(category), dynamic_cd(cdtime, attrs['6'])]]))
+
+    def fight_state_frame(self, role):
+        """40501 fight-state enter notice: the bare role id (send2One)."""
+        return frame(amf3_encode(['40501', _wire_id(role)]))
+
+    def buff_value_frame(self, owner_id, instance_id, value):
+        """42102 pool-value tick [ownerId, propBuffId, value].
+
+        Ports FightOutputWrapper.buffValueChange; pool regen has no
+        scheduler yet, so entry does not emit it -- the builder is covered
+        by tests for the combat-loop phase to call."""
+        return frame(amf3_encode(buff_value(owner_id, instance_id, value)))
+
     def apply_stage_bootstrap(self, msg):
         """Reply to 20000, then push the scene entry and role HP/MP like Java."""
         reply = self.apply_stage(msg)
@@ -606,6 +698,20 @@ class Session:
             attrs = self.role_attribute_map(role)
             if attrs is not None:
                 frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
+        # Captured entry order after 12000 (tap lines 13, 21, 24): the
+        # 42100 buff flush, the 42005 skill cooldown, then 40501. The
+        # fight-state notice needs no config, so it closes every entry;
+        # the buff/cooldown frames skip themselves when their data is
+        # absent (no XiaoGuoBiao/CdBiao rows, no role skill state).
+        self._stage_serial += 1
+        self._obj_seq = 0
+        buff_frame = self.entry_buff_frame(role)
+        if buff_frame is not None:
+            frames.append(buff_frame)
+        cd_frame = self.skill_cd_frame(role)
+        if cd_frame is not None:
+            frames.append(cd_frame)
+        frames.append(self.fight_state_frame(role))
         return tuple(frames) if len(frames) > 1 else reply
 
     def change_stage(self, msg):
@@ -793,14 +899,10 @@ class Session:
     def ping(self):
         """Command 19000: IoCommands.PING -> PingVo.genInterval().
 
-        A single int; the capture's mid-session values (6830, 8265, 9018)
-        read as ms between client pings, so this replies with the measured
-        ms since the previous ping on this connection (0 on the first).
+        A random heartbeat interval, 5000 + Random.nextInt(5000) ms; the
+        capture's values (6830, 8265, 9018) all fall in [5000, 9999].
         """
-        now = int(time.time() * 1000)
-        interval = 0 if self._last_ping_ms is None else now - self._last_ping_ms
-        self._last_ping_ms = now
-        return frame(amf3_encode(['19000', interval]))
+        return frame(amf3_encode(['19000', 5000 + random.randrange(5000)]))
 
     def vip_info(self):
         """Command 62000: GetVipOutPut.getVipInfo's Object[5].
@@ -828,25 +930,20 @@ class Session:
             int(vip.get('tody_prop_value') or 0)]]))
 
     def mall_info(self, msg):
-        """Command 32000: MallServiceImpl.shopList [1, sign, items] / [-1, echo].
+        """Command 32000: MallServiceImpl.shopList [1, None, items].
 
         The request is [sign, category]; Java answers nothing when the
-        category is empty, [-1, echo] when the client's sign is current,
-        else [1, sign, raw WuPinChuShouBiao rows] of the category. The
-        sign is the mall row count (Java's framework sign is unresolved;
-        any deterministic value preserves the cache behavior).
+        category is empty, else the raw WuPinChuShouBiao rows of the
+        category. The sign is always null (see GameConfig.mall_sign), so
+        the [-1, echo] branch in bytecode is unreachable.
         """
         args = self.safe(msg, 1, [])
-        sign = self.safe(args, 0)
         category = self.safe(args, 1)
         if not category:
             return None
-        current = self.config.mall_sign() if self.config is not None else '0'
-        if sign is not None and str(sign) == current:
-            return frame(amf3_encode(['32000', [-1, sign]]))
         items = (self.config.mall_shop_list(category)
                  if self.config is not None else [])
-        return frame(amf3_encode(['32000', [1, current, items]]))
+        return frame(amf3_encode(['32000', [1, None, items]]))
 
     def zuwu_info(self):
         """Command 111000: [entries[], wuhunsuipianCount].

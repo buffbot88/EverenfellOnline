@@ -460,5 +460,48 @@ class RoleAttributeConfigTest(unittest.TestCase):
         self.assertIsNotNone(cfg.role_attribute_row(56))
 
 
+class BuffSkillConfigTest(unittest.TestCase):
+    """CdBiao / XiaoGuoBiao / JiNengBiao lookups behind 42005 and 42100."""
+
+    def test_synthetic_cooldown_and_buff_rows(self):
+        with tempfile.TemporaryDirectory() as root:
+            write_bytes(root, 'sys_config/CdBiao.jat',
+                        amf3.encode([Obj(cdid='t070', cdtime=700)]))
+            write_bytes(root, 'sys_config/XiaoGuoBiao.jat',
+                        amf3.encode([Obj(effectid='birthprotect',
+                                        lasttime=10000),
+                                     Obj(effectid='vip010', effectlevel='010')]))
+            write_bytes(root, 'sys_config/JiNengBiao.jat',
+                        amf3.encode([Obj(skilltype='normal003', cd1='t070')]))
+            cfg = GameConfig(root)
+            self.assertEqual(cfg.cd_time('t070'), 700)
+            self.assertIsNone(cfg.cd_time('t999'))
+            self.assertEqual(cfg.buff_lasttime('birthprotect'), 10000)
+            self.assertIsNone(cfg.buff_lasttime('vip010'))
+            self.assertEqual(cfg.vip_buff_id(10), 'vip010')
+            self.assertIsNone(cfg.vip_buff_id(0))
+            self.assertIsNone(cfg.vip_buff_id(99))
+            self.assertEqual(cfg.skill_cd_id('normal003'), 't070')
+            self.assertIsNone(cfg.skill_cd_id('nope'))
+
+    def test_missing_tables_report_no_cooldowns_or_buffs(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg = GameConfig(root)
+            with self.assertLogs('config', level='WARNING'):
+                self.assertIsNone(cfg.cd_time('t070'))
+            self.assertIsNone(cfg.buff_lasttime('birthprotect'))
+            self.assertIsNone(cfg.vip_buff_id(10))
+            self.assertIsNone(cfg.skill_cd_id('normal003'))
+
+    @unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+    def test_real_tables_match_the_captured_entry(self):
+        cfg = GameConfig(str(REAL_CONFIG))
+        self.assertEqual(cfg.cd_time('t070'), 700)
+        self.assertEqual(cfg.buff_lasttime('birthprotect'), 10000)
+        self.assertEqual(cfg.vip_buff_id(10), 'vip010')
+        self.assertIsNone(cfg.vip_buff_id(0))
+        self.assertEqual(cfg.skill_cd_id('normal003'), 't070')
+
+
 if __name__ == '__main__':
     unittest.main()

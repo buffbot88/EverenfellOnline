@@ -106,6 +106,36 @@ class EquipAttributeChainTest(unittest.TestCase):
                          {'hitpoints': 20.0})
 
 
+class ZhanDouLiFightTest(unittest.TestCase):
+    """ZhanDouLiServiceImpl.getFight over xishu factors (ZhanLiXiShu.jat)."""
+
+    def setUp(self):
+        self.cfg = GameConfig(config_dir())
+
+    def test_level_56_fight_is_hand_verified(self):
+        # 10+300+600+400+400+400+0+300: all exact, order-independent.
+        row = self.cfg.role_attribute_row(56)
+        self.assertEqual(self.cfg.level_fight(row), 2410)
+
+    def test_missing_xishu_keys_are_skipped(self):
+        self.assertEqual(self.cfg.fight_value({'dunshudian': 99}), 0)
+        self.assertEqual(self.cfg.fight_value({'physicdamage': 100}), 50)
+
+    def test_equip_parts_split_base_qianghua_fujia(self):
+        base, qianghua, fujia = self.cfg.equip_fight_parts(gear_items())
+        self.assertEqual((base, qianghua, fujia), (1462, 66, 800))
+
+    def test_dan_fight_multiplies_by_count(self):
+        one = self.cfg.dan_fight([{'attribute_id': 'sm_001', 'count': 1}])
+        three = self.cfg.dan_fight([{'attribute_id': 'sm_001', 'count': 3}])
+        self.assertEqual((one, three), (5, 15))  # 20hp * 0.25 = 5 each
+
+    def test_vip_fight_reads_zhanli_by_level(self):
+        self.assertEqual(self.cfg.vip_fight(10), 1600)
+        self.assertEqual(self.cfg.vip_fight(0), 0)
+        self.assertEqual(self.cfg.vip_fight(99), 0)
+
+
 class FormulaTest(unittest.TestCase):
     def test_gongji_matches_the_jar_arithmetic(self):
         # GongJiFormula.refreshAttribute: base*(1+perdamage+effect6) + effect5.

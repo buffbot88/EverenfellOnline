@@ -42,6 +42,8 @@ import time
 from .amf3 import Obj
 from .attributes import entry_attribute_map
 from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
+from . import ai as ai_lib
+from . import combat as combat_lib
 from .amf3 import decode as amf3_decode
 from .amf3 import encode as amf3_encode
 from .cipher import SimpleEncrypt, new_key
@@ -94,9 +96,11 @@ CMD_BUFF = 42100
 CMD_FIGHT_STATE = 40501
 CMD_SKILL_CD = 42005
 CMD_BUFF_VALUE = 42102
+CMD_DEAD = 43000
+CMD_AOI_LEAVE = 24002
 # Observed on the wire but with no captured reply or confirmed semantics yet;
 # logged so a live run shows the real post-entry command sequence.
-CMD_UNKNOWN_OBSERVED = frozenset({24002, 43000, 53021})
+CMD_UNKNOWN_OBSERVED = frozenset({53021})
 
 
 def frame(payload: bytes) -> bytes:
@@ -191,6 +195,28 @@ class Session:
         # reproduce the server-global values.
         self._stage_serial = 0
         self._obj_seq = 0
+        # Live stage fighters for the combat loop. Roles are re-read from the
+        # store on every swing (HP/exp persist there); monsters and pets live
+        # here: monster id -> {template, hp} (seeded from GuaiWuBiao on first
+        # sight, exactly Java's stage-element state), pet id -> {max_hp, hp,
+        # level, owner, name} (registered by zuoqi_pet_frame). Dead ids stay
+        # in _dead until the respawn scheduler (Phase 4) revives them.
+        self._monster_hp = {}
+        self._pet_state = {}
+        self._dead = set()
+        # Monster AI state (Phase 4: AiFightServiceImpl + MonsterEventManager).
+        # _monster_reg: fighter id -> {template, map, born:[x,y], pos:[x,y]}
+        # (snapshot monsters seed on first sight; respawns register here).
+        # _hatred: monster id -> attacker fighter id (MonsterHatredManager).
+        # _leaving: dead id -> ticks until the 24002 AOI leave (asheslast).
+        # _spawning: list of [template_id, map, born, ticks] until the 23002
+        # re-enter (creattime). _respawn_next: per-map fresh-id counter.
+        self._monster_reg = {}
+        self._hatred = {}
+        self._leaving = {}
+        self._spawning = []
+        self._respawn_next = {}
+        self._ai_seq = 0
 
     def feed(self, data: bytes):
         """Consume TCP bytes, return list of complete out-frames to send."""
@@ -265,7 +291,14 @@ class Session:
         if cmd_num == CMD_SKILL_MOVE:
             return self.skill_move(msg)
         if cmd_num == CMD_SKILL_FIRE:
-            return self.skill_fire(msg)
+            reply = self.skill_fire(msg)
+            extra = self.ai_tick()
+            if extra is None:
+                return reply
+            if reply is None:
+                return extra
+            first = tuple(reply) if isinstance(reply, tuple) else (reply,)
+            return first + tuple(extra)
         if cmd_num in CMD_UNKNOWN_OBSERVED:
             log.info('conn %d: observed command %r (no handler yet)',
                      self.conn_id, cmd)
@@ -532,6 +565,7 @@ class Session:
             return None
         log.info('conn %d: tile role=%r -> (%s, %s)', self.conn_id, actor, x, y)
         self.save_role_state(_wire_id(role), map_x=int(x), map_y=int(y))
+        self._presence_aggro(role, int(x), int(y))
         return None
 
     def jump(self, msg):
@@ -559,22 +593,489 @@ class Session:
             log.info('conn %d: 42001 for unowned %r (ignored)', self.conn_id, actor)
             return None
         log.info('conn %d: 42001 %r %r -> %r', self.conn_id, actor, action, pos)
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, str(actor))
+        if role is not None and role.get('map_x') is not None:
+            self._presence_aggro(role, int(role['map_x']), int(role['map_y']))
         return frame(amf3_encode(['42001', [1, actor, action, pos, path, flag, None]]))
 
+    def _stage_fighter(self, fighter_id):
+        """Resolve a combat actor/target to a fighter dict, or None.
+
+        Roles come from the store (fresh HP/exp every swing); monsters parse
+        as m_<map>_<n> snapshot ids with template stats; pets come from the
+        entry registry. Unknown ids return None instead of invented stats.
+        """
+        fid = str(fighter_id or '')
+        if not fid:
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, fid)
+        if role is not None:
+            return {'kind': 'role', 'id': _wire_id(role), 'role': role}
+        pet = self._pet_state.get(fid)
+        if pet is not None:
+            return {'kind': 'pet', 'id': fid, **pet}
+        reg = self._monster_reg.get(fid)
+        if reg is not None:
+            return {'kind': 'monster', 'id': fid, 'template': reg['template']}
+        parts = fid.split('_')
+        if len(parts) == 3 and parts[0] == 'm' and self.config is not None:
+            try:
+                records = self.config.monster_snapshot(parts[1])
+                rec = records[int(parts[2])]
+            except (ValueError, IndexError):
+                rec = None
+            if rec is not None and rec[0] == fid:
+                tpl = self.config.monster_template(rec[1])
+                if tpl is not None:
+                    hp = self._monster_hp.setdefault(
+                        fid, float(rec[4] if rec[4] is not None else 0))
+                    self._monster_reg.setdefault(fid, {
+                        'template': tpl, 'map': parts[1],
+                        'born': [rec[11], rec[12]], 'pos': [rec[11], rec[12]]})
+                    self._respawn_next.setdefault(
+                        parts[1], len(records))
+                    return {'kind': 'monster', 'id': fid, 'template': tpl,
+                            'record': rec, 'hp': hp}
+        return None
+
+    def _fighter_attrs(self, fighter):
+        """combat.lib attribute dict for a fighter.
+
+        Roles read the live 12000 map (wuli '2', fangyu '3', baoji '4',
+        shanbi '5'); monsters read GuaiWuBiao (physicdamage/physicdefence/
+        critical/volt -- volt feeds the T8 dodge odds, the same mapping the
+        role formula uses); pets use their entry stats. Effect attributes,
+        elementals, shishen, damage/defence, pojia/qiege stay 0: their
+        sources (buffs, gear tables) are unmigrated, which is Java's
+        empty-source default.
+        """
+        if fighter['kind'] == 'role':
+            role = fighter['role']
+            attrs = self.role_attribute_map(role) or {}
+            return {'wuli': float(attrs.get('2') or 0.0),
+                    'fangyu': float(attrs.get('3') or 0.0),
+                    'baoji': float(attrs.get('4') or 0.0),
+                    'shanbi': float(attrs.get('5') or 0.0),
+                    'level': int(role.get('level') or 0),
+                    'max_hp': float(role.get('max_hp') or 0.0),
+                    'is_role': True, 'is_monster': False}
+        if fighter['kind'] == 'monster':
+            tpl = fighter['template']
+            hp = float(tpl.get('hitpoints') or 0)
+            return {'wuli': float(tpl.get('physicdamage') or 0),
+                    'fangyu': float(tpl.get('physicdefence') or 0),
+                    'baoji': float(tpl.get('critical') or 0),
+                    'shanbi': float(tpl.get('volt') or 0),
+                    'level': int(tpl.get('level') or 0),
+                    'max_hp': hp,
+                    'is_role': False, 'is_monster': True}
+        return {'wuli': 0.0, 'fangyu': 0.0, 'baoji': 0.0, 'shanbi': 0.0,
+                'level': int(fighter.get('level') or 0),
+                'max_hp': float(fighter.get('max_hp') or 0.0),
+                'is_role': False, 'is_monster': False}
+
+    def _fighter_hp(self, fighter):
+        """Current HP and max HP for a fighter (live values, floats)."""
+        if fighter['kind'] == 'role':
+            role = fighter['role']
+            return (float(role.get('hp') or 0.0), float(role.get('max_hp') or 0.0),
+                    float(role.get('mp') or 0.0), float(role.get('max_mp') or 0.0))
+        if fighter['kind'] == 'monster':
+            tpl = fighter['template']
+            max_hp = float(tpl.get('hitpoints') or 0)
+            max_mp = float(tpl.get('mana') or 0)
+            return self._monster_hp.get(fighter['id'], max_hp), max_hp, max_mp, max_mp
+        max_hp = float(fighter.get('max_hp') or 0.0)
+        return float(fighter.get('hp', max_hp)), max_hp, 0.0, 0.0
+
+    def _store_fighter_hp(self, fighter, new_hp):
+        """Persist HP after acceptHarm (roles) or stage state (pets/monsters)."""
+        new_hp = max(0.0, float(new_hp))
+        if fighter['kind'] == 'role':
+            self.save_role_state(fighter['id'], hp=int(new_hp))
+        elif fighter['kind'] == 'monster':
+            self._monster_hp[fighter['id']] = new_hp
+        else:
+            self._pet_state[fighter['id']]['hp'] = new_hp
+        return new_hp
+
+    def _kill_exp_frames(self, killer, dead_fighter):
+        """12001 + 12030 after a role-credited kill (AiServiceImpl.monsterExpDrop).
+
+        Only monster deaths credit exp, and only to roles (pet kills credit
+        the owner). Bonuses Java layers on top (exp-fold items, guild, VIP,
+        events, ewai odds) live in unmigrated tables and default to 0, so a
+        plain kill pays the table base; the captured +51 includes the role's
+        exp-fold buffs and is noted, not faked.
+        """
+        if dead_fighter['kind'] != 'monster':
+            return []
+        owner = killer
+        if killer['kind'] == 'pet':
+            roles = self.get_roles(self.authed_user or '', self.server_id or '')
+            owner_role = _find_role(roles, killer.get('owner'))
+            if owner_role is None:
+                return []
+            owner = {'kind': 'role', 'id': _wire_id(owner_role), 'role': owner_role}
+        if owner['kind'] != 'role':
+            return []
+        role = owner['role']
+        tpl = dead_fighter['template']
+        lv_diff = max(int(role.get('level') or 0) - int(tpl.get('level') or 0), 0)
+        revise = (self.config.exp_revise(100, solo=True)
+                  if self.config is not None else None)
+        decay = (self.config.exp_decay(lv_diff)
+                 if self.config is not None else None)
+        if revise is None or decay is None:
+            log.info('conn %d: no exp tables for %r (no 12001/12030)',
+                     self.conn_id, dead_fighter['id'])
+            return []
+        base = combat_lib.base_kill_exp(tpl.get('basicexp') or 0,
+                                        xiuZheng=revise, levelXishu=decay)
+        granted = combat_lib.fight_exp_with_bonuses(base)
+        total = int(role.get('exp') or 0) + granted
+        self.save_role_state(owner['id'], exp=total)
+        return [frame(amf3_encode(combat_lib.exp_notice(total, role.get('level') or 0))),
+                frame(amf3_encode(combat_lib.exp_drop_frame(
+                    dead_fighter['id'], tpl.get('id'), granted)))]
+
+    def _resolve_fire(self, actor, action, index, target_ids, arg4, arg5):
+        """SkillProcessHelper.fight + changeOutput burst for one swing.
+
+        Shared by client-relayed 42002, pet auto-fire and monster AI ticks:
+        per target resolve_hit, acceptHarm persist, the 12004/42100x2/43000
+        burst, then the single 42002 broadcast plus 12001+12030 per kill.
+        Role/pet swings also plant MonsterHatredManager hatred; monster
+        deaths schedule the asheslast 24002 leave. Returns the frame list
+        (empty when nothing was hit)."""
+        skill = self.config.skill_row(action) if self.config is not None else None
+        if skill is None:
+            log.info('conn %d: 42002 unknown skill %r (ignored)',
+                     self.conn_id, action)
+            return []
+        att = self._fighter_attrs(actor)
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            index = 0
+        frames = []
+        hits = []
+        for target_id in target_ids:
+            target = self._stage_fighter(str(target_id))
+            if target is None or str(target_id) in self._dead:
+                log.info('conn %d: 42002 target %r unknown/dead (skipped)',
+                         self.conn_id, target_id)
+                continue
+            tgt = self._fighter_attrs(target)
+            harm_val, harm_type = combat_lib.resolve_hit(att, tgt, skill)
+            cur_hp, max_hp, cur_mp, max_mp = self._fighter_hp(target)
+            dead = False
+            if harm_val > 0:
+                # acceptHarm: curHp -= val, clamped at 0; death follows.
+                new_hp = self._store_fighter_hp(target, cur_hp - harm_val)
+                dead = new_hp <= 0
+                frames.append(frame(amf3_encode(combat_lib.hp_changed_frame(
+                    target['id'], new_hp, max_hp, cur_mp, max_mp))))
+            frames.append(frame(amf3_encode(
+                combat_lib.buff_flush_frame(target['id']))))
+            frames.append(frame(amf3_encode(
+                combat_lib.buff_flush_frame(actor['id']))))
+            if (actor['kind'] in ('role', 'pet')
+                    and target['kind'] == 'monster' and not dead):
+                # fireAttackedEvent -> MonsterHatredManager: the monster
+                # retaliates on the next AI tick.
+                self._hatred[target['id']] = actor['id']
+            if dead:
+                self._dead.add(target['id'])
+                self._hatred.pop(target['id'], None)
+                if target['kind'] == 'monster':
+                    self._schedule_leave(target)
+                if actor['kind'] == 'pet':
+                    frames.append(frame(amf3_encode(combat_lib.dead_notice(
+                        target['id'], actor['id'], actor.get('name'), action,
+                        owner_id=actor.get('owner'),
+                        owner_name=actor.get('owner_name'),
+                        attacker_name_full=actor.get('name')))))
+                else:
+                    frames.append(frame(amf3_encode(combat_lib.dead_notice(
+                        target['id'], actor['id'],
+                        self._fighter_name(actor), action))))
+            hits.append(combat_lib.hit_record(target['id'], harm_type,
+                                              harm_val, dead))
+        if not hits:
+            return []
+        frames.append(frame(amf3_encode(combat_lib.skill_fire_frame(
+            actor['id'], str(action), index, hits, arg4, arg5))))
+        for hit, target_id in zip(hits, [str(t) for t in target_ids]):
+            if hit[3]:
+                target = self._stage_fighter(target_id)
+                if target is not None:
+                    frames.extend(self._kill_exp_frames(actor, target))
+        return frames
+
     def skill_fire(self, msg):
-        """Command 42002 C> [actor, action, 0, [targets], None, 1]."""
+        """Command 42002 C> [actor, action, index, [targets], arg4, arg5].
+
+        Ports FightServiceImpl.skillFire over the client-relayed combat the
+        capture proves (role, pet and monster actors each echo 1:1): resolve
+        the fighter and skill (unknowns are ignored, never invented), run
+        SkillProcessHelper.fight via _resolve_fire, then let the owner's pet
+        auto-fire at the same monsters (PetFightServiceImpl.skillExecute).
+        Monster retaliation is NOT inline here; it fires on ai_tick, which
+        handle() runs after every 42002.
+        """
         args = self.safe(msg, 1, [])
-        actor = str(self.safe(args, 0, '') or '')
-        targets = self.safe(args, 3, [])
-        if not actor:
+        actor_id = str(self.safe(args, 0, '') or '')
+        action = self.safe(args, 1, '')
+        index = self.safe(args, 2, 0) or 0
+        targets = self.safe(args, 3, []) or []
+        arg4 = self.safe(args, 4, None)
+        arg5 = self.safe(args, 5, 1)
+        if not actor_id:
             log.info('conn %d: 42002 without actor (ignored)', self.conn_id)
             return None
-        if self._owned_actor(actor) is None:
-            log.info('conn %d: 42002 for unowned %r (ignored)', self.conn_id, actor)
+        actor = self._stage_fighter(actor_id)
+        if actor is None:
+            log.info('conn %d: 42002 for unknown %r (ignored)',
+                     self.conn_id, actor_id)
             return None
-        log.info('conn %d: 42002 %r targets=%r (logged, no damage invented)',
-                 self.conn_id, actor, targets)
-        return None
+        if actor_id in self._dead:
+            log.info('conn %d: 42002 from dead %r (ignored)',
+                     self.conn_id, actor_id)
+            return None
+        frames = self._resolve_fire(actor, action, index, targets, arg4, arg5)
+        if not frames:
+            return None
+        if actor['kind'] == 'role':
+            frames.extend(self._pet_auto_fire(actor, targets))
+        return tuple(frames)
+
+    def _pet_auto_fire(self, role_fighter, target_ids):
+        """Pet mirrors its owner's swing (PetFightServiceImpl.skillExecute).
+
+        Each live pet of the role fires zuoqi11 at the swing's surviving
+        monster targets, preceded by its 42001 skillReady. No pet, no valid
+        target, or no skill row -> silence, never invention."""
+        frames = []
+        targets = [str(t) for t in target_ids or []]
+        for pet_id, pet in self._pet_state.items():
+            if pet.get('owner') != role_fighter['id']:
+                continue
+            if pet_id in self._dead:
+                continue
+            prey = [t for t in targets
+                    if t not in self._dead
+                    and self._stage_fighter(t) is not None
+                    and self._stage_fighter(t)['kind'] == 'monster']
+            if not prey:
+                continue
+            pos = pet.get('pos')
+            first = self._stage_fighter(prey[0])
+            first_pos = self._fighter_pos(first)
+            if pos is None or first_pos is None:
+                continue
+            pixel = ai_lib.tile_to_pixel(pos)
+            dest = ai_lib.tile_to_pixel(first_pos)
+            import math
+            angle = math.atan2(dest[1] - pixel[1], dest[0] - pixel[0])
+            self._ai_seq += 1
+            path = [[dest[0], dest[1], angle, 0, self._ai_seq]]
+            frames.append(frame(amf3_encode(ai_lib.skill_ready_frame(
+                pet_id, ai_lib.PET_SKILL, pixel, path, None))))
+            fighter = {'kind': 'pet', 'id': pet_id, **pet}
+            frames.extend(self._resolve_fire(fighter, ai_lib.PET_SKILL, 0,
+                                             prey, None, 1))
+        return frames
+
+    def _fighter_name(self, fighter):
+        """Display name for 43000 kill notices."""
+        if fighter['kind'] == 'role':
+            return fighter['role'].get('name')
+        if fighter['kind'] == 'monster':
+            return fighter['template'].get('name')
+        return fighter.get('name')
+
+    def _fighter_pos(self, fighter):
+        """Live tile position of a fighter, or None when unknown."""
+        if fighter['kind'] == 'role':
+            role = fighter['role']
+            if role.get('map_x') is None or role.get('map_y') is None:
+                return None
+            return [int(role['map_x']), int(role['map_y'])]
+        if fighter['kind'] == 'monster':
+            reg = self._monster_reg.get(fighter['id'])
+            return list(reg['pos']) if reg is not None else None
+        pos = fighter.get('pos')
+        return list(pos) if pos is not None else None
+
+    def _schedule_leave(self, dead_monster):
+        """Monster.deadHandle/scheduleDisappearHandle: 24002 after asheslast."""
+        tpl = dead_monster.get('template') or {}
+        try:
+            delay = int(tpl.get('asheslast') or 3)
+        except (TypeError, ValueError):
+            delay = 3
+        self._leaving[dead_monster['id']] = max(delay, 1)
+
+    def _presence_aggro(self, role, x, y):
+        """Monsters whose eyeshot covers a moved role gain hatred (no frames)."""
+        if self.config is None:
+            return
+        map_id = str(role.get('map_id'))
+        if not any(r['map'] == map_id for r in self._monster_reg.values()):
+            for n, rec in enumerate(self.config.monster_snapshot(map_id)):
+                self._stage_fighter(rec[0])
+        wid = _wire_id(role)
+        for mid in list(self._monster_reg):
+            if mid in self._dead or mid in self._hatred:
+                continue
+            reg = self._monster_reg[mid]
+            if str(role.get('map_id')) != str(reg['map']):
+                continue
+            try:
+                eyeshot = int(reg['template'].get('eyeshot') or 5)
+            except (TypeError, ValueError):
+                eyeshot = 5
+            if ai_lib.in_aggro(reg['pos'], [x, y], eyeshot):
+                self._hatred[mid] = wid
+
+    def _walkable(self, map_id):
+        """Walkability predicate for AI steps, or None without a grid."""
+        grid = self.config.path_grid(map_id) if self.config is not None else None
+        if grid is None:
+            return None
+        return lambda x, y: grid.walkable(int(x), int(y))
+
+    def _monster_step(self, mid, reg, dest, frames):
+        """One AiFightServiceImpl.move step toward dest; False when stuck."""
+        walkable = self._walkable(reg['map'])
+        if walkable is None:
+            log.info('conn %d: no path grid for map %r (monster %r holds)',
+                     self.conn_id, reg['map'], mid)
+            return False
+        step = ai_lib.step_toward(list(reg['pos']), list(dest), walkable)
+        if step is None:
+            return False
+        reg['pos'] = step
+        frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
+            mid, step, step == reg['born'],
+            ai_lib.MOVE_KIND_MONSTER))))
+        return True
+
+    def ai_tick(self):
+        """One monster/pet AI tick (AiFightServiceImpl.defaultHandle).
+
+        Hatred (FIGHT-state) monsters adjacent to their target emit the
+        42001 skillReady + 42002 fire; distant ones chase one tile (BACK:
+        toward born, clearing hatred on arrival). Pets step toward owners
+        past 2 tiles. The 1-second clock retires corpses (24002 after
+        asheslast) and re-produces spawns (23002 after creattime, flag
+        True). Without a server loop the tick rides role actions (handle()
+        runs it after every 42002); explicit calls drive tests. Returns the
+        frame tuple, or None when the stage is quiet.
+        """
+        frames = []
+        for mid in sorted(self._hatred):
+            if mid in self._dead:
+                continue
+            reg = self._monster_reg.get(mid)
+            if reg is None:
+                self._hatred.pop(mid, None)
+                continue
+            target = self._stage_fighter(self._hatred[mid])
+            if target is None or target['id'] in self._dead:
+                # refreshState FIGHT -> BACK: hatred lost, walk home.
+                self._hatred.pop(mid, None)
+                if list(reg['pos']) != list(reg['born']):
+                    self._monster_step(mid, reg, reg['born'], frames)
+                continue
+            tpos = self._fighter_pos(target)
+            if tpos is None:
+                continue
+            tpl = reg['template']
+            try:
+                maxrange = int(tpl.get('maxrange') or 9)
+            except (TypeError, ValueError):
+                maxrange = 9
+            if ai_lib.chebyshev(reg['pos'], reg['born']) > maxrange:
+                self._hatred.pop(mid, None)
+                self._monster_step(mid, reg, reg['born'], frames)
+                continue
+            if ai_lib.chebyshev(reg['pos'], tpos) <= 1:
+                pixel = ai_lib.tile_to_pixel(tpos)
+                rid = target['id'] if target['kind'] == 'role' else None
+                frames.append(frame(amf3_encode(ai_lib.skill_ready_frame(
+                    mid, ai_lib.MONSTER_SKILL, pixel, None, rid))))
+                monster = {'kind': 'monster', 'id': mid,
+                           'template': reg['template']}
+                frames.extend(self._resolve_fire(
+                    monster, ai_lib.MONSTER_SKILL, 0, [target['id']],
+                    None, 1))
+            else:
+                self._monster_step(mid, reg, tpos, frames)
+        for pet_id in sorted(self._pet_state):
+            if pet_id in self._dead:
+                continue
+            pet = self._pet_state[pet_id]
+            roles = self.get_roles(self.authed_user or '', self.server_id or '')
+            owner = _find_role(roles, pet.get('owner'))
+            if owner is None or pet.get('pos') is None:
+                continue
+            opos = [int(owner.get('map_x')), int(owner.get('map_y'))]
+            if ai_lib.chebyshev(pet['pos'], opos) > 2:
+                walkable = self._walkable(str(owner.get('map_id')))
+                if walkable is None:
+                    continue
+                step = ai_lib.step_toward(list(pet['pos']), opos, walkable)
+                if step is not None:
+                    pet['pos'] = step
+                    frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
+                        pet_id, step, False, ai_lib.MOVE_KIND_PET))))
+        for mid in sorted(self._leaving):
+            self._leaving[mid] -= 1
+            if self._leaving[mid] > 0:
+                continue
+            reg = self._monster_reg.pop(mid, None)
+            self._monster_hp.pop(mid, None)
+            if reg is not None:
+                tpl = reg['template']
+                try:
+                    delay = int(tpl.get('creattime') or 5)
+                except (TypeError, ValueError):
+                    delay = 5
+                self._spawning.append([tpl.get('id'), reg['map'],
+                                       list(reg['born']), max(delay, 1)])
+            frames.append(self.aoi_leave_frame(mid))
+        for mid in [m for m in self._leaving if self._leaving[m] <= 0]:
+            del self._leaving[mid]
+        still = []
+        for tpl_id, map_id, born, ticks in self._spawning:
+            ticks -= 1
+            if ticks > 0:
+                still.append([tpl_id, map_id, born, ticks])
+                continue
+            tpl = (self.config.monster_template(tpl_id)
+                   if self.config is not None else None)
+            if tpl is None:
+                log.info('conn %d: respawn template %r gone (skipped)',
+                         self.conn_id, tpl_id)
+                continue
+            n = self._respawn_next.get(str(map_id), 0)
+            self._respawn_next[str(map_id)] = n + 1
+            nid = 'm_%s_%d' % (map_id, n)
+            self._monster_reg[nid] = {'template': tpl, 'map': str(map_id),
+                                      'born': list(born), 'pos': list(born)}
+            self._monster_hp[nid] = float(tpl.get('hitpoints') or 0)
+            frames.append(frame(amf3_encode(
+                ['23002', [ai_lib.respawn_record(nid, tpl, born)]])))
+        self._spawning = still
+        return tuple(frames) if frames else None
+
+    def aoi_leave_frame(self, fighter_id):
+        """24002 AOI leave [[fighterId]] (builder for the respawn phase)."""
+        return frame(amf3_encode(combat_lib.aoi_leave_frame(fighter_id)))
 
     def next_buff_id(self, kind):
         """IdUtil.nextString('buff'/'propbuff') shape for one stage object."""
@@ -786,6 +1287,11 @@ class Session:
         self._scene_seq += 1
         pet_id = f'zuoqi_{map_id}_{self._scene_seq}'
         self._pet_ids.add(pet_id)
+        self._pet_state[pet_id] = {
+            'max_hp': max_hp, 'hp': cur_hp, 'level': level,
+            'owner': _wire_id(role), 'owner_name': role.get('name'),
+            'name': 'mount', 'template_id': 'zuoqi%d' % rank,
+            'pos': list(point)}
         record = [
             pet_id,  # IdUtil.nextString('zuoqi')
             rank,

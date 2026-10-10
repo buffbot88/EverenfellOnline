@@ -926,7 +926,10 @@ class TestLiveScene(unittest.TestCase):
         self.assertEqual((role['map_x'], role['map_y']), (44, 33))
         self.assertIsNone(s.skill_move([42001, ['m_64_96', 'monster06']]))
 
-    def test_skill_fire_logs_without_inventing_damage(self):
+    def test_skill_fire_ignores_garbage(self):
+        # Live combat resolution lives in tests/test_combat.py; without a
+        # config the session knows no fighters or skills, so everything is
+        # ignored instead of invented.
         s, _, role_id = self.build()
         self.assertIsNone(s.skill_fire(
             [42002, [role_id, 'normal003', 0, ['m_64_96'], None, 1]]))

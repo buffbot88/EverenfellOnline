@@ -291,6 +291,8 @@ class GameConfig:
         self._cd = None
         self._xiaoguo = None
         self._jineng = None
+        self._jingyan = None
+        self._shaguai = None
 
     @property
     def map_lines_path(self):
@@ -401,6 +403,76 @@ class GameConfig:
             if row.get('skilltype') == category and row.get('cd1'):
                 return str(row['cd1'])
         return None
+
+    def skill_row(self, category):
+        """JiNengBiao row for a skill category, or None.
+
+        Java keys SkillConfig by category (normal003 -> T21, a 0.8, b 10);
+        rows carry per-level tiers, so the highest level tier wins."""
+        if self._jineng is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'JiNengBiao.jat')
+            self._jineng = (load_jineng_table(path)
+                            if os.path.isfile(path) else [])
+            if not self._jineng:
+                log.warning('no JiNengBiao table at %s; skill cooldowns unknown',
+                            path)
+        best = None
+        for row in self._jineng:
+            if row.get('skilltype') != category:
+                continue
+            if best is None or int(row.get('level') or 0) > int(best.get('level') or 0):
+                best = row
+        return best
+
+    def exp_decay(self, lv_diff):
+        """JingYanShuaiJianBiao subtractfactor for a role-minus-monster gap.
+
+        Feeds DropExpShuaiJianConfig.levelXishu (diff 16 -> 0.01); gaps past
+        the table use the last row, exactly Java's keyed-config miss default
+        of the nearest entry is NOT assumed -- absent table means None."""
+        if self._jingyan is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'JingYanShuaiJianBiao.jat')
+            rows = _load(path) if os.path.isfile(path) else []
+            self._jingyan = {int(r['lvdifference']): float(r['subtractfactor'])
+                             for r in rows
+                             if isinstance(r, dict)
+                             and r.get('lvdifference') is not None
+                             and r.get('subtractfactor') is not None}
+            if not self._jingyan:
+                log.warning('no JingYanShuaiJianBiao table at %s; kill exp unknown',
+                            path)
+        if not self._jingyan:
+            return None
+        return self._jingyan.get(max(int(lv_diff), 0),
+                                 self._jingyan[max(self._jingyan)])
+
+    def exp_revise(self, harm_percent, solo=True):
+        """ShaGuaiXiuZhengBiao correction for a killer's harm share.
+
+        Solo kills read solorevise, team kills rankrevise (both stored as
+        strings: '1.00' at harm 100); unknown tables/percentages give None."""
+        if self._shaguai is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ShaGuaiXiuZhengBiao.jat')
+            rows = _load(path) if os.path.isfile(path) else []
+            self._shaguai = {int(r['hurtpercentage']): r for r in rows
+                             if isinstance(r, dict)
+                             and r.get('hurtpercentage') is not None}
+            if not self._shaguai:
+                log.warning('no ShaGuaiXiuZhengBiao table at %s; kill exp unknown',
+                            path)
+        row = self._shaguai.get(min(max(int(harm_percent), 0), 100))
+        if row is None:
+            return None
+        try:
+            return float(row.get('solorevise' if solo else 'rankrevise'))
+        except (TypeError, ValueError):
+            return None
+
+    def monster_template(self, template_id):
+        """GuaiWuBiao row for a template id (D040011 -> hp 3895, basicexp 400)."""
+        return self.monster_templates().get(str(template_id))
 
     def monsters(self, map_id):
         """Monster spawn records for a map (empty list if the map has no monster.mm)."""

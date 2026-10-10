@@ -54,6 +54,7 @@ POLICY_XML = ('<cross-domain-policy>'
 # Original server values (config/server-info.properties, config/version.properties).
 GS_SIGNATURE = 'fu0-20140224_213740'
 
+CMD_PING = 19000
 CMD_LOGIN = 10001
 CMD_CREATE_ROLE = 10002
 CMD_ENTER_WORLD = 10003
@@ -90,7 +91,7 @@ CMD_SKILL_FIRE = 42002
 CMD_BUFF = 42100
 # Observed on the wire but with no captured reply or confirmed semantics yet;
 # logged so a live run shows the real post-entry command sequence.
-CMD_UNKNOWN_OBSERVED = frozenset({19000, 24002, 42005, 43000, 53021})
+CMD_UNKNOWN_OBSERVED = frozenset({24002, 42005, 43000, 53021})
 
 
 def frame(payload: bytes) -> bytes:
@@ -154,11 +155,14 @@ class Session:
                  tz_id='America/New_York',
                  get_role_settings=None, create_role=None, save_role_state=None,
                  get_role_equip=None, get_role_attr_buffs=None,
+                 get_role_vip=None,
                  config=None):
         self.conn_id = conn_id
         self.config = config
         self.get_role_equip = get_role_equip or (lambda role_id: [])
         self.get_role_attr_buffs = get_role_attr_buffs or (lambda role_id: [])
+        self.get_role_vip = get_role_vip or (lambda role_id: None)
+        self._last_ping_ms = None
         self.buf = bytearray()
         self.cipher = None
         self.key = None
@@ -268,22 +272,26 @@ class Session:
             return self.role_settings(msg)
         if cmd_num == CMD_ROLE_ATTRS:
             return self.attribute_info()
+        if cmd_num == CMD_PING:
+            return self.ping()
         if cmd_num == CMD_ZUOQI_INFO:
             return self.zuoqi_info()
         if cmd_num == CMD_RECIVE_YB:
-            return frame(amf3_encode(['35011', 0]))
+            roles = self.get_roles(self.authed_user or '', self.server_id or '')
+            role = roles[0] if roles else {}
+            return frame(amf3_encode(['35011', int(role.get('recive_yb') or 0)]))
         if cmd_num == CMD_MALL:
-            return frame(amf3_encode(['32000', [1, '', []]]))
+            return self.mall_info(msg)
         if cmd_num == CMD_JUQING_AWARD:
-            return frame(amf3_encode(['64010', []]))
+            return frame(amf3_encode(['64010', None]))
         if cmd_num == CMD_JUQING_INFO:
-            return frame(amf3_encode(['64001', []]))
+            return frame(amf3_encode(['64001', [1, [0, None, None, None]]]))
         if cmd_num == CMD_VIP:
-            return frame(amf3_encode(['62000', None]))
+            return self.vip_info()
         if cmd_num == CMD_ZUWU:
-            return frame(amf3_encode(['111000', [[], []]]))
+            return self.zuwu_info()
         if cmd_num == CMD_ZUWUFUBEN:
-            return frame(amf3_encode(['108001', []]))
+            return frame(amf3_encode(['108001', [1, [None, [], None]]]))
         log.warning('conn %d: unknown command %r payload=%r (ignored)',
                       self.conn_id, cmd, msg)
         return None
@@ -743,7 +751,90 @@ class Session:
         return frame(amf3_encode(['12011', values]))
 
     def fighting_info(self):
-        return frame(amf3_encode(['12010', [[0] * 5 for _ in range(5)]]))
+        """Command 12010: ZhanDouLiWrapper.getFightObject's Object[25].
+
+        Slot layout from bytecode: [0]=5 equip fights, [1]=roleLevel,
+        [2]=[skill,kangxin], [3]=[zuoqi,zuoqiEquip,longhun], [4]=[baoshi,
+        baixiao], [5]=vip, [6]=3 shenjiang fights, [7]=pozhen, [8]=meiren,
+        [9]=shuxindan, [10]=[qizhanbingqi,binhun], [11]=xianjie,
+        [12]=chenghao, [13]=zuoqiBook, [14]=qiBinBook, [15]=taozhuang,
+        [16]=3 guangyi fights, [17]=wuhun, [18]=touxian, [19]=zuwu,
+        [20]=guild, [21]=yuanshen, [22]=shenqi, [23]=2 pet fights,
+        [24]=hunjie. All zeros: no role_zhandouli data is migrated, and
+        Java's int fields default to 0 from empty sources.
+        """
+        return frame(amf3_encode(['12010', [
+            [0, 0, 0, 0, 0], 0, [0, 0], [0, 0, 0], [0, 0], 0,
+            [0, 0, 0], 0, 0, 0, [0, 0], 0, 0, 0, 0, 0,
+            [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
+
+    def ping(self):
+        """Command 19000: IoCommands.PING -> PingVo.genInterval().
+
+        A single int; the capture's mid-session values (6830, 8265, 9018)
+        read as ms between client pings, so this replies with the measured
+        ms since the previous ping on this connection (0 on the first).
+        """
+        now = int(time.time() * 1000)
+        interval = 0 if self._last_ping_ms is None else now - self._last_ping_ms
+        self._last_ping_ms = now
+        return frame(amf3_encode(['19000', interval]))
+
+    def vip_info(self):
+        """Command 62000: GetVipOutPut.getVipInfo's Object[5].
+
+        [stateDay, stateWeek, [[tejiaKey, value]...], propValue,
+        todyPropValue]; day/week are zeroed when vipLevel is 0, and the
+        pairs list the role_vip.state_tejia JSON keys (empty when none).
+        """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        vip = self.get_role_vip(role.get('id')) if role is not None else None
+        if vip is None:
+            return frame(amf3_encode(['62000', [0, 0, [], 0, 0]]))
+        if int(vip.get('vip_level') or 0) == 0:
+            day, week = 0, 0
+        else:
+            day, week = int(vip.get('state_day') or 0), int(vip.get('state_week') or 0)
+        try:
+            tejia = json.loads(vip.get('state_tejia')) if vip.get('state_tejia') else {}
+        except ValueError:
+            tejia = {}
+        pairs = [[k, v] for k, v in tejia.items()] if isinstance(tejia, dict) else []
+        return frame(amf3_encode(['62000', [
+            day, week, pairs, int(vip.get('prop_value') or 0),
+            int(vip.get('tody_prop_value') or 0)]]))
+
+    def mall_info(self, msg):
+        """Command 32000: MallServiceImpl.shopList [1, sign, items] / [-1, echo].
+
+        The request is [sign, category]; Java answers nothing when the
+        category is empty, [-1, echo] when the client's sign is current,
+        else [1, sign, raw WuPinChuShouBiao rows] of the category. The
+        sign is the mall row count (Java's framework sign is unresolved;
+        any deterministic value preserves the cache behavior).
+        """
+        args = self.safe(msg, 1, [])
+        sign = self.safe(args, 0)
+        category = self.safe(args, 1)
+        if not category:
+            return None
+        current = self.config.mall_sign() if self.config is not None else '0'
+        if sign is not None and str(sign) == current:
+            return frame(amf3_encode(['32000', [-1, sign]]))
+        items = (self.config.mall_shop_list(category)
+                 if self.config is not None else [])
+        return frame(amf3_encode(['32000', [1, current, items]]))
+
+    def zuwu_info(self):
+        """Command 111000: [entries[], wuhunsuipianCount].
+
+        Port of ZuwuServiceImpl.getInfo with no owned zuwu: one mockZuwuInfo
+        [id,0,0,0,type] per ZuWuShuxing type, then the fragment bag count
+        (0: no bag data is migrated).
+        """
+        entries = (self.config.zuwu_info()[0] if self.config is not None else [])
+        return frame(amf3_encode(['111000', [entries, 0]]))
 
     def role_settings(self, msg):
         role_id = str(self.safe(msg, 1, '') or '')

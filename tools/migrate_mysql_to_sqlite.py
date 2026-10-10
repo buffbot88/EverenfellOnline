@@ -117,13 +117,15 @@ def plan_counts(mysql, users):
              'role_stage': ' ' + role_filter(role_ids),
              'role_account': ' ' + role_filter(role_ids),
              'role_equip_slot': ' ' + role_filter(role_ids),
-             'role_attribute_buff': ' ' + role_filter(role_ids)}
+             'role_attribute_buff': ' ' + role_filter(role_ids),
+             'role_vip': ' ' + role_filter(role_ids)}
     tables = {'account': ('caonima', 'account'),
               'user_role': ('dntg', 'user_role'),
               'role_stage': ('dntg', 'role_stage'),
               'role_account': ('dntg', 'role_account'),
               'role_equip_slot': ('dntg', 'role_equip_slot'),
-              'role_attribute_buff': ('dntg', 'role_attribute_buff')}
+              'role_attribute_buff': ('dntg', 'role_attribute_buff'),
+              'role_vip': ('dntg', 'role_vip')}
     counts = {}
     for label, (db, table) in tables.items():
         rows = mysql.query(db, f'select count(*) from {table}{where[label]}')
@@ -136,7 +138,7 @@ def migrate(mysql, db_path, users, dry_run=False):
     report = {'users': ','.join(users), 'accounts_added': 0, 'accounts_skipped': 0,
               'roles_added': 0, 'roles_skipped': 0,
               'stages_written': 0, 'currency_written': 0,
-              'equip_written': 0, 'attr_buffs_written': 0,
+              'equip_written': 0, 'attr_buffs_written': 0, 'vip_written': 0,
               'roles_missing_account': [], 'notes': []}
     accounts = mysql.query('caonima',
                            'select ' + ','.join(ACCOUNT_COLS) + ' from account'
@@ -160,6 +162,9 @@ def migrate(mysql, db_path, users, dry_run=False):
     attr_buffs = mysql.query('dntg', 'select user_role_id,attribute_id,count'
                                      ' from role_attribute_buff ' + role_where
                                      + ' order by user_role_id,attribute_id')
+    vips = mysql.query('dntg', 'select user_role_id,vip_level,state_day,'
+                               'state_week,state_tejia,prop_value,tody_prop_value'
+                               ' from role_vip ' + role_where)
     if dry_run:
         report['accounts_added'] = len(accounts)
         report['roles_added'] = len(roles)
@@ -167,6 +172,7 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['currency_written'] = len(currency)
         report['equip_written'] = len(equips)
         report['attr_buffs_written'] = len(attr_buffs)
+        report['vip_written'] = len(vips)
         return report
 
     # Back up before writing anything.
@@ -285,6 +291,30 @@ def migrate(mysql, db_path, users, dry_run=False):
                 ' count=excluded.count',
                 (local_id, attribute_id, as_int(count) or 0))
             report['attr_buffs_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_vip(role_id INTEGER PRIMARY KEY,'
+                     ' vip_level INTEGER DEFAULT 0, state_day INTEGER DEFAULT 0,'
+                     ' state_week INTEGER DEFAULT 0, state_tejia TEXT,'
+                     ' prop_value INTEGER DEFAULT 0, tody_prop_value INTEGER DEFAULT 0)')
+        for row in vips:
+            user_role_id, vip_level, state_day, state_week, state_tejia, \
+                prop_value, tody_prop_value = (row + [None] * 7)[:7]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_vip(role_id, vip_level, state_day, state_week,'
+                ' state_tejia, prop_value, tody_prop_value)'
+                ' VALUES(?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' vip_level=excluded.vip_level, state_day=excluded.state_day,'
+                ' state_week=excluded.state_week, state_tejia=excluded.state_tejia,'
+                ' prop_value=excluded.prop_value,'
+                ' tody_prop_value=excluded.tody_prop_value',
+                (local_id, as_int(vip_level) or 0, as_int(state_day) or 0,
+                 as_int(state_week) or 0, state_tejia, as_int(prop_value) or 0,
+                 as_int(tody_prop_value) or 0))
+            report['vip_written'] += 1
 
         for user_role_id, tongqian, bind_lingshi in currency:
             local_id = legacy_to_local.get(user_role_id)

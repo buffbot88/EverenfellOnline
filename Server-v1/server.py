@@ -38,6 +38,7 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_role_state=self.server.save_role_state,
             get_role_equip=self.server.get_role_equip,
             get_role_attr_buffs=self.server.get_role_attr_buffs,
+            get_role_vip=self.server.get_role_vip,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
             config=self.server.game_config)
@@ -115,6 +116,7 @@ def main():
     tcpd.save_role_state = store.update_character_state
     tcpd.get_role_equip = store.get_role_equip
     tcpd.get_role_attr_buffs = store.get_role_attr_buffs
+    tcpd.get_role_vip = store.get_role_vip
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id

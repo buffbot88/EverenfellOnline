@@ -160,6 +160,9 @@ def make_session(store):
         create_role=lambda acct, sid, name, job, sex, face: store.create_character(
             acct, sid, name, job=job, sex=sex, face=face),
         save_role_state=store.update_character_state,
+        get_role_equip=store.get_role_equip,
+        get_role_attr_buffs=store.get_role_attr_buffs,
+        get_role_vip=store.get_role_vip,
         # DEFAULT_CONFIG_DIR is relative to Server-v1/, as server.py expects.
         config=GameConfig(os.path.normpath(str(ROOT / 'Server-v1' / DEFAULT_CONFIG_DIR))))
 

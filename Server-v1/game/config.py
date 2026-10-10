@@ -109,6 +109,51 @@ def load_fujia_random_table(path):
     return table
 
 
+def load_mall_table(path):
+    """Rows of sys_config/WuPinChuShouBiao.jat grouped by modelid, pages sorted.
+
+    Java groups rows into WuPinChuShouCategoryConfig per modelId with items
+    bucketed by page (WuPinChuShouConfigExportServiceImpl.configureDataResolve
+    + addWupinChuShou); getAllData flattens the page buckets. Pages sort
+    ascending, matching HashMap<Integer,List> bucket order for small ints.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of mall rows')
+    cats = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('modelid') is None:
+            continue
+        cats.setdefault(str(row['modelid']), {}).setdefault(
+            int(row.get('page') or 0), []).append(row)
+    return {model: [row for page in sorted(pages) for row in pages[page]]
+            for model, pages in cats.items()}
+
+
+def load_zuwu_table(path):
+    """Rows of sys_config/ZuWuShuxing.jat as {type: first jieshu==1 id}.
+
+    Java's typeIdMaps keeps the first row per type whose jieshu cell is 1
+    (ZuwuShuxingConfigExportServiceImpl.configureDataResolve); 111000
+    mocks one [id,0,0,0,type] entry per map member for unowned types.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of zuwu rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('type') is None \
+                or row.get('id') is None:
+            continue
+        try:
+            kind, jieshu = int(row['type']), int(row.get('jieshu') or 0)
+        except (TypeError, ValueError):
+            continue
+        if jieshu == 1 and kind not in table:
+            table[kind] = str(row['id'])
+    return table
+
+
 def load_shuxingdan_table(path):
     """Rows of sys_config/shuxingdan.jat (permanent attribute pills) by id."""
     rows = _load(path)
@@ -193,6 +238,8 @@ class GameConfig:
         self._equip = None
         self._shuxingdan = None
         self._fujia_random = None
+        self._mall = None
+        self._zuwu = None
 
     @property
     def map_lines_path(self):
@@ -398,6 +445,59 @@ class GameConfig:
                 if value:
                     totals[name] = totals.get(name, 0.0) + value
         return totals
+
+    def mall_table(self):
+        """WuPinChuShouBiao rows by modelid; empty when the file is absent."""
+        if self._mall is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'WuPinChuShouBiao.jat')
+            try:
+                self._mall = load_mall_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad mall table: %s', e)
+                self._mall = {}
+        return self._mall
+
+    def mall_sign(self):
+        """Cache-buster for 32000: the mall row count as a string.
+
+        Java compares the client's sign against a framework-computed config
+        sign whose exact derivation is unresolved; any deterministic value
+        preserves the behavior (mismatch -> full list, match -> [-1, echo]).
+        """
+        return str(sum(len(items) for items in self.mall_table().values()))
+
+    def mall_shop_list(self, category):
+        """Raw mall rows for a modelid (the source map IS the row).
+
+        WuPinChuShouConfig.setMap stores the raw .jat row and getAllData
+        returns those maps, so the client entries are the rows themselves.
+        """
+        return list(self.mall_table().get(str(category), []))
+
+    def zuwu_table(self):
+        """ZuWuShuxing.jat as {type: first jieshu==1 id}; empty if absent."""
+        if self._zuwu is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZuWuShuxing.jat')
+            try:
+                self._zuwu = load_zuwu_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad zuwu table: %s', e)
+                self._zuwu = {}
+        return self._zuwu
+
+    def zuwu_info(self):
+        """111000 payload for a role with no owned zuwu: mock entries + 0 fragments.
+
+        Port of ZuwuServiceImpl.getInfo over an empty RoleZuwu list: one
+        mockZuwuInfo [id,0,0,0,type] per typeIdMaps member, then the
+        wuhunsuipian bag count (0: no bag data is migrated).
+        """
+        return [[[zid, 0, 0, 0, kind]
+                 for kind, zid in sorted(self.zuwu_table().items())], 0]
 
     def monster_templates(self):
         """Monster template rows from sys_config/GuaiWuBiao.jat, keyed by template id."""

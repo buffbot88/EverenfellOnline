@@ -23,7 +23,7 @@ from db import Store
 from game import amf3
 from game.amf3 import ByteArray, Obj
 from game.cipher import SimpleEncrypt, new_key
-from game.config import GameConfig
+from game.config import DEFAULT_CONFIG_DIR, GameConfig
 from game.protocol import DEFAULT_MAP_TYPE, Session, frame
 
 # Live-captured first frame from the original client (bridge LOG_PACKETS=1).
@@ -172,6 +172,9 @@ def make_session(store=None, config=None):
         'create_role': (lambda a, s, n, j, x, f: store.create_character(
             a, s, n, job=j, sex=x, face=f)),
         'save_role_state': store.update_character_state,
+        'get_role_equip': store.get_role_equip,
+        'get_role_attr_buffs': store.get_role_attr_buffs,
+        'get_role_vip': store.get_role_vip,
     }
     if config is not None:
         kwargs['config'] = config
@@ -516,14 +519,16 @@ class TestWorldInit(unittest.TestCase):
         setting = amf3.decode(s.role_settings([13000, str(role_id)])[4:])
         self.assertEqual(setting, ['13000', [None, panel, None, None]])
         self.assertEqual(len(self.reply(12011)[1]), 11)
-        self.assertEqual(self.reply(12010)[1], [[0] * 5] * 5)
+        self.assertEqual(self.reply(12010)[1], [
+            [0, 0, 0, 0, 0], 0, [0, 0], [0, 0, 0], [0, 0], 0,
+            [0, 0, 0], 0, 0, 0, [0, 0], 0, 0, 0, 0, 0,
+            [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0])
         self.assertEqual(self.reply(35011)[1], 0)
-        self.assertEqual(self.reply(32000, [None, '2000'])[1], [1, '', []])
-        self.assertEqual(self.reply(64010)[1], [])
-        self.assertEqual(self.reply(64001)[1], [])
-        self.assertIsNone(self.reply(62000)[1])
-        self.assertEqual(self.reply(111000)[1], [[], []])
-        self.assertEqual(self.reply(108001)[1], [])
+        self.assertIsNone(self.reply(32000, [None, None]))
+        self.assertIsNone(self.reply(64010)[1])
+        self.assertEqual(self.reply(64001)[1], [1, [0, None, None, None]])
+        self.assertEqual(self.reply(62000)[1], [0, 0, [], 0, 0])
+        self.assertEqual(self.reply(108001)[1], [1, [None, [], None]])
         self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 
@@ -926,6 +931,76 @@ class TestLiveScene(unittest.TestCase):
         s, _, _ = self.build()
         self.assertIsNone(s.jump([40001, []]))
         self.assertIsNone(s.teleport([40100, []]))
+
+
+class TestPhase1InitBurst(unittest.TestCase):
+    """Phase 1 init-burst replies: bytecode shapes, real config/DB sources."""
+
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.store.create_account('hero', 'x')
+        self.role_id = self.store.create_character('hero', 'fu1304', '悟空')
+        cfg = os.path.normpath(os.path.join(os.path.dirname(__file__), '..',
+                                            DEFAULT_CONFIG_DIR))
+        self.s = make_session(self.store, config=GameConfig(cfg))
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+
+    def test_ping_replies_with_an_interval_int(self):
+        first = amf3.decode(self.s.ping()[4:])
+        self.assertEqual(first, ['19000', 0])
+        second = amf3.decode(self.s.ping()[4:])
+        self.assertEqual(second[0], '19000')
+        self.assertIsInstance(second[1], int)
+        self.assertGreaterEqual(second[1], 0)
+
+    def test_vip_empty_role_is_all_zeros(self):
+        env = amf3.decode(self.s.vip_info()[4:])
+        self.assertEqual(env, ['62000', [0, 0, [], 0, 0]])
+
+    def test_vip_row_flows_through_with_level_zeroing(self):
+        self.store.save_role_vip(self.role_id, vip_level=10, state_day=3,
+                                 state_week=1, state_tejia='{"a": 2}',
+                                 prop_value=7, tody_prop_value=9)
+        env = amf3.decode(self.s.vip_info()[4:])
+        self.assertEqual(env, ['62000', [3, 1, [['a', 2]], 7, 9]])
+        self.store.save_role_vip(self.role_id, vip_level=0, state_day=3,
+                                 state_week=1)
+        env = amf3.decode(self.s.vip_info()[4:])
+        self.assertEqual(env[1][:2], [0, 0])  # Java zeroes day/week at level 0
+
+    def test_mall_sign_mismatch_sends_real_rows(self):
+        env = amf3.decode(self.s.mall_info([32000, ['stale', '1001']])[4:])
+        self.assertEqual(env[0], '32000')
+        self.assertEqual(env[1][0], 1)
+        self.assertTrue(env[1][2])  # real WuPinChuShouBiao rows
+        self.assertEqual(env[1][2][0]['modelid'], 1001)
+        self.assertIn('sellid', env[1][2][0])
+
+    def test_mall_matching_sign_sends_no_data(self):
+        sign = self.s.config.mall_sign()
+        env = amf3.decode(self.s.mall_info([32000, [sign, '1001']])[4:])
+        self.assertEqual(env, ['32000', [-1, sign]])
+
+    def test_mall_empty_category_has_no_reply_like_java(self):
+        self.assertIsNone(self.s.mall_info([32000, ['x', '']]))
+        self.assertIsNone(self.s.mall_info([32000, ['x', None]]))
+
+    def test_zuwu_is_mocks_plus_zero_fragments(self):
+        env = amf3.decode(self.s.zuwu_info()[4:])
+        self.assertEqual(env[0], '111000')
+        entries, frags = env[1]
+        self.assertEqual(frags, 0)
+        self.assertTrue(entries)  # one mock per ZuWuShuxing type
+        for entry in entries:
+            self.assertEqual(entry[1:4], [0, 0, 0])
+
+    def test_recive_yb_reads_the_role_row(self):
+        self.s.feed(CAPTURED_INITKEY)
+        out = self.s.feed(frame(
+            self.s.cipher.encode(amf3.encode([35011, None]))))
+        self.assertEqual(amf3.decode(out[0][4:]), ['35011', 0])
 
 
 if __name__ == '__main__':

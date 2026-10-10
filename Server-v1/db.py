@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS role_attr_buff (
   PRIMARY KEY(role_id, attribute_id),
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS role_vip (
+  role_id INTEGER PRIMARY KEY,
+  vip_level INTEGER DEFAULT 0,
+  state_day INTEGER DEFAULT 0,
+  state_week INTEGER DEFAULT 0,
+  state_tejia TEXT,
+  prop_value INTEGER DEFAULT 0,
+  tody_prop_value INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   legacy_id TEXT,
@@ -293,6 +303,32 @@ class Store:
                     ' VALUES(?,?,?)',
                     (str(role_id), buff.get('attribute_id'),
                      buff.get('count') or 0))
+            self.db.commit()
+            return True
+
+    def get_role_vip(self, role_id):
+        """VIP row for a role (legacy role_vip subset), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT vip_level, state_day, state_week, state_tejia,'
+                ' prop_value, tody_prop_value FROM role_vip WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_vip(self, role_id, **fields):
+        """Upsert a role's VIP row; only known role_vip columns."""
+        allowed = {'vip_level', 'state_day', 'state_week', 'state_tejia',
+                   'prop_value', 'tody_prop_value'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(f'unknown vip fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_vip(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
             self.db.commit()
             return True
 

@@ -5,7 +5,7 @@ cmd:ROLE_VIP_LEVEL	count:4	total:584900	max:268000	min:28800	avg:146225
 cmd:sync2db	count:23	total:709184700	max:75895600	min:12768200	avg:30834117
 cmd:63009	count:21	total:48472201	max:7075201	min:28500	avg:2308200
 cmd:ZDL:VIP_FIGHT	count:4	total:3392600	max:2452600	min:100800	avg:848150
-cmd:AI:PRODUCE	count:2685	total:751496809	max:3421600	min:14100	avg:279887
+cmd:AI:PRODUCE	count:2840	total:792199415	max:3421600	min:14100	avg:278943
 cmd:12010	count:6	total:649900	max:299900	min:52600	avg:108316
 cmd:RANK:CHANGE_TOTAL_ZHANDOULI	count:6	total:2896100	max:2266700	min:74500	avg:482683
 cmd:RANK:VIP_LEVEL_UPGRADE	count:4	total:20757400	max:6019400	min:4267400	avg:5189350
@@ -18,8 +18,8 @@ cmd:32010	count:21	total:412899899	max:113554699	min:9310600	avg:19661899
 cmd:xianjie_chenghao_jihuo	count:4	total:1143700	max:417600	min:210900	avg:285925
 cmd:21000	count:21	total:5533301	max:941600	min:121000	avg:263490
 cmd:RANK:LOGNG_INIT	count:21	total:42587200	max:7042200	min:955300	avg:2027961
-cmd:AI:RETRIEVE	count:3893	total:605167199	max:3505900	min:15900	avg:155450
-cmd:AI:HANDLE	count:971101	total:75106823360	max:381917100	min:4700	avg:77341
+cmd:AI:RETRIEVE	count:4115	total:632270595	max:3505900	min:13200	avg:153650
+cmd:AI:HANDLE	count:1026788	total:79336715732	max:381917100	min:4200	avg:77266
 cmd:jingji_everyhour_reward	count:2	total:1903401	max:1302801	min:600600	avg:951700
 cmd:S:ENTER	count:21	total:117164199	max:17825099	min:2091700	avg:5579247
 cmd:S:SHANBI_RECOVERY	count:1	total:360800	max:360800	min:360800	avg:360800
@@ -39,7 +39,7 @@ cmd:S:LEAVE	count:21	total:9827100	max:1541900	min:26600	avg:467957
 cmd:jiangli:login_init	count:21	total:9469599	max:848799	min:231200	avg:450933
 cmd:0	count:21	total:351210500	max:54279600	min:10863200	avg:16724309
 cmd:-1	count:21	total:329472900	max:60694500	min:8614700	avg:15689185
-cmd:io_msg_out	count:815003	total:1840679287	max:15337899	min:200	avg:2258
+cmd:io_msg_out	count:861654	total:1934585358	max:15337899	min:200	avg:2245
 cmd:10003	count:21	total:75817200	max:5912800	min:2479300	avg:3610342
 cmd:role_login_init	count:21	total:3566900	max:691700	min:62300	avg:169852
 cmd:RANK:RANK_SHENQI_ZHANLI	count:19	total:98005300	max:12680600	min:2712700	avg:5158173

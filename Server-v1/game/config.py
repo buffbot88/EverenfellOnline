@@ -154,6 +154,25 @@ def load_zuwu_table(path):
     return table
 
 
+def load_xishu_table(path):
+    """Rows of sys_config/ZhanLiXiShu.jat as {attrName: factor}."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of zhanli xishu rows')
+    return {str(r['name']): float(r['factor']) for r in rows
+            if isinstance(r, dict) and r.get('name') is not None
+            and r.get('factor') is not None}
+
+
+def load_vip_table(path):
+    """Rows of sys_config/vipbiao.jat keyed by vip level."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of vip rows')
+    return {int(r['lv']): r for r in rows
+            if isinstance(r, dict) and r.get('lv') is not None}
+
+
 def load_shuxingdan_table(path):
     """Rows of sys_config/shuxingdan.jat (permanent attribute pills) by id."""
     rows = _load(path)
@@ -240,6 +259,8 @@ class GameConfig:
         self._fujia_random = None
         self._mall = None
         self._zuwu = None
+        self._xishu = None
+        self._vip = None
 
     @property
     def map_lines_path(self):
@@ -498,6 +519,101 @@ class GameConfig:
         """
         return [[[zid, 0, 0, 0, kind]
                  for kind, zid in sorted(self.zuwu_table().items())], 0]
+
+    def xishu_table(self):
+        """ZhanLiXiShu factors keyed by attribute name; empty if absent."""
+        if self._xishu is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhanLiXiShu.jat')
+            try:
+                self._xishu = load_xishu_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad zhanli xishu table: %s', e)
+                self._xishu = {}
+        return self._xishu
+
+    def vip_table(self):
+        """vipbiao.jat rows keyed by level (zhanli, vipbuff); empty if absent."""
+        if self._vip is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'vipbiao.jat')
+            try:
+                self._vip = load_vip_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad vip table: %s', e)
+                self._vip = {}
+        return self._vip
+
+    def vip_fight(self, vip_level):
+        """VipConfig.getZhanli for a level (vipZHanLi); 0 when unlisted."""
+        row = self.vip_table().get(int(vip_level or 0))
+        return int(row.get('zhanli') or 0) if row else 0
+
+    def fight_value(self, attr_map):
+        """ZhanDouLiServiceImpl.getFight: int-accumulated value*factor.
+
+        Skips attributes with no xishu row. Caveat: Java iterates a
+        HashMap, so multi-fractional maps can differ by truncation order
+        (bounded, +-cycles); all-int maps like the level row are exact.
+        """
+        xishu = self.xishu_table()
+        total = 0
+        for name, value in (attr_map or {}).items():
+            factor = xishu.get(str(name))
+            if factor is None:
+                continue
+            total = int(total + float(value or 0) * factor)
+        return total
+
+    def level_fight(self, row):
+        """getRoleLevelFight: getFight over the level row's combat keys."""
+        return self.fight_value({k: v for k, v in (row or {}).items()})
+
+    def equip_fight_parts(self, items):
+        """(base, qianghua, fujia) fight ints over equipped items.
+
+        Port of getRoleEquipBaseFighting/getRoleEquipQianghuaFighting/
+        getRoleEquipFuJiaFight: per item getFight(base*rate),
+        getFight(stars*rate), getFight(fujia), each truncated per item.
+        """
+        table = self.equip_table()
+        base, qianghua, fujia = 0, 0, 0
+        for item in items or []:
+            row = table.get(str(item.get('goods_id')))
+            if row is None:
+                continue
+            rate = _number(row.get('%sjichubili' % int(item.get('rare_level') or 0))) or 1.0
+            stars, pairs = parse_item_attributes(item.get('attributes'))
+            base_map, qh_map = {}, {}
+            for name in EQUIP_ATTRIBUTE_NAMES:
+                plain = _number(row.get(name))
+                if plain:
+                    base_map[name] = plain * rate
+                extra = sum(_number(row.get('star%d%s' % (star, name)))
+                            for star in stars)
+                if extra:
+                    qh_map[name] = extra * rate
+            base += self.fight_value(base_map)
+            qianghua += self.fight_value(qh_map)
+            fujia += self.fight_value(
+                self.fujia_attribute_map(pairs, row.get('level')))
+        return base, qianghua, fujia
+
+    def dan_fight(self, buffs):
+        """getAttributeDanFight: row values times count, accumulated."""
+        table = self.shuxingdan_table()
+        merged = {}
+        for buff in buffs or []:
+            row = table.get(str(buff.get('attribute_id')))
+            if row is None:
+                continue
+            count = buff.get('count') or 0
+            for name in EQUIP_ATTRIBUTE_NAMES + ('perdamage', 'jiangu'):
+                value = _number(row.get(name)) * count
+                if value:
+                    merged[name] = merged.get(name, 0.0) + value
+        return self.fight_value(merged)
 
     def monster_templates(self):
         """Monster template rows from sys_config/GuaiWuBiao.jat, keyed by template id."""

@@ -755,17 +755,39 @@ class Session:
 
         Slot layout from bytecode: [0]=5 equip fights, [1]=roleLevel,
         [2]=[skill,kangxin], [3]=[zuoqi,zuoqiEquip,longhun], [4]=[baoshi,
-        baixiao], [5]=vip, [6]=3 shenjiang fights, [7]=pozhen, [8]=meiren,
+        baixiao], [5]=vip, [6]=3 shenjiang fights,        [7]=pozhen, [8]=meiren,
         [9]=shuxindan, [10]=[qizhanbingqi,binhun], [11]=xianjie,
         [12]=chenghao, [13]=zuoqiBook, [14]=qiBinBook, [15]=taozhuang,
         [16]=3 guangyi fights, [17]=wuhun, [18]=touxian, [19]=zuwu,
         [20]=guild, [21]=yuanshen, [22]=shenqi, [23]=2 pet fights,
-        [24]=hunjie. All zeros: no role_zhandouli data is migrated, and
-        Java's int fields default to 0 from empty sources.
+        [24]=hunjie. Computed slots come from migrated gear/dan/vip/level
+        rows via ZhanLiXiShu; the rest stay 0 (their source tables are not
+        migrated, and Java's int fields default to 0 from empty sources).
         """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
+        if role is not None and self.config is not None:
+            level = self.config.level_fight(
+                self.config.role_attribute_row(role.get('level')))
+            try:
+                items = self.get_role_equip(role.get('id')) or []
+            except Exception:
+                items = []
+            base, qianghua, fujia = self.config.equip_fight_parts(items)
+            try:
+                buffs = self.get_role_attr_buffs(role.get('id')) or []
+            except Exception:
+                buffs = []
+            dan = self.config.dan_fight(buffs)
+            try:
+                vip_row = self.get_role_vip(role.get('id'))
+            except Exception:
+                vip_row = None
+            vip = self.config.vip_fight((vip_row or {}).get('vip_level'))
         return frame(amf3_encode(['12010', [
-            [0, 0, 0, 0, 0], 0, [0, 0], [0, 0, 0], [0, 0], 0,
-            [0, 0, 0], 0, 0, 0, [0, 0], 0, 0, 0, 0, 0,
+            [base, qianghua, fujia, 0, 0], level, [0, 0], [0, 0, 0],
+            [0, 0], vip, [0, 0, 0], 0, 0, dan, [0, 0], 0, 0, 0, 0, 0,
             [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def ping(self):

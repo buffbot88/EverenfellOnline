@@ -118,14 +118,18 @@ def plan_counts(mysql, users):
              'role_account': ' ' + role_filter(role_ids),
              'role_equip_slot': ' ' + role_filter(role_ids),
              'role_attribute_buff': ' ' + role_filter(role_ids),
-             'role_vip': ' ' + role_filter(role_ids)}
+             'role_vip': ' ' + role_filter(role_ids),
+             'role_xianjiechenhao': ' ' + role_filter(role_ids),
+             'role_meiren': ' ' + role_filter(role_ids)}
     tables = {'account': ('caonima', 'account'),
               'user_role': ('dntg', 'user_role'),
               'role_stage': ('dntg', 'role_stage'),
               'role_account': ('dntg', 'role_account'),
               'role_equip_slot': ('dntg', 'role_equip_slot'),
               'role_attribute_buff': ('dntg', 'role_attribute_buff'),
-              'role_vip': ('dntg', 'role_vip')}
+              'role_vip': ('dntg', 'role_vip'),
+              'role_xianjiechenhao': ('dntg', 'role_xianjiechenhao'),
+              'role_meiren': ('dntg', 'role_meiren')}
     counts = {}
     for label, (db, table) in tables.items():
         rows = mysql.query(db, f'select count(*) from {table}{where[label]}')
@@ -139,6 +143,7 @@ def migrate(mysql, db_path, users, dry_run=False):
               'roles_added': 0, 'roles_skipped': 0,
               'stages_written': 0, 'currency_written': 0,
               'equip_written': 0, 'attr_buffs_written': 0, 'vip_written': 0,
+              'xianjiechenhao_written': 0, 'meiren_written': 0,
               'roles_missing_account': [], 'notes': []}
     accounts = mysql.query('caonima',
                            'select ' + ','.join(ACCOUNT_COLS) + ' from account'
@@ -165,6 +170,11 @@ def migrate(mysql, db_path, users, dry_run=False):
     vips = mysql.query('dntg', 'select user_role_id,vip_level,state_day,'
                                'state_week,state_tejia,prop_value,tody_prop_value'
                                ' from role_vip ' + role_where)
+    xianjiechenhao = mysql.query('dntg', 'select user_role_id,xianjie_id,chenhao_id'
+                                         ' from role_xianjiechenhao ' + role_where)
+    meiren = mysql.query('dntg', 'select user_role_id,meiren_id,meiren_level,'
+                                 'meiren_heti from role_meiren ' + role_where
+                                 + ' order by user_role_id,meiren_id')
     if dry_run:
         report['accounts_added'] = len(accounts)
         report['roles_added'] = len(roles)
@@ -173,6 +183,8 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['equip_written'] = len(equips)
         report['attr_buffs_written'] = len(attr_buffs)
         report['vip_written'] = len(vips)
+        report['xianjiechenhao_written'] = len(xianjiechenhao)
+        report['meiren_written'] = len(meiren)
         return report
 
     # Back up before writing anything.
@@ -315,6 +327,40 @@ def migrate(mysql, db_path, users, dry_run=False):
                  as_int(state_week) or 0, state_tejia, as_int(prop_value) or 0,
                  as_int(tody_prop_value) or 0))
             report['vip_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_xianjiechenhao(role_id INTEGER PRIMARY KEY,'
+                     ' xianjie_id TEXT, chenhao_id TEXT)')
+        for row in xianjiechenhao:
+            user_role_id, xianjie_id, chenhao_id = (row + [None] * 3)[:3]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_xianjiechenhao(role_id, xianjie_id, chenhao_id)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' xianjie_id=excluded.xianjie_id, chenhao_id=excluded.chenhao_id',
+                (local_id, xianjie_id, chenhao_id))
+            report['xianjiechenhao_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_meiren(role_id INTEGER NOT NULL,'
+                     ' meiren_id TEXT NOT NULL, meiren_level INTEGER DEFAULT 0,'
+                     ' meiren_heti INTEGER DEFAULT 0,'
+                     ' PRIMARY KEY(role_id, meiren_id))')
+        for row in meiren:
+            user_role_id, meiren_id, meiren_level, meiren_heti = (row + [None] * 4)[:4]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not meiren_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_meiren(role_id, meiren_id, meiren_level, meiren_heti)'
+                ' VALUES(?,?,?,?)'
+                ' ON CONFLICT(role_id, meiren_id) DO UPDATE SET'
+                ' meiren_level=excluded.meiren_level,'
+                ' meiren_heti=excluded.meiren_heti',
+                (local_id, meiren_id, as_int(meiren_level) or 0,
+                 as_int(meiren_heti) or 0))
+            report['meiren_written'] += 1
 
         for user_role_id, tongqian, bind_lingshi in currency:
             local_id = legacy_to_local.get(user_role_id)

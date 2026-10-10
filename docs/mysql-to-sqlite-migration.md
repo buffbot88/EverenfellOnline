@@ -39,6 +39,11 @@ one currency row.
 | `user_role.server_id` | `characters.server_id` | `fu1304`. |
 | `role_stage.*` | `role_stage.*` | Same names as Java (see below). |
 | `role_account.tongqian` / `bind_lingshi` | `characters.tongqian` / `bind_lingshi` | The only two currency columns the legacy table has. |
+| `role_equip_slot` (goods/rare/blob) | `role_equip` | Slot rows for the gear attribute bag. |
+| `role_attribute_buff` (attribute_id/count) | `role_attr_buff` | Shuxingdan pill rows for the dan bag. |
+| `role_vip` (level/day/week/tejia/props) | `role_vip` | VIP level drives the buff push and the effect slots. |
+| `role_xianjiechenhao` (`xianjie_id`/`chenhao_id` JSON) | `role_xianjiechenhao` | Xianjie id array + chenghao id array for the title bags. |
+| `role_meiren` (meiren_id/level/heti) | `role_meiren` | One row per owned meiren; empty for the captured roles. |
 
 `role_stage` is a **separate table** mirroring Java's `role_stage` columns, not extra
 columns on `characters`. The SQLite table has 21 columns including `role_id`. The

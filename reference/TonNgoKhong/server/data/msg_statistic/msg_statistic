@@ -3,7 +3,7 @@ cmd:ZDL:CHENGHAO	count:4	total:4367600	max:3362400	min:164400	avg:1091900
 cmd:ROLE_VIP_LEVEL	count:4	total:584900	max:268000	min:28800	avg:146225
 cmd:ZDL:VIP_FIGHT	count:4	total:3392600	max:2452600	min:100800	avg:848150
 cmd:inner_baozang_close	count:9	total:193500	max:168000	min:2800	avg:21500
-cmd:AI:PRODUCE	count:27025	total:7757717824	max:20105000	min:14100	avg:287057
+cmd:AI:PRODUCE	count:28654	total:8163108324	max:20105000	min:14100	avg:284885
 cmd:12010	count:6	total:649900	max:299900	min:52600	avg:108316
 cmd:70100	count:21	total:4354899	max:546700	min:68700	avg:207376
 cmd:RANK:VIP_LEVEL_UPGRADE	count:4	total:20757400	max:6019400	min:4267400	avg:5189350
@@ -14,8 +14,8 @@ cmd:32010	count:21	total:412899899	max:113554699	min:9310600	avg:19661899
 cmd:P:STAGE_CHANGE	count:18	total:5541800	max:1467000	min:48300	avg:307877
 cmd:AI:GUAIWUGONGCHENG	count:204	total:21577000	max:5001700	min:2100	avg:105769
 cmd:21000	count:21	total:5533301	max:941600	min:121000	avg:263490
-cmd:AI:HANDLE	count:9657015	total:850695464874	max:381917100	min:4200	avg:88090
-cmd:AI:RETRIEVE	count:38922	total:4846104343	max:3505900	min:4200	avg:124508
+cmd:AI:HANDLE	count:10227574	total:892381128674	max:381917100	min:4200	avg:87252
+cmd:AI:RETRIEVE	count:41219	total:5112754443	max:3505900	min:4200	avg:124038
 cmd:inner_close_prepare	count:9	total:708600	max:300300	min:5800	avg:78733
 cmd:S:PET_HP	count:17	total:918100	max:516400	min:13900	avg:54005
 cmd:F:51014	count:18	total:6846001	max:1901900	min:104900	avg:380333
@@ -45,6 +45,6 @@ cmd:BUFF:TRIGGER	count:30	total:2432500	max:457900	min:7200	avg:81083
 cmd:JQ:LOGIN	count:21	total:1283801	max:258600	min:20500	avg:61133
 cmd:iologin	count:21	total:313536900	max:248779400	min:315900	avg:14930328
 cmd:jiangli:login_init	count:21	total:9469599	max:848799	min:231200	avg:450933
-cmd:io_msg_out	count:8101833	total:22701981210	max:19589000	min:200	avg:2802
+cmd:io_msg_out	count:8580577	total:23788105810	max:19589000	min:200	avg:2772
 cmd:-1	count:21	total:329472900	max:60694500	min:8614700	avg:15689185
 cmd:role_login_init	count:21	total:3566900	max:691700	min:62300	avg:169852

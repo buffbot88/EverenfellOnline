@@ -130,6 +130,88 @@ def load_mall_table(path):
             for model, pages in cats.items()}
 
 
+def parse_att_string(text):
+    """'k:v;k:v' attribute string into {key: float}.
+
+    Port of XianJieExportServiceImpl/ChengHaoExportServiceImpl.getattMap:
+    split on ';', then on ':', Float values. Unparseable pairs are skipped
+    instead of faked (the shipped tables are clean; garbage must not
+    become attributes).
+    """
+    table = {}
+    for part in str(text or '').split(';'):
+        part = part.strip()
+        if not part or ':' not in part:
+            continue
+        key, _, value = part.partition(':')
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if key.strip():
+            table[key.strip()] = number
+    return table
+
+
+# ConfigAttributeParser.attribute2Map(Map)'s key universe (jar bytecode):
+# the flat cells a meiren.jat row can contribute to its attribute map.
+MEIREN_ATTRIBUTE_NAMES = ('hitpoints', 'mana', 'physicdamage', 'physicdefence',
+                          'critical', 'volt', 'attackrate', 'velocity', 'dodge',
+                          'dodgedefence', 'mb', 'mbdk', 'yx', 'yxdk', 'bh',
+                          'bhdk', 'xx', 'xxdk', 'dunshudian', 'criticalb',
+                          'criticalc', 'pojia', 'qiege', 'jiangu', 'shishen',
+                          'shenyou', 'damage', 'defence', 'perdamage',
+                          'redamage', 'reph', 'leidamage', 'leidefence',
+                          'mudamage', 'mudefence', 'shuidamage', 'shuidefence',
+                          'huodamage', 'huodefence', 'tudamage', 'tudefence')
+
+
+def load_xianjie_table(path):
+    """Rows of sys_config/xianjie.jat keyed by id."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of xianjie rows')
+    return {str(r['id']): r for r in rows
+            if isinstance(r, dict) and r.get('id') is not None}
+
+
+def load_chenghao_table(path):
+    """Rows of sys_config/chenghao.jat keyed by chenghaoid."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chenghao rows')
+    return {str(r['chenghaoid']): r for r in rows
+            if isinstance(r, dict) and r.get('chenghaoid') is not None}
+
+
+def load_meiren_table(path):
+    """Rows of sys_config/meiren.jat as ({meinvid: (type, level)},
+    {type: {level: attribute map}}).
+
+    Mirrors MeiRenConfigExportServiceImpl: each row becomes a MeiRenConfig
+    whose attribtueMap is ConfigAttributeParser.attribute2Map(row), keyed
+    into its type's meirenLevelMap by meinvlv; the type key is meinvtype
+    (MeiRenTypeConfig's primary key, the id replaceMeirenAttribute looks
+    up with the business object's type id).
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of meiren rows')
+    by_id, types = {}, {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('meinvid') is None:
+            continue
+        try:
+            level = int(row.get('meinvlv') or 0)
+        except (TypeError, ValueError):
+            continue
+        bag = {name: _number(row.get(name)) for name in MEIREN_ATTRIBUTE_NAMES
+               if _number(row.get(name))}
+        by_id[str(row['meinvid'])] = (str(row.get('meinvtype') or ''), level)
+        types.setdefault(str(row.get('meinvtype') or ''), {})[level] = bag
+    return by_id, types
+
+
 def load_zuwu_table(path):
     """Rows of sys_config/ZuWuShuxing.jat as {type: first jieshu==1 id}.
 
@@ -288,6 +370,9 @@ class GameConfig:
         self._zuwu = None
         self._xishu = None
         self._vip = None
+        self._xianjie = None
+        self._chenghao = None
+        self._meiren = None
         self._cd = None
         self._xiaoguo = None
         self._jineng = None
@@ -714,6 +799,154 @@ class GameConfig:
         """VipConfig.getZhanli for a level (vipZHanLi); 0 when unlisted."""
         row = self.vip_table().get(int(vip_level or 0))
         return int(row.get('zhanli') or 0) if row else 0
+
+    def vip_buff_id(self, vip_level):
+        """Buff id for a VIP level (vipbiao's vipbuff cell), or None.
+
+        Port of RoleFactoryHelper.replaceVipAttribute's lookup: the
+        VipConfig row's getVipBuff cell, applied as a BuffManager buff.
+        Level 0 carries vipbuff 0 and unlisted levels carry nothing, so
+        both send no buff, exactly Java's empty-source behavior.
+        """
+        try:
+            level = int(vip_level or 0)
+        except (TypeError, ValueError):
+            return None
+        if level <= 0:
+            return None
+        row = self.vip_table().get(level)
+        buff_id = str(row.get('vipbuff') or '') if row else ''
+        if not buff_id or buff_id == '0':
+            return None
+        return buff_id if self.buff_effect(buff_id) is not None else None
+
+    def vip_effect_slots(self, vip_level):
+        """Effect-slot map a VIP level's buff writes ({slot: value}).
+
+        Port of BuffConfigExportServiceImpl.createBuffAttributes over the
+        vipbuff's XiaoGuoBiao row: keys are the effectpro1..5 cells
+        (the numbered slots the formulas read: 5 flat attack, 7 flat
+        defence, 1 flat maxHp, 14 attack-speed %, 16 move-speed %), values
+        are the effectproNvalue1 cells. Empty cells contribute nothing.
+        """
+        buff_id = self.vip_buff_id(vip_level)
+        if buff_id is None:
+            return {}
+        row = self.buff_effect(buff_id)
+        slots = {}
+        for i in range(1, 6):
+            slot = row.get('effectpro%d' % i)
+            if slot in ('', None):
+                continue
+            try:
+                value = float(row.get('effectpro%dvalue1' % i) or 0)
+            except (TypeError, ValueError):
+                continue
+            slots[str(slot)] = value
+        return slots
+
+    def xianjie_table(self):
+        """xianjie.jat rows by id; empty when the file is absent."""
+        if self._xianjie is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'xianjie.jat')
+            try:
+                self._xianjie = load_xianjie_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad xianjie table: %s', e)
+                self._xianjie = {}
+        return self._xianjie
+
+    def xianjie_attribute_map(self, xianjie_id):
+        """XianJieConfig.getShuxing bag for one xianjie id.
+
+        Port of replaceXianJieAttribute's incrBaseAttribute(XIANJIE, map):
+        the row's shuxing 'k:v;k:v' string parsed to floats. Unknown ids
+        yield no bag, exactly Java's missing-config behavior.
+        """
+        row = self.xianjie_table().get(str(xianjie_id or ''))
+        if row is None:
+            log.warning('xianjie %r has no config row; skipped', xianjie_id)
+            return {}
+        return parse_att_string(row.get('shuxing'))
+
+    def chenghao_table(self):
+        """chenghao.jat rows by chenghaoid; empty when the file is absent."""
+        if self._chenghao is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'chenghao.jat')
+            try:
+                self._chenghao = load_chenghao_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad chenghao table: %s', e)
+                self._chenghao = {}
+        return self._chenghao
+
+    def chenghao_attribute_map(self, chenghao_ids):
+        """Summed ChengHaoConfig.getAttribute bags for chenghao ids.
+
+        Port of replaceChengHaoAttribute's MapUtil.addMapValue loop over
+        chenHaoIds: each row's shuxingjiacheng string parsed and added.
+        Unknown ids are skipped, not faked.
+        """
+        totals = {}
+        for chenghao_id in chenghao_ids or []:
+            row = self.chenghao_table().get(str(chenghao_id))
+            if row is None:
+                log.warning('chenghao %r has no config row; skipped',
+                            chenghao_id)
+                continue
+            for key, value in parse_att_string(
+                    row.get('shuxingjiacheng')).items():
+                totals[key] = totals.get(key, 0.0) + value
+        return totals
+
+    def meiren_table(self):
+        """meiren.jat as ({meinvid: (type, level)}, {type: {level: bag}})."""
+        if self._meiren is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'meiren.jat')
+            try:
+                self._meiren = load_meiren_table(path) \
+                    if os.path.isfile(path) else ({}, {})
+            except ValueError as e:
+                log.error('bad meiren table: %s', e)
+                self._meiren = ({}, {})
+        return self._meiren
+
+    def meiren_attribute_map(self, pairs):
+        """Summed MeiRenConfig.getAttribtueMap bags for [(type, chanmian)].
+
+        Port of replaceMeirenAttribute: each owned meiren resolves its
+        type's level row by chanmianCount (meirenLevelMap.get) and adds
+        the row's bag. Missing types or levels are logged and skipped,
+        exactly Java's '{} meiren config is null' path.
+        """
+        _, types = self.meiren_table()
+        totals = {}
+        for meiren_type, chanmian in pairs or []:
+            try:
+                level = int(chanmian)
+            except (TypeError, ValueError):
+                continue
+            bag = types.get(str(meiren_type), {}).get(level)
+            if not bag:
+                log.warning('meiren %r level %r has no config row; skipped',
+                            meiren_type, chanmian)
+                continue
+            for key, value in bag.items():
+                totals[key] = totals.get(key, 0.0) + value
+        return totals
+
+    def meiren_type_for(self, meiren_id):
+        """meinvtype for a meiren.jat meinvid, or None when unlisted.
+
+        Port of getMeiRenConfigByMeiRenId(String).getMeirenTypeId: the
+        business object's id is the config type, and rows whose meinvid
+        has no config are dropped (getMeiRenAllObj skips them).
+        """
+        by_id, _ = self.meiren_table()
+        entry = by_id.get(str(meiren_id or ''))
+        return entry[0] if entry else None
 
     def fight_value(self, attr_map):
         """ZhanDouLiServiceImpl.getFight: int-accumulated value*factor.

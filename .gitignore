@@ -48,3 +48,12 @@ MKO_Client/config.json
 .aider*
 /output/*
 /reference/*
+/brain
+BRAIN.md
+CLAUDE.md
+brain-install.js
+bin/brain.mjs
+AGENTS.md
+/bin
+/reference
+/skills

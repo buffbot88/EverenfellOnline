@@ -3,6 +3,7 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS accounts (
@@ -50,6 +51,24 @@ CREATE TABLE IF NOT EXISTS role_stage (
   fly_count_refresh_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS role_skill (
+  role_id INTEGER NOT NULL,
+  skill_key TEXT NOT NULL,
+  category TEXT NOT NULL,
+  level INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, skill_key),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS role_shenjiang (
+  role_id INTEGER NOT NULL,
+  shenjiang_key TEXT NOT NULL,
+  shenjiang_id TEXT NOT NULL,
+  jiangxing_id TEXT,
+  jiangxing_rank INTEGER DEFAULT 1,
+  skills TEXT,
+  PRIMARY KEY(role_id, shenjiang_key),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS role_equip (
   role_id INTEGER NOT NULL,
   slot_num INTEGER NOT NULL,
@@ -75,6 +94,122 @@ CREATE TABLE IF NOT EXISTS role_vip (
   state_tejia TEXT,
   prop_value INTEGER DEFAULT 0,
   tody_prop_value INTEGER DEFAULT 0,
+  day_time INTEGER DEFAULT 0,
+  week_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Kaifu lottery state per role (legacy RoleVipKaifu subset: the claimed
+-- id map plus the used lottery count; the row is ensured on first read
+-- like RoleVipKaifuDao use in roleLogin).
+CREATE TABLE IF NOT EXISTS role_vip_kaifu (
+  role_id INTEGER PRIMARY KEY,
+  lingqu_reward TEXT DEFAULT '{}',
+  lotter_reward INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Appraisal state per role (no legacy source table; local-only like
+-- role_settings): jianding count/time/exp plus the hecheng count that
+-- 34006 reports alongside the exp.
+CREATE TABLE IF NOT EXISTS role_jianding (
+  role_id INTEGER PRIMARY KEY,
+  jianding_count INTEGER DEFAULT 0,
+  jianding_time INTEGER DEFAULT 0,
+  jianding_exp INTEGER DEFAULT 0,
+  hecheng_count INTEGER DEFAULT 0,
+  hecheng_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Xianjie/chenghao id arrays for a role (legacy role_xianjiechenhao
+-- subset: the JSON id lists the title bags resolve through).
+CREATE TABLE IF NOT EXISTS role_xianjiechenhao (
+  role_id INTEGER PRIMARY KEY,
+  xianjie_id TEXT,
+  chenhao_id TEXT,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Mount rank per role (legacy role_zuoqi subset: rank gates the ZUOQI bag
+-- via ZuoQiWrapper, cur_rank is informational; attribute_goods_id is NULL
+-- for every migrated role so it is not copied).
+CREATE TABLE IF NOT EXISTS role_zuoqi (
+  role_id INTEGER PRIMARY KEY,
+  zuoqi_rank INTEGER DEFAULT 0,
+  zuoqi_cur_rank INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Owned meiren per role (legacy role_meiren subset: the id/level/heti
+-- triple replaceMeirenAttribute resolves through meiren.jat).
+CREATE TABLE IF NOT EXISTS role_meiren (
+  role_id INTEGER NOT NULL,
+  meiren_id TEXT NOT NULL,
+  meiren_level INTEGER DEFAULT 0,
+  meiren_heti INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, meiren_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Bag slots per role (legacy role_bag_slot subset: slot rows 1..150 are the
+-- bag, 151+ the storage; attributes holds the GoodsEquipVo/ExpVo JSON).
+CREATE TABLE IF NOT EXISTS role_bag_slot (
+  role_id INTEGER NOT NULL,
+  slot_num INTEGER NOT NULL,
+  bag_id TEXT,
+  goods_id TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  bind INTEGER DEFAULT 0,
+  expire_time INTEGER,
+  rare_level INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  PRIMARY KEY(role_id, slot_num),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Skillbook equip slots per role (legacy role_skillbook_slot subset: the
+-- 10001..10056 worn books; same StoreGoods columns as role_bag_slot).
+CREATE TABLE IF NOT EXISTS role_skillbook_slot (
+  role_id INTEGER NOT NULL,
+  slot_num INTEGER NOT NULL,
+  bag_id TEXT,
+  goods_id TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  bind INTEGER DEFAULT 0,
+  expire_time INTEGER,
+  rare_level INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  PRIMARY KEY(role_id, slot_num),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Vip event state per role (legacy role_vip_huodong subset: the fixed
+-- reward and lottery marks keyed by vip tier).
+CREATE TABLE IF NOT EXISTS role_vip_huodong (
+  role_id INTEGER NOT NULL,
+  vip INTEGER NOT NULL,
+  choujiang_state INTEGER DEFAULT 0,
+  lingqu_state INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, vip),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Running main quest per role (legacy task_main subset: current task, state,
+-- kill-condition string, receive/create times; one row per role).
+CREATE TABLE IF NOT EXISTS task_main (
+  role_id INTEGER PRIMARY KEY,
+  task_uid TEXT,
+  task_id TEXT,
+  state INTEGER DEFAULT 0,
+  condition TEXT,
+  recevie_time INTEGER,
+  create_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Bag unlock state per role (legacy role_bag_state subset: capacities gate
+-- the 30000 lock VOs; *_slot_time feeds the unlock countdown).
+CREATE TABLE IF NOT EXISTS role_bag_state (
+  role_id INTEGER PRIMARY KEY,
+  bag_capacity INTEGER DEFAULT 0,
+  bag_slot_time INTEGER DEFAULT 0,
+  bag_update_slot_time INTEGER DEFAULT 0,
+  storage_capacity INTEGER DEFAULT 0,
+  storage_slot_time INTEGER DEFAULT 0,
+  storage_update_slot_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS characters (
@@ -175,10 +310,10 @@ class Store:
                 self.db.execute(
                     'INSERT INTO accounts(username, pass_hash, created) VALUES(?,?,?)',
                     (username, pass_hash, int(time.time())))
-                self.db.commit()
-                return True
             except sqlite3.IntegrityError:
                 return False
+            self.db.commit()
+            return True
 
     def create_session(self, token, uid):
         with self.lock:
@@ -267,6 +402,36 @@ class Store:
                 (str(role_id),)).fetchall()
             return [dict(row) for row in rows]
 
+    def get_role_skills(self, role_id):
+        """Owned skills for a role as [{category, level}] (legacy role_skill rows)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT category, level FROM role_skill WHERE role_id=?'
+                ' ORDER BY skill_key',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_skill(self, role_id, category, level):
+        """Learn/update one role_skill row keyed by category."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_skill(role_id, skill_key, category, level)'
+                ' VALUES(?,?,?,?)'
+                ' ON CONFLICT(role_id, skill_key) DO UPDATE SET'
+                ' level=excluded.level',
+                (str(role_id), str(category), str(category), int(level)))
+            self.db.commit()
+            return True
+
+    def get_role_shenjiang(self, role_id):
+        """Owned shenjiang rows for a role (legacy role_shenjiang subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT shenjiang_id, jiangxing_id, jiangxing_rank, skills'
+                ' FROM role_shenjiang WHERE role_id=? ORDER BY shenjiang_key',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
     def save_role_equip(self, role_id, items):
         """Replace a role's equipped rows; items carry slot/goods/levels/blob."""
         with self.lock:
@@ -311,14 +476,42 @@ class Store:
         with self.lock:
             row = self.db.execute(
                 'SELECT vip_level, state_day, state_week, state_tejia,'
-                ' prop_value, tody_prop_value FROM role_vip WHERE role_id=?',
+                ' prop_value, tody_prop_value, day_time, week_time'
+                ' FROM role_vip WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
+
+    def get_role_vip_kaifu(self, role_id):
+        """Kaifu lottery row for a role, or None when never ensured."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT lingqu_reward, lotter_reward FROM role_vip_kaifu'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_vip_kaifu(self, role_id, **fields):
+        """Upsert a role's kaifu row; only known columns."""
+        allowed = {'lingqu_reward', 'lotter_reward'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown kaifu fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_vip_kaifu(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
 
     def save_role_vip(self, role_id, **fields):
         """Upsert a role's VIP row; only known role_vip columns."""
         allowed = {'vip_level', 'state_day', 'state_week', 'state_tejia',
-                   'prop_value', 'tody_prop_value'}
+                   'prop_value', 'tody_prop_value', 'day_time', 'week_time'}
         if not fields or set(fields) - allowed:
             raise ValueError(f'unknown vip fields: {sorted(set(fields) - allowed)}')
         names = ', '.join(fields)
@@ -329,6 +522,411 @@ class Store:
                 f'INSERT INTO role_vip(role_id,{names}) VALUES(?,{placeholders}) '
                 f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_jianding(self, role_id):
+        """Appraisal state row for a role, or None when never appraised."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT jianding_count, jianding_time, jianding_exp,'
+                ' hecheng_count, hecheng_time FROM role_jianding'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_jianding(self, role_id, **fields):
+        """Upsert a role's appraisal state; only known columns."""
+        allowed = {'jianding_count', 'jianding_time', 'jianding_exp',
+                   'hecheng_count', 'hecheng_time'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown jianding fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_jianding(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_xianjiechenhao(self, role_id):
+        """Xianjie/chenghao id row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT xianjie_id, chenhao_id FROM role_xianjiechenhao'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_xianjiechenhao(self, role_id, xianjie_id=None,
+                                 chenhao_id=None):
+        """Upsert a role's xianjie/chenghao id lists (JSON texts)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_xianjiechenhao(role_id, xianjie_id, chenhao_id)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' xianjie_id=excluded.xianjie_id, chenhao_id=excluded.chenhao_id',
+                (str(role_id), xianjie_id, chenhao_id))
+            self.db.commit()
+            return True
+
+    def get_role_zuoqi(self, role_id):
+        """Mount-rank row for a role (legacy role_zuoqi subset), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT zuoqi_rank, zuoqi_cur_rank FROM role_zuoqi'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_zuoqi(self, role_id, zuoqi_rank=None, zuoqi_cur_rank=None):
+        """Upsert a role's mount ranks (legacy role_zuoqi rank/cur_rank)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' zuoqi_rank=excluded.zuoqi_rank,'
+                ' zuoqi_cur_rank=excluded.zuoqi_cur_rank',
+                (str(role_id), zuoqi_rank, zuoqi_cur_rank))
+            self.db.commit()
+            return True
+
+    def get_role_bag_slots(self, role_id, min_slot=1, max_slot=150):
+        """Bag slot rows for a role in [min_slot, max_slot] (slot order)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT slot_num, bag_id, goods_id, count, bind, expire_time,'
+                ' rare_level, item_level, attributes FROM role_bag_slot'
+                ' WHERE role_id=? AND slot_num>=? AND slot_num<=?'
+                ' ORDER BY slot_num',
+                (str(role_id), min_slot, max_slot)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_bag_slots(self, role_id, rows):
+        """Replace a role's bag slot rows; rows carry slot/goods/count/blob."""
+        with self.lock:
+            self.db.execute('DELETE FROM role_bag_slot WHERE role_id=?',
+                            (str(role_id),))
+            for row in rows or []:
+                if row.get('slot_num') is None or not row.get('goods_id'):
+                    continue
+                # Locally created rows need a stable row id: Java's IdGen
+                # issues one at creation, and moveGoodses looks rows up by it.
+                bag_id = row.get('bag_id') or f'py{uuid.uuid4().hex[:16]}'
+                self.db.execute(
+                    'INSERT INTO role_bag_slot(role_id, slot_num, bag_id, goods_id,'
+                    ' count, bind, expire_time, rare_level, item_level, attributes)'
+                    ' VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (str(role_id), row.get('slot_num'), bag_id,
+                     row.get('goods_id'), row.get('count') or 0,
+                     row.get('bind') or 0, row.get('expire_time'),
+                     row.get('rare_level') or 0, row.get('item_level') or 0,
+                     row.get('attributes')))
+            self.db.commit()
+            return True
+
+    def get_role_bag_slot(self, role_id, slot_num):
+        """One bag slot row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT slot_num, bag_id, goods_id, count, bind, expire_time,'
+                ' rare_level, item_level, attributes FROM role_bag_slot'
+                ' WHERE role_id=? AND slot_num=?',
+                (str(role_id), slot_num)).fetchone()
+            return dict(row) if row else None
+
+    def get_role_bag_slot_by_bag_id(self, role_id, bag_id):
+        """One bag slot row by its legacy row id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT slot_num, bag_id, goods_id, count, bind, expire_time,'
+                ' rare_level, item_level, attributes FROM role_bag_slot'
+                ' WHERE role_id=? AND bag_id=?',
+                (str(role_id), bag_id)).fetchone()
+            return dict(row) if row else None
+
+    def update_role_bag_slot(self, role_id, slot_num, **fields):
+        """Update known columns of one bag slot row."""
+        known = {'bag_id', 'goods_id', 'count', 'bind', 'expire_time',
+                 'rare_level', 'item_level', 'attributes'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known bag slot columns')
+        sets = ', '.join(f'{f}=?' for f in fields)
+        with self.lock:
+            cur = self.db.execute(
+                f'UPDATE role_bag_slot SET {sets}'
+                ' WHERE role_id=? AND slot_num=?',
+                [*fields.values(), str(role_id), slot_num])
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def move_role_bag_slot(self, role_id, from_slot, to_slot):
+        """Move a bag row between slots (swap when occupied)."""
+        with self.lock:
+            src = self.db.execute(
+                'SELECT * FROM role_bag_slot WHERE role_id=? AND slot_num=?',
+                (str(role_id), from_slot)).fetchone()
+            if src is None:
+                return False
+            dst = self.db.execute(
+                'SELECT slot_num FROM role_bag_slot WHERE role_id=? AND slot_num=?',
+                (str(role_id), to_slot)).fetchone()
+            if dst is None:
+                self.db.execute(
+                    'UPDATE role_bag_slot SET slot_num=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (to_slot, str(role_id), from_slot))
+            else:
+                self.db.execute(
+                    'UPDATE role_bag_slot SET slot_num=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (-1, str(role_id), to_slot))
+                self.db.execute(
+                    'UPDATE role_bag_slot SET slot_num=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (to_slot, str(role_id), from_slot))
+                self.db.execute(
+                    'UPDATE role_bag_slot SET slot_num=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (from_slot, str(role_id), -1))
+            self.db.commit()
+            return True
+
+    def insert_role_bag_slot(self, role_id, row):
+        """Insert one bag slot row; returns its row id (generated when absent)."""
+        bag_id = row.get('bag_id') or f'py{uuid.uuid4().hex[:16]}'
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_bag_slot(role_id, slot_num, bag_id, goods_id,'
+                ' count, bind, expire_time, rare_level, item_level, attributes)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)',
+                (str(role_id), row.get('slot_num'), bag_id,
+                 row.get('goods_id'), row.get('count') or 0,
+                 row.get('bind') or 0, row.get('expire_time'),
+                 row.get('rare_level') or 0, row.get('item_level') or 0,
+                 row.get('attributes')))
+            self.db.commit()
+            return bag_id
+
+    def delete_role_bag_slot(self, role_id, slot_num):
+        """Delete one bag slot row."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM role_bag_slot WHERE role_id=? AND slot_num=?',
+                (str(role_id), slot_num))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def rewrite_role_bag_slots(self, role_id, rows, min_slot, max_slot):
+        """Replace a role's slot rows in [min_slot, max_slot] with rows.
+
+        The tidy-up compacts renumbered, merged rows back in one step; row
+        ids are kept (Java updates the same entities) and rows left out of
+        the rewrite (merged-away, zero-count) disappear with the delete.
+        """
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM role_bag_slot'
+                ' WHERE role_id=? AND slot_num>=? AND slot_num<=?',
+                (str(role_id), min_slot, max_slot))
+            for row in rows or []:
+                if row.get('slot_num') is None or not row.get('goods_id') \
+                        or not row.get('bag_id'):
+                    continue
+                self.db.execute(
+                    'INSERT INTO role_bag_slot(role_id, slot_num, bag_id, goods_id,'
+                    ' count, bind, expire_time, rare_level, item_level, attributes)'
+                    ' VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (str(role_id), row.get('slot_num'), row.get('bag_id'),
+                     row.get('goods_id'), row.get('count') or 0,
+                     row.get('bind') or 0, row.get('expire_time'),
+                     row.get('rare_level') or 0, row.get('item_level') or 0,
+                     row.get('attributes')))
+            self.db.commit()
+            return True
+
+    def get_task_main(self, role_id):
+        """A role's running main quest (legacy task_main subset), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT task_uid, task_id, state, condition, recevie_time,'
+                ' create_time FROM task_main WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_task_main(self, role_id, **fields):
+        """Upsert a role's running main quest (known columns only)."""
+        known = {'task_uid', 'task_id', 'state', 'condition',
+                 'recevie_time', 'create_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known task_main columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO task_main(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_skillbook_slots(self, role_id, min_slot=10001,
+                                 max_slot=10056):
+        """Skillbook slot rows for a role in [min_slot, max_slot]."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT slot_num, bag_id, goods_id, count, bind, expire_time,'
+                ' rare_level, item_level, attributes FROM role_skillbook_slot'
+                ' WHERE role_id=? AND slot_num>=? AND slot_num<=?'
+                ' ORDER BY slot_num',
+                (str(role_id), min_slot, max_slot)).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_role_skillbook_slot(self, role_id, slot_num):
+        """One skillbook slot row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT slot_num, bag_id, goods_id, count, bind, expire_time,'
+                ' rare_level, item_level, attributes FROM role_skillbook_slot'
+                ' WHERE role_id=? AND slot_num=?',
+                (str(role_id), slot_num)).fetchone()
+            return dict(row) if row else None
+
+    def insert_role_skillbook_slot(self, role_id, row):
+        """Insert one skillbook slot row; returns its row id."""
+        bag_id = row.get('bag_id') or f'py{uuid.uuid4().hex[:16]}'
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_skillbook_slot(role_id, slot_num, bag_id,'
+                ' goods_id, count, bind, expire_time, rare_level, item_level,'
+                ' attributes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                (str(role_id), row.get('slot_num'), bag_id,
+                 row.get('goods_id'), row.get('count') or 0,
+                 row.get('bind') or 0, row.get('expire_time'),
+                 row.get('rare_level') or 0, row.get('item_level') or 0,
+                 row.get('attributes')))
+            self.db.commit()
+            return bag_id
+
+    def update_role_skillbook_slot(self, role_id, slot, **fields):
+        """Update known columns of one skillbook slot row."""
+        known = {'slot_num', 'bag_id', 'goods_id', 'count', 'bind',
+                 'expire_time', 'rare_level', 'item_level', 'attributes'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known skillbook columns')
+        sets = ', '.join(f'{f}=?' for f in fields)
+        with self.lock:
+            cur = self.db.execute(
+                f'UPDATE role_skillbook_slot SET {sets}'
+                ' WHERE role_id=? AND slot_num=?',
+                [*fields.values(), str(role_id), slot])
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def delete_role_skillbook_slot(self, role_id, slot_num):
+        """Delete one skillbook slot row."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM role_skillbook_slot'
+                ' WHERE role_id=? AND slot_num=?',
+                (str(role_id), slot_num))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def get_role_vip_huodong_all(self, role_id):
+        """Every vip event row for a role (tier plus both marks)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT vip, choujiang_state, lingqu_state'
+                ' FROM role_vip_huodong WHERE role_id=?',
+                (str(role_id),)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_role_vip_huodong(self, role_id, vip):
+        """Vip event row for a role tier, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT choujiang_state, lingqu_state FROM role_vip_huodong'
+                ' WHERE role_id=? AND vip=?',
+                (str(role_id), int(vip))).fetchone()
+            return dict(row) if row else None
+
+    def save_role_vip_huodong(self, role_id, vip, **fields):
+        """Upsert a role's vip event row; only known huodong columns."""
+        allowed = {'choujiang_state', 'lingqu_state'}
+        if not fields or set(fields) - allowed:
+            raise ValueError('unknown huodong fields: '
+                             f'{sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_vip_huodong(role_id, vip, {names})'
+                f' VALUES(?,?,{placeholders})'
+                f' ON CONFLICT(role_id, vip) DO UPDATE SET {updates}',
+                (str(role_id), int(vip), *[int(v) for v in fields.values()]))
+            self.db.commit()
+            return True
+
+    def get_role_bag_state(self, role_id):
+        """Bag unlock state for a role (legacy role_bag_state subset), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT bag_capacity, bag_slot_time, bag_update_slot_time,'
+                ' storage_capacity, storage_slot_time, storage_update_slot_time'
+                ' FROM role_bag_state WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_bag_state(self, role_id, **fields):
+        """Upsert a role's bag unlock state (known state columns only)."""
+        known = {'bag_capacity', 'bag_slot_time', 'bag_update_slot_time',
+                 'storage_capacity', 'storage_slot_time',
+                 'storage_update_slot_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('state must contain known bag state fields')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_bag_state(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_meiren(self, role_id):
+        """Owned-meiren rows for a role (legacy role_meiren subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT meiren_id, meiren_level, meiren_heti FROM role_meiren'
+                ' WHERE role_id=? ORDER BY meiren_id',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_meiren(self, role_id, rows):
+        """Replace a role's owned-meiren rows; rows carry id/level/heti."""
+        with self.lock:
+            self.db.execute('DELETE FROM role_meiren WHERE role_id=?',
+                            (str(role_id),))
+            for row in rows or []:
+                if not row.get('meiren_id'):
+                    continue
+                self.db.execute(
+                    'INSERT INTO role_meiren(role_id, meiren_id, meiren_level,'
+                    ' meiren_heti) VALUES(?,?,?,?)',
+                    (str(role_id), row.get('meiren_id'),
+                     row.get('meiren_level') or 0, row.get('meiren_heti') or 0))
             self.db.commit()
             return True
 
@@ -392,6 +990,15 @@ class Store:
                 f'ON CONFLICT(role_id) DO UPDATE SET {fields}', [rid, *values])
             self.db.commit()
             return True
+
+    def find_roles_by_name(self, name):
+        """Characters whose name contains the query (RoleDao.getRolesLikeName)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, name, sex, face, level, job FROM characters'
+                ' WHERE name LIKE ? ORDER BY id',
+                ('%' + name + '%',)).fetchall()
+            return [dict(r) for r in rows]
 
     def get_character(self, role_id, account, server_id):
         with self.lock:

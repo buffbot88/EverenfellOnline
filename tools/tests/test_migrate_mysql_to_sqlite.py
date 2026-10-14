@@ -70,13 +70,17 @@ class FakeMySql:
 
 
 class ScopeTest(unittest.TestCase):
-    def test_plan_counts_covers_the_nine_tables(self):
+    def test_plan_counts_covers_the_twelve_tables(self):
         counts = mig.plan_counts(FakeMySql(['7']), ['stress'])
         self.assertEqual(counts, {'account': 1, 'user_role': 1,
                                   'role_stage': 1, 'role_account': 1,
                                   'role_equip_slot': 1,
                                   'role_attribute_buff': 1, 'role_vip': 1,
-                                  'role_xianjiechenhao': 1, 'role_meiren': 1})
+                                  'role_xianjiechenhao': 1, 'role_meiren': 1,
+                                  'role_zuoqi': 1, 'role_skill': 1,
+                                  'role_shenjiang': 1, 'role_bag_slot': 1,
+                                  'role_skillbook_slot': 1,
+                                  'role_bag_state': 1, 'task_main': 1})
 
     def test_stage_and_currency_counts_follow_the_selected_roles(self):
         fake = FakeMySql(['7', '9'])
@@ -124,6 +128,27 @@ class FakeDataMySql:
             return [['7', '["1"]', '["2"]']]
         if 'from role_meiren' in sql:
             return []
+        if 'from role_zuoqi' in sql:
+            return [['7', '1', '1']]
+        if 'from role_shenjiang' in sql:
+            return [['1', '7', 'sj0101', '', '1', '{"xiaolongnv": 2}']]
+        if 'from role_skillbook_slot' in sql:
+            return [['fu0RBS1-0-1-78', '10001', '7', 'zuoqijineng1', '1',
+                     '1', '0', '3', '1', '{"exp":0}']]
+        if 'from role_skill' in sql:
+            # skill_key, user_role_id, skill_category_id, skill_level.
+            return [['fu0RS1-0-1-1', '7', 'niumowang1', '1']]
+        if 'from role_bag_slot' in sql:
+            return [['fu0RBS1-0-1-77', '36', '7', 'silver50', '1', '1',
+                     '0', '3', '1', None]]
+        if 'from task_main' in sql:
+            # id, user_role_id, current_task_id, current_state,
+            # current_condition, current_recevie_time, create_time.
+            return [['106', '7', 'c001010', '0', 'D010006;1',
+                     '1393226660', '1393226660']]
+        if 'from role_bag_state' in sql:
+            return [['7', '144', '1548096', '1394468956781', '31',
+                     '2428331', '1394468076546']]
         raise AssertionError(f'unexpected query: {sql}')
 
 
@@ -172,6 +197,36 @@ class MigrateCharactersTest(unittest.TestCase):
         self.assertEqual(xianjie['chenhao_id'], '["2"]')
         meiren = conn.execute('SELECT * FROM role_meiren').fetchall()
         self.assertEqual(meiren, [])   # no meiren rows for this role
+        zuoqi = conn.execute('SELECT * FROM role_zuoqi').fetchone()
+        self.assertEqual(zuoqi['zuoqi_rank'], 1)
+        self.assertEqual(zuoqi['zuoqi_cur_rank'], 1)
+        shenjiang = conn.execute('SELECT * FROM role_shenjiang').fetchone()
+        self.assertEqual(shenjiang['shenjiang_id'], 'sj0101')
+        self.assertEqual(shenjiang['skills'], '{"xiaolongnv": 2}')
+        task = conn.execute('SELECT * FROM task_main').fetchone()
+        self.assertEqual(task['task_id'], 'c001010')
+        self.assertEqual(task['condition'], 'D010006;1')
+        self.assertEqual(report['task_main_written'], 1)
+        bag = conn.execute('SELECT * FROM role_bag_slot').fetchone()
+        self.assertEqual(bag['slot_num'], 36)
+        self.assertEqual(bag['bag_id'], 'fu0RBS1-0-1-77')
+        self.assertEqual(bag['goods_id'], 'silver50')
+        self.assertEqual(bag['bind'], 1)
+        bag_state = conn.execute('SELECT * FROM role_bag_state').fetchone()
+        self.assertEqual(bag_state['bag_capacity'], 144)
+        self.assertEqual(bag_state['storage_capacity'], 31)
+        self.assertEqual(report['bag_slots_written'], 1)
+        self.assertEqual(report['bag_state_written'], 1)
+        book = conn.execute('SELECT * FROM role_skillbook_slot').fetchone()
+        self.assertEqual(book['slot_num'], 10001)
+        self.assertEqual(book['goods_id'], 'zuoqijineng1')
+        self.assertEqual(book['attributes'], '{"exp":0}')
+        self.assertEqual(report['skillbook_slots_written'], 1)
+        skill = conn.execute('SELECT * FROM role_skill').fetchone()
+        self.assertEqual(skill['skill_key'], 'fu0RS1-0-1-1')
+        self.assertEqual(skill['category'], 'niumowang1')
+        self.assertEqual(skill['level'], 1)
+        self.assertEqual(report['skills_written'], 1)
         conn.close()
 
 

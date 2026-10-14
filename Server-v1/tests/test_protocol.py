@@ -2,6 +2,7 @@
 evidence, not invention: INITKEY bytes captured live from the real client,
 framing/cipher/login/role layouts from jar bytecode (see docs/protocol.md).
 """
+import json
 import os
 import shutil
 import struct
@@ -172,9 +173,14 @@ def make_session(store=None, config=None):
         'create_role': (lambda a, s, n, j, x, f: store.create_character(
             a, s, n, job=j, sex=x, face=f)),
         'save_role_state': store.update_character_state,
+        'find_roles_by_name': store.find_roles_by_name,
         'get_role_equip': store.get_role_equip,
         'get_role_attr_buffs': store.get_role_attr_buffs,
         'get_role_vip': store.get_role_vip,
+        'get_role_xianjiechenhao': store.get_role_xianjiechenhao,
+        'get_role_meiren': store.get_role_meiren,
+        'get_role_zuoqi': store.get_role_zuoqi,
+        'save_role_stage': store.save_role_stage,
     }
     if config is not None:
         kwargs['config'] = config
@@ -183,6 +189,8 @@ def make_session(store=None, config=None):
                    else (lambda u, s: []),
                    get_role_settings=(lambda r, u, s: store.get_role_settings(r, u, s))
                    if store else (lambda r, u, s: None),
+                   save_role_settings=(lambda *a, **k: store.save_role_settings(*a, **k))
+                   if store else (lambda *a, **k: False),
                    server_start_ms=1234567890000, **kwargs)
 
 
@@ -534,6 +542,149 @@ class TestWorldInit(unittest.TestCase):
         self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 
+class TestSettings(unittest.TestCase):
+    """Goldens for the setting slice (13001-13004; 13000 already ported).
+
+    Oracle: SettingAction.changeQuickbar/savePanel/saveUiInfo/saveGuaJi
+    plus RoleSettingServiceImpl.changeQuickBar/arrayToString/saveUIInfo/
+    savePanelConfig/saveGuajiInfo, traced via tools/javap.py against
+    dntg_start.jar. All four are fire-and-forget (no reply); the
+    quickbar joins with ',' (null/'null' cells read back empty, but
+    only '' or skill strings are ever written), grows with '' padding,
+    and negative or mistyped slots are silent like Java's throw. The
+    three blob saves upsert one column each, like cacheInsert-or-update.
+    """
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C')
+        self.s = make_session(self.store)
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+
+    def bar(self):
+        return self.store.get_role_settings(str(self.role_id), 'hero',
+                                            'fu1304')['quickbar_info']
+
+    def test_quickbar_fresh_row(self):
+        self.assertIsNone(self.s.setting_quickbar([13001, [2, 'fire']]))
+        self.assertEqual(self.bar(), ',,fire')
+
+    def test_quickbar_overwrite_and_grow(self):
+        self.store.save_role_settings(self.role_id, 'hero', 'fu1304',
+                                      quickbar_info='a,b')
+        self.assertIsNone(self.s.setting_quickbar([13001, [3, 'd']]))
+        self.assertEqual(self.bar(), 'a,b,,d')
+        self.assertIsNone(self.s.setting_quickbar([13001, [0, 'x']]))
+        self.assertEqual(self.bar(), 'x,b,,d')
+
+    def test_quickbar_bad_slots_silent(self):
+        self.store.save_role_settings(self.role_id, 'hero', 'fu1304',
+                                      quickbar_info='a')
+        self.assertIsNone(self.s.setting_quickbar([13001, [-1, 'x']]))
+        self.assertIsNone(self.s.setting_quickbar([13001, ['0', 'x']]))
+        self.assertIsNone(self.s.setting_quickbar([13001, [0, 5]]))
+        self.assertIsNone(self.s.setting_quickbar([13001, None]))
+        self.assertEqual(self.bar(), 'a')
+
+    def test_blob_saves_round_trip(self):
+        panel, ui, guaji = ByteArray(b'panel'), ByteArray(b'ui'), \
+            ByteArray(b'guaji')
+        self.assertIsNone(self.s.setting_panel([13002, panel]))
+        self.assertIsNone(self.s.setting_ui([13003, ui]))
+        self.assertIsNone(self.s.setting_guaji([13004, guaji]))
+        setting = amf3.decode(self.s.role_settings(
+            [13000, str(self.role_id)])[4:])
+        self.assertEqual(setting,
+                         ['13000', [None, panel, ui, guaji]])
+
+    def test_blob_mistyped_silent(self):
+        self.assertIsNone(self.s.setting_panel([13002, 'panel']))
+        self.assertIsNone(self.s.setting_panel([13002, None]))
+        self.assertEqual(amf3.decode(self.s.role_settings(
+            [13000, str(self.role_id)])[4:]),
+            ['13000', [None, None, None, None]])
+
+    def test_setting_ids_match_map(self):
+        from game.protocol import (CMD_ROLE_SETTINGS, CMD_SETTING_QUICKBAR,
+                                   CMD_SETTING_PANEL, CMD_SETTING_UI,
+                                   CMD_SETTING_GUAJI)
+        self.assertEqual(
+            (CMD_ROLE_SETTINGS, CMD_SETTING_QUICKBAR, CMD_SETTING_PANEL,
+             CMD_SETTING_UI, CMD_SETTING_GUAJI),
+            (13000, 13001, 13002, 13003, 13004))
+
+
+class TestReciveYbClaimAndNameQuery(unittest.TestCase):
+    """Phase 1 ports: 35012 reciveYb claim and 12200 queryRoleByName.
+
+    Shapes and codes trace AccountServiceImpl.reciveYb and
+    RoleAction.queryRoleByName bytecode (javap).
+    """
+
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', sex=0)
+        self.s = make_session(self.store)
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+
+    def row(self):
+        return self.store.get_character(self.role_id, 'hero', 'fu1304')
+
+    def test_command_ids_match_map(self):
+        from game.protocol import CMD_RECIVE_YB_CLAIM, CMD_ROLE_QUERY_NAME
+        self.assertEqual((CMD_RECIVE_YB_CLAIM, CMD_ROLE_QUERY_NAME),
+                         (35012, 12200))
+
+    def test_claim_moves_pending_yb_into_lingshi(self):
+        self.store.update_character_state(self.role_id, recive_yb=300,
+                                          lingshi=100)
+        money, reply = self.s.recive_yb_claim()
+        self.assertEqual(amf3.decode(money[4:])[0], '32010')
+        self.assertEqual(amf3.decode(money[4:])[1][1::2], [400, 0])
+        self.assertEqual(amf3.decode(reply[4:]), ['35012', [1, 300]])
+        self.assertEqual((self.row()['lingshi'], self.row()['recive_yb']),
+                         (400, 0))
+
+    def test_nothing_pending_answers_424016(self):
+        self.store.update_character_state(self.role_id, recive_yb=0,
+                                          lingshi=0)
+        out = self.s.recive_yb_claim()
+        self.assertEqual(amf3.decode(out[4:]), ['35012', [0, 424016]])
+        self.assertEqual(self.row()['lingshi'], 0)
+
+    def test_negative_pending_resets_to_zero(self):
+        self.store.update_character_state(self.role_id, recive_yb=-5)
+        out = self.s.recive_yb_claim()
+        self.assertEqual(amf3.decode(out[4:]), ['35012', [0, 424016]])
+        self.assertEqual(self.row()['recive_yb'], 0)
+
+    def test_lingshi_overflow_answers_424017_and_keeps_state(self):
+        big = 9223372036854775807 - 10
+        self.store.update_character_state(self.role_id, recive_yb=50,
+                                          lingshi=big)
+        out = self.s.recive_yb_claim()
+        self.assertEqual(amf3.decode(out[4:]), ['35012', [0, 424017]])
+        self.assertEqual((self.row()['lingshi'], self.row()['recive_yb']),
+                         (big, 50))
+
+    def test_name_query_matches_substring_and_blank_is_empty(self):
+        other = self.store.create_character(
+            'hero', 'fu1304', 'SunBaby', job='A', sex=1)
+        rows = amf3.decode(self.s.role_query_by_name([12200, 'Sun'])[4:])
+        self.assertEqual(rows[0], '12200')
+        self.assertEqual(sorted(rows[1]), sorted([
+            [str(self.role_id), 'SunWukong', 0, '', 1, 'C'],
+            [str(other), 'SunBaby', 1, '', 1, 'A']]))
+        for query in ('', None):
+            out = self.s.role_query_by_name([12200, query])
+            self.assertEqual(amf3.decode(out[4:]), ['12200', []])
+
+
 class TestCreateRole(unittest.TestCase):
     def setUp(self):
         cleanups = []
@@ -827,6 +978,7 @@ class TestZuoQiPetFrame(unittest.TestCase):
             f.write(struct.pack('>ii', 60, 60) + bytes([1]) * (60 * 60))
         s = make_session(store, config=GameConfig(cfg_dir))
         s.authed_user, s.server_id = 'hero', 'fu1304'
+        s.store = store
         return s, role_id
 
     def bootstrap(self, s, role_id):
@@ -888,6 +1040,51 @@ class TestZuoQiPetFrame(unittest.TestCase):
             amf3.encode([12102, str(role_id)]))))
         self.assertEqual(amf3.decode(out[0][4:]),
                          ['12102', [0, 0, None, None, 0, 0, 0, None]])
+
+    def pet_fighter(self, s, role_id):
+        """The mount pet registered by the entry bootstrap, as a fighter."""
+        decoded = self.bootstrap(s, role_id)
+        pet_id = decoded[2][1][0][0]
+        return s._stage_fighter(pet_id)
+
+    def stored_mount(self, store, role_id):
+        return json.loads(store.get_role_stage(role_id)['zuoqi_info'])
+
+    def test_pet_hit_persists_hp_to_the_stored_mount(self):
+        s, role_id = self.build()
+        pet = self.pet_fighter(s, role_id)
+        s._store_fighter_hp(pet, 120.0)
+        mount = self.stored_mount(s.store, role_id)
+        self.assertEqual(mount, {'id': 1, 'hp': 120, 'deadTime': 0,
+                                 'useTime': 0, 'rideOrNo': False})
+
+    def test_persisted_mount_hp_comes_back_on_reentry(self):
+        s, role_id = self.build()
+        s._store_fighter_hp(self.pet_fighter(s, role_id), 120.0)
+        s2 = make_session(s.store, config=s.config)
+        s2.authed_user, s2.server_id = 'hero', 'fu1304'
+        decoded = self.bootstrap(s2, role_id)
+        record = [d for d in decoded if d[0] == '23009'][0][1][0]
+        self.assertEqual(record[2], 120.0)   # curHp after the hit
+        self.assertEqual(record[3], 500.0)   # maxHp unchanged
+
+    def test_pet_killed_persists_zero_and_stays_off_stage(self):
+        s, role_id = self.build()
+        s._store_fighter_hp(self.pet_fighter(s, role_id), 0.0)
+        self.assertEqual(self.stored_mount(s.store, role_id)['hp'], 0)
+        s2 = make_session(s.store, config=s.config)
+        s2.authed_user, s2.server_id = 'hero', 'fu1304'
+        cmds = [d[0] for d in self.bootstrap(s2, role_id)]
+        self.assertNotIn('23009', cmds)
+
+    def test_hit_without_stored_mount_writes_nothing(self):
+        s, role_id = self.build(zuoqi_info=None)
+        s._pet_state['zuoqi_5_99'] = {
+            'max_hp': 500.0, 'hp': 500.0, 'level': 30,
+            'owner': str(role_id), 'owner_name': 'x', 'name': 'mount',
+            'template_id': 'zuoqi1', 'pos': [43, 32]}
+        s._store_fighter_hp(s._stage_fighter('zuoqi_5_99'), 100.0)
+        self.assertIsNone(s.store.get_role_stage(role_id)['zuoqi_info'])
 
 
 class TestLiveScene(unittest.TestCase):
@@ -1014,6 +1211,147 @@ class TestPhase1InitBurst(unittest.TestCase):
         self.assertEqual(amf3.decode(out[0][4:]), ['35011', 0])
 
 
+class MallBuyTest(unittest.TestCase):
+    """Command 32001 goldens: MallAction guards + MallServiceImpl.buyGoods.
+
+    Oracle: MallAction.buyGoods request parsing/gates and
+    MallServiceImpl.buyGoods/checkConsume/checkExpireTime/BuyMallOutput
+    shapes via tools/javap.py. Portable subset: no guild (BANGGONG fails
+    closed 430412) and no coupon discount table (present coupon fails
+    closed 430418; missing coupon 430416; coupon off YB 430417).
+    """
+
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.store.create_account('hero', 'x')
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56, tongqian=10000,
+            bind_lingshi=5000, lingshi=1000)
+        cfg = os.path.normpath(os.path.join(os.path.dirname(__file__), '..',
+                                            DEFAULT_CONFIG_DIR))
+        self.s = Session(
+            conn_id=7, check_sign=check_sign,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=1234567890000,
+            save_role_state=self.store.update_character_state,
+            get_role_bag_slots=self.store.get_role_bag_slots,
+            get_role_bag_state=self.store.get_role_bag_state,
+            get_role_bag_slot_by_bag_id=
+            self.store.get_role_bag_slot_by_bag_id,
+            update_role_bag_slot=self.store.update_role_bag_slot,
+            insert_role_bag_slot=self.store.insert_role_bag_slot,
+            config=GameConfig(cfg))
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+        self.store.save_role_bag_state(self.role_id, bag_capacity=144,
+                                       storage_capacity=30)
+
+    def buy(self, *args):
+        out = self.s.mall_buy([32001, list(args)])
+        self.assertIsNotNone(out)
+        return amf3.decode(out[4:])
+
+    def role(self):
+        return self.store.list_roles('hero', 'fu1304')[0]
+
+    def bag_counts(self, goods):
+        return sum(s['count'] for s in
+                   self.store.get_role_bag_slots(self.role_id, 1, 150)
+                   if s['goods_id'] == goods)
+
+    def test_yb_buy_deducts_lingshi_and_grants(self):
+        # xuechi @ npc 2000: moneytype 2, gold 15.
+        self.assertEqual(self.buy('xuechi', 2, '2000', '', 2, -1),
+                         ['32001', [1, ['xuechi', 2, 30, 2]]])
+        self.assertEqual(self.role()['lingshi'], 970)
+        self.assertEqual(self.bag_counts('xuechi'), 2)
+
+    def test_yxb_buy_deducts_tongqian(self):
+        # hpadd001 @ npc 3000: moneytype 1, coin 100.
+        self.assertEqual(self.buy('hpadd001', 1, '3000', '', 1, -1),
+                         ['32001', [1, ['hpadd001', 1, 100, 1]]])
+        self.assertEqual(self.role()['tongqian'], 9900)
+
+    def test_bind_yb_buy_binds_the_grant(self):
+        # xuechi merges {2: 15, 3: 75} across its two 2000 rows.
+        self.assertEqual(self.buy('xuechi', 1, '2000', '', 3, -1),
+                         ['32001', [1, ['xuechi', 1, 75, 3]]])
+        self.assertEqual(self.role()['bind_lingshi'], 4925)
+        slots = [s for s in
+                 self.store.get_role_bag_slots(self.role_id, 1, 150)
+                 if s['goods_id'] == 'xuechi']
+        self.assertEqual(len(slots), 1)
+        self.assertEqual(slots[0]['bind'], 1)
+
+    def test_banggong_buy_fails_closed_without_guild(self):
+        # 72shengming1 @ npc 4000 prices in banggong; no guild system.
+        self.assertEqual(self.buy('72shengming1', 1, '4000', '', 5, -1),
+                         ['32001', [0, 430412]])
+        self.assertEqual(self.role()['lingshi'], 1000)
+
+    def test_unknown_goods_id(self):
+        self.assertEqual(self.buy('no-such-goods', 1, '2000', '', 2, -1),
+                         ['32001', [0, 430201]])
+
+    def test_wrong_npc_is_not_in_buy_list(self):
+        self.assertEqual(self.buy('xuechi', 1, '3000', '', 2, -1),
+                         ['32001', [0, 430402]])
+
+    def test_unlisted_money_type_is_account_type_error(self):
+        self.assertEqual(self.buy('hpadd001', 1, '3000', '', 2, -1),
+                         ['32001', [0, 430401]])
+
+    def test_short_yb_replies_yb_no_enought(self):
+        self.store.update_character_state(self.role_id, lingshi=10)
+        self.assertEqual(self.buy('xuechi', 1, '2000', '', 2, -1),
+                         ['32001', [0, 430403]])
+        self.assertEqual(self.role()['lingshi'], 10)
+
+    def test_short_tongqian_replies_jb_no_enought(self):
+        self.store.update_character_state(self.role_id, tongqian=10)
+        self.assertEqual(self.buy('hpadd001', 1, '3000', '', 1, -1),
+                         ['32001', [0, 430208]])
+
+    def test_full_bag_replies_slot_code(self):
+        self.store.save_role_bag_state(self.role_id, bag_capacity=0,
+                                       storage_capacity=30)
+        self.assertEqual(self.buy('xuechi', 1, '2000', '', 2, -1),
+                         ['32001', [0, 430214]])
+        self.assertEqual(self.role()['lingshi'], 1000)
+
+    def test_coupon_off_yb_cannot_be_used(self):
+        self.assertEqual(self.buy('xuechi', 1, '2000', '', 1, -1, 'g1'),
+                         ['32001', [0, 430417]])
+
+    def test_missing_coupon_row_is_expired(self):
+        self.assertEqual(self.buy('xuechi', 1, '2000', '', 2, -1, 'g9'),
+                         ['32001', [0, 430416]])
+
+    def test_entry_guards_are_silent(self):
+        self.assertIsNone(self.s.mall_buy([32001, ['', 1, '2000', '', 2,
+                                                    -1]]))
+        self.assertIsNone(self.s.mall_buy([32001, ['xuechi', 1, '', '', 2,
+                                                    -1]]))
+        self.assertIsNone(self.s.mall_buy([32001, ['xuechi', 0, '2000', '',
+                                                    2, -1]]))
+        self.assertIsNone(self.s.mall_buy([32001, ['xuechi', 1, '2000', '',
+                                                    -1, -1]]))
+        self.assertIsNone(self.s.mall_buy([32001, ['xuechi', 2, '2000', '',
+                                                    2, 0]]))
+        self.assertIsNone(self.s.mall_buy([32001, ['xuechi', 1, '2000', '',
+                                                    9, -1]]))
+
+    def test_dispatched_as_32001(self):
+        self.s.feed(CAPTURED_INITKEY)
+        out = self.s.feed(frame(
+            self.s.cipher.encode(amf3.encode(
+                [32001, ['xuechi', 1, '2000', '', 2, -1]]))))
+        self.assertEqual(amf3.decode(out[0][4:]),
+                         ['32001', [1, ['xuechi', 1, 15, 2]]])
+
+
 class TestEntryBuffs(unittest.TestCase):
     """Phase 2 entry pushes: 42100 buff flush, 42005 skill cooldown, 40501.
 
@@ -1048,6 +1386,10 @@ class TestEntryBuffs(unittest.TestCase):
                                'XiaoGuoBiao.jat'), 'wb') as f:
             f.write(amf3.encode([Obj(effectid='birthprotect', lasttime=10000),
                                  Obj(effectid='vip010', effectlevel='010')]))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'vipbiao.jat'), 'wb') as f:
+            # VipConfig row: replaceVipAttribute reads the vipbuff cell.
+            f.write(amf3.encode([Obj(lv=10, vipbuff='vip010', zhanli=1600)]))
         with open(os.path.join(cfg_dir, 'sys_config', 'CdBiao.jat'), 'wb') as f:
             f.write(amf3.encode([Obj(cdid='t070', cdtime=700)]))
         with open(os.path.join(cfg_dir, 'sys_config', 'JiNengBiao.jat'),

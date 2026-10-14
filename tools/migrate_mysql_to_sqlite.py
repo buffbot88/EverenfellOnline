@@ -120,7 +120,14 @@ def plan_counts(mysql, users):
              'role_attribute_buff': ' ' + role_filter(role_ids),
              'role_vip': ' ' + role_filter(role_ids),
              'role_xianjiechenhao': ' ' + role_filter(role_ids),
-             'role_meiren': ' ' + role_filter(role_ids)}
+             'role_meiren': ' ' + role_filter(role_ids),
+             'role_zuoqi': ' ' + role_filter(role_ids),
+             'role_skill': ' ' + role_filter(role_ids),
+             'role_shenjiang': ' ' + role_filter(role_ids),
+             'role_bag_slot': ' ' + role_filter(role_ids),
+             'role_skillbook_slot': ' ' + role_filter(role_ids),
+             'role_bag_state': ' ' + role_filter(role_ids),
+             'task_main': ' ' + role_filter(role_ids)}
     tables = {'account': ('caonima', 'account'),
               'user_role': ('dntg', 'user_role'),
               'role_stage': ('dntg', 'role_stage'),
@@ -129,7 +136,14 @@ def plan_counts(mysql, users):
               'role_attribute_buff': ('dntg', 'role_attribute_buff'),
               'role_vip': ('dntg', 'role_vip'),
               'role_xianjiechenhao': ('dntg', 'role_xianjiechenhao'),
-              'role_meiren': ('dntg', 'role_meiren')}
+              'role_meiren': ('dntg', 'role_meiren'),
+              'role_zuoqi': ('dntg', 'role_zuoqi'),
+              'role_skill': ('dntg', 'role_skill'),
+              'role_shenjiang': ('dntg', 'role_shenjiang'),
+              'role_bag_slot': ('dntg', 'role_bag_slot'),
+              'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
+              'role_bag_state': ('dntg', 'role_bag_state'),
+              'task_main': ('dntg', 'task_main')}
     counts = {}
     for label, (db, table) in tables.items():
         rows = mysql.query(db, f'select count(*) from {table}{where[label]}')
@@ -144,6 +158,10 @@ def migrate(mysql, db_path, users, dry_run=False):
               'stages_written': 0, 'currency_written': 0,
               'equip_written': 0, 'attr_buffs_written': 0, 'vip_written': 0,
               'xianjiechenhao_written': 0, 'meiren_written': 0,
+              'zuoqi_written': 0, 'skills_written': 0, 'shenjiang_written': 0,
+              'bag_slots_written': 0, 'skillbook_slots_written': 0,
+              'bag_state_written': 0,
+              'task_main_written': 0,
               'roles_missing_account': [], 'notes': []}
     accounts = mysql.query('caonima',
                            'select ' + ','.join(ACCOUNT_COLS) + ' from account'
@@ -175,6 +193,34 @@ def migrate(mysql, db_path, users, dry_run=False):
     meiren = mysql.query('dntg', 'select user_role_id,meiren_id,meiren_level,'
                                  'meiren_heti from role_meiren ' + role_where
                                  + ' order by user_role_id,meiren_id')
+    zuoqi = mysql.query('dntg', 'select user_role_id,rank,cur_rank'
+                                ' from role_zuoqi ' + role_where)
+    skills = mysql.query('dntg', 'select id,user_role_id,skill_category_id,'
+                                 'skill_level from role_skill ' + role_where
+                                 + ' order by id')
+    shenjiang = mysql.query('dntg', 'select id,user_role_id,shenjiang_id,'
+                                    'jiangxing_id,jiangxing_rank,skills'
+                                    ' from role_shenjiang ' + role_where
+                                    + ' order by id')
+    bag_slots = mysql.query('dntg', 'select id,slot_num,user_role_id,goods_id,'
+                                    'count,bind,expire_time,rare_level,item_level,'
+                                    'attributes from role_bag_slot ' + role_where
+                                    + ' order by user_role_id,slot_num')
+    skillbook_slots = mysql.query('dntg', 'select id,slot_num,user_role_id,'
+                                          'goods_id,count,bind,expire_time,'
+                                          'rare_level,item_level,attributes'
+                                          ' from role_skillbook_slot '
+                                          + role_where
+                                          + ' order by user_role_id,slot_num')
+    bag_state = mysql.query('dntg', 'select user_role_id,bag_capacity,bag_slot_time,'
+                                    'bag_update_slot_time,storage_capacity,'
+                                    'storage__slot_time,storage_update_slot_time'
+                                    ' from role_bag_state ' + role_where)
+    task_main = mysql.query('dntg', 'select id,user_role_id,current_task_id,'
+                                    'current_state,current_condition,'
+                                    'current_recevie_time,create_time'
+                                    ' from task_main ' + role_where
+                                    + ' order by user_role_id')
     if dry_run:
         report['accounts_added'] = len(accounts)
         report['roles_added'] = len(roles)
@@ -185,6 +231,11 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['vip_written'] = len(vips)
         report['xianjiechenhao_written'] = len(xianjiechenhao)
         report['meiren_written'] = len(meiren)
+        report['zuoqi_written'] = len(zuoqi)
+        report['bag_slots_written'] = len(bag_slots)
+        report['skillbook_slots_written'] = len(skillbook_slots)
+        report['bag_state_written'] = len(bag_state)
+        report['task_main_written'] = len(task_main)
         return report
 
     # Back up before writing anything.
@@ -275,6 +326,144 @@ def migrate(mysql, db_path, users, dry_run=False):
         conn.execute('CREATE TABLE IF NOT EXISTS role_attr_buff(role_id INTEGER NOT NULL,'
                      ' attribute_id TEXT NOT NULL, count INTEGER DEFAULT 0,'
                      ' PRIMARY KEY(role_id, attribute_id))')
+        conn.execute('CREATE TABLE IF NOT EXISTS role_skill(role_id INTEGER NOT NULL,'
+                     ' skill_key TEXT NOT NULL, category TEXT NOT NULL,'
+                     ' level INTEGER DEFAULT 0, PRIMARY KEY(role_id, skill_key))')
+        for row in skills:
+            skill_key, user_role_id, category, level = (row + [None] * 4)[:4]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not skill_key or not category:
+                continue
+            conn.execute(
+                'INSERT INTO role_skill(role_id, skill_key, category, level)'
+                ' VALUES(?,?,?,?)'
+                ' ON CONFLICT(role_id, skill_key) DO UPDATE SET'
+                ' category=excluded.category, level=excluded.level',
+                (local_id, skill_key, category, as_int(level) or 0))
+            report['skills_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_shenjiang(role_id INTEGER NOT NULL,'
+                     ' shenjiang_key TEXT NOT NULL, shenjiang_id TEXT NOT NULL,'
+                     ' jiangxing_id TEXT, jiangxing_rank INTEGER DEFAULT 1,'
+                     ' skills TEXT, PRIMARY KEY(role_id, shenjiang_key))')
+        for row in shenjiang:
+            shenjiang_key, user_role_id, shenjiang_id, jiangxing_id, rank, skills = \
+                (row + [None] * 6)[:6]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not shenjiang_key or not shenjiang_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_shenjiang(role_id, shenjiang_key, shenjiang_id,'
+                ' jiangxing_id, jiangxing_rank, skills)'
+                ' VALUES(?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, shenjiang_key) DO UPDATE SET'
+                ' shenjiang_id=excluded.shenjiang_id,'
+                ' jiangxing_id=excluded.jiangxing_id,'
+                ' jiangxing_rank=excluded.jiangxing_rank,'
+                ' skills=excluded.skills',
+                (local_id, shenjiang_key, shenjiang_id, jiangxing_id or '',
+                 as_int(rank) or 0, skills))
+            report['shenjiang_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_bag_slot(role_id INTEGER NOT NULL,'
+                     ' slot_num INTEGER NOT NULL, bag_id TEXT, goods_id TEXT NOT NULL,'
+                     ' count INTEGER DEFAULT 0, bind INTEGER DEFAULT 0,'
+                     ' expire_time INTEGER, rare_level INTEGER DEFAULT 0,'
+                     ' item_level INTEGER DEFAULT 0, attributes TEXT,'
+                     ' PRIMARY KEY(role_id, slot_num))')
+        conn.execute('CREATE TABLE IF NOT EXISTS role_bag_state(role_id INTEGER PRIMARY KEY,'
+                     ' bag_capacity INTEGER DEFAULT 0, bag_slot_time INTEGER DEFAULT 0,'
+                     ' bag_update_slot_time INTEGER DEFAULT 0,'
+                     ' storage_capacity INTEGER DEFAULT 0,'
+                     ' storage_slot_time INTEGER DEFAULT 0,'
+                     ' storage_update_slot_time INTEGER DEFAULT 0)')
+        for row in bag_slots:
+            bag_id, slot_num, user_role_id, goods_id, count, bind, \
+                expire_time, rare_level, item_level, attributes = (row + [None] * 10)[:10]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or slot_num is None or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_bag_slot(role_id, slot_num, bag_id, goods_id,'
+                ' count, bind, expire_time, rare_level, item_level, attributes)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, slot_num) DO UPDATE SET'
+                ' bag_id=excluded.bag_id, goods_id=excluded.goods_id,'
+                ' count=excluded.count, bind=excluded.bind,'
+                ' expire_time=excluded.expire_time,'
+                ' rare_level=excluded.rare_level,'
+                ' item_level=excluded.item_level,'
+                ' attributes=excluded.attributes',
+                (local_id, as_int(slot_num), bag_id, goods_id,
+                 as_int(count) or 0, as_int(bind) or 0, as_int(expire_time),
+                 as_int(rare_level) or 0, as_int(item_level) or 0, attributes))
+            report['bag_slots_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_skillbook_slot(role_id INTEGER NOT NULL,'
+                     ' slot_num INTEGER NOT NULL, bag_id TEXT, goods_id TEXT NOT NULL,'
+                     ' count INTEGER DEFAULT 0, bind INTEGER DEFAULT 0,'
+                     ' expire_time INTEGER, rare_level INTEGER DEFAULT 0,'
+                     ' item_level INTEGER DEFAULT 0, attributes TEXT,'
+                     ' PRIMARY KEY(role_id, slot_num))')
+        for row in skillbook_slots:
+            bag_id, slot_num, user_role_id, goods_id, count, bind, \
+                expire_time, rare_level, item_level, attributes = (row + [None] * 10)[:10]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or slot_num is None or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_skillbook_slot(role_id, slot_num, bag_id, goods_id,'
+                ' count, bind, expire_time, rare_level, item_level, attributes)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, slot_num) DO UPDATE SET'
+                ' bag_id=excluded.bag_id, goods_id=excluded.goods_id,'
+                ' count=excluded.count, bind=excluded.bind,'
+                ' expire_time=excluded.expire_time,'
+                ' rare_level=excluded.rare_level,'
+                ' item_level=excluded.item_level,'
+                ' attributes=excluded.attributes',
+                (local_id, as_int(slot_num), bag_id, goods_id,
+                 as_int(count) or 0, as_int(bind) or 0, as_int(expire_time),
+                 as_int(rare_level) or 0, as_int(item_level) or 0, attributes))
+            report['skillbook_slots_written'] += 1
+        for row in bag_state:
+            (user_role_id, bag_capacity, bag_slot_time, bag_update_slot_time,
+             storage_capacity, storage_slot_time,
+             storage_update_slot_time) = (row + [None] * 7)[:7]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_bag_state(role_id, bag_capacity, bag_slot_time,'
+                ' bag_update_slot_time, storage_capacity, storage_slot_time,'
+                ' storage_update_slot_time) VALUES(?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' bag_capacity=excluded.bag_capacity,'
+                ' bag_slot_time=excluded.bag_slot_time,'
+                ' bag_update_slot_time=excluded.bag_update_slot_time,'
+                ' storage_capacity=excluded.storage_capacity,'
+                ' storage_slot_time=excluded.storage_slot_time,'
+                ' storage_update_slot_time=excluded.storage_update_slot_time',
+                (local_id, as_int(bag_capacity) or 0,
+                 as_int(bag_slot_time) or 0, as_int(bag_update_slot_time) or 0,
+                 as_int(storage_capacity) or 0, as_int(storage_slot_time) or 0,
+                 as_int(storage_update_slot_time) or 0))
+            report['bag_state_written'] += 1
+        for row in task_main:
+            task_uid, user_role_id, task_id, state, condition, \
+                recevie_time, create_time = (row + [None] * 7)[:7]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not task_id:
+                continue
+            conn.execute(
+                'INSERT INTO task_main(role_id, task_uid, task_id, state,'
+                ' condition, recevie_time, create_time)'
+                ' VALUES(?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' task_uid=excluded.task_uid, task_id=excluded.task_id,'
+                ' state=excluded.state, condition=excluded.condition,'
+                ' recevie_time=excluded.recevie_time,'
+                ' create_time=excluded.create_time',
+                (local_id, task_uid, task_id, as_int(state) or 0, condition,
+                 as_int(recevie_time), as_int(create_time)))
+            report['task_main_written'] += 1
         for row in equips:
             user_role_id, slot_num, goods_id, rare_level, item_level, \
                 attributes = (row + [None] * 6)[:6]
@@ -361,6 +550,23 @@ def migrate(mysql, db_path, users, dry_run=False):
                 (local_id, meiren_id, as_int(meiren_level) or 0,
                  as_int(meiren_heti) or 0))
             report['meiren_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_zuoqi(role_id INTEGER PRIMARY KEY,'
+                     ' zuoqi_rank INTEGER DEFAULT 0,'
+                     ' zuoqi_cur_rank INTEGER DEFAULT 0)')
+        for row in zuoqi:
+            user_role_id, rank, cur_rank = (row + [None] * 3)[:3]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' zuoqi_rank=excluded.zuoqi_rank,'
+                ' zuoqi_cur_rank=excluded.zuoqi_cur_rank',
+                (local_id, as_int(rank) or 0, as_int(cur_rank) or 0))
+            report['zuoqi_written'] += 1
 
         for user_role_id, tongqian, bind_lingshi in currency:
             local_id = legacy_to_local.get(user_role_id)

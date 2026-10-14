@@ -471,6 +471,8 @@ class BuffSkillConfigTest(unittest.TestCase):
                         amf3.encode([Obj(effectid='birthprotect',
                                         lasttime=10000),
                                      Obj(effectid='vip010', effectlevel='010')]))
+            write_bytes(root, 'sys_config/vipbiao.jat',
+                        amf3.encode([Obj(lv=10, vipbuff='vip010', zhanli=1600)]))
             write_bytes(root, 'sys_config/JiNengBiao.jat',
                         amf3.encode([Obj(skilltype='normal003', cd1='t070')]))
             cfg = GameConfig(root)

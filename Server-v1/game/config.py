@@ -6,6 +6,7 @@
 Both are AMF3 serialized (see amf3.py). The loader is read-only and never
 edits the tables; it only reports what the legacy server would load.
 """
+import json
 import logging
 import os
 import re
@@ -36,6 +37,182 @@ def load_map_lines(path):
     for row in rows:
         if isinstance(row, dict) and row.get('mapid') is not None:
             table[str(row['mapid'])] = row
+    return table
+
+
+def load_task_main_table(path):
+    """Main-quest row list from sys_config/ZhuXianRenWu.jat."""
+    rows = _load(path)
+    if isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], list):
+        rows = rows[0]
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of quest rows')
+    return rows
+
+
+def config_int(value):
+    """ConvertObjectUtil.object2int: null/''/garbage -> 0, true -> 1.
+
+    Doubles truncate and NumberFormatException yields 0 (the quest table has
+    '#N/A' cells, so this matters).
+    """
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+    text = str(value).strip()
+    if not text:
+        return 0
+    if text == 'true':
+        return 1
+    if text == 'false':
+        return 0
+    if '.' in text:
+        text = text[:text.index('.')]
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_task_goods(cell):
+    """{goods id: count} from a 'gid_count;...' cell; None when empty."""
+    if not cell:
+        return None
+    goods = {}
+    for segment in cell.split(';'):
+        parts = segment.split('_')
+        try:
+            goods[parts[0]] = int(parts[1])
+        except (IndexError, TypeError, ValueError):
+            continue
+    return goods or None
+
+
+def parse_task_monsters(cell):
+    """{monster id: vo} from a 'mid:count;...' cell; None when empty.
+
+    A leading 'name_' on the id sets the display name; a '#' marks an
+    auto-attack entry; repeat ids accumulate counts (getConfigMonsterMap).
+    """
+    if not cell:
+        return None
+    monsters = {}
+    for segment in cell.split(';'):
+        parts = segment.split(':')
+        try:
+            raw_id, count = parts[0], int(parts[1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        show_name = None
+        if '_' in raw_id:
+            show_name, _, raw_id = raw_id.partition('_')
+        auto = '#' in raw_id
+        monster_id = raw_id.replace('#', '')
+        vo = monsters.get(monster_id)
+        if vo is None:
+            vo = {'monster_id': monster_id, 'count': 0,
+                  'auto_attack': False, 'show_name': None}
+            monsters[monster_id] = vo
+        if vo['show_name'] is None:
+            vo['show_name'] = show_name
+        vo['count'] += count
+        if auto:
+            # getConfigMonsterMap only ever sets autoAttack true; a repeat
+            # segment without '#' never clears a latched true.
+            vo['auto_attack'] = True
+    return monsters or None
+
+
+def parse_task_item_order(cell):
+    """[(goods id, count, bind, expire)] from an itemOrder cell.
+
+    Port of convertGoodsesStrs2List2: 'goodsId:count[:bind][:expire]' segments, count <= 0 nulls the list, empty cell gives None.
+    """
+    if not cell:
+        return None
+    items = []
+    for segment in cell.split(';'):
+        parts = segment.split(':')
+        try:
+            goods_id, count = parts[0], int(parts[1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if count <= 0:
+            return None
+        try:
+            bind = int(parts[2]) if len(parts) > 2 else 0
+        except (TypeError, ValueError):
+            bind = 0
+        try:
+            expire = int(parts[3]) if len(parts) > 3 else 0
+        except (TypeError, ValueError):
+            expire = 0
+        items.append({'goods_id': goods_id, 'count': count,
+                      'bind': bind, 'expire': expire if expire > 0 else 0})
+    return items
+
+
+def parse_task_attr_map(cell):
+    """{attribute name: float} from a subchapter reward cell.
+
+    Port of getAttributeConfigMap: 'name:value;...' accumulates floats; empty cell gives None like Java's isEmpty branch.
+    """
+    if not cell or not str(cell).strip():
+        return None
+    totals = {}
+    for segment in str(cell).split(';'):
+        parts = segment.split(':')
+        if len(parts) < 2:
+            continue
+        try:
+            value = float(parts[1])
+        except (TypeError, ValueError):
+            continue
+        totals[parts[0]] = totals.get(parts[0], 0.0) + value
+    return totals or None
+
+
+def convert_index_attribute(mapping, index):
+    """{attribute id: value} by looking each name up in the index table.
+
+    Port of AttributeConvertIndexUtil.convertIndexAttribute: names resolve to ids via the index. The Java table is a static field nothing ever assigns, so an empty index passes the mapping through instead of Java's NPE.
+    """
+    if not mapping or not index:
+        return mapping
+    return {index.get(name): value for name, value in mapping.items()}
+
+
+# Attribute-index table (names -> wire ids); content unrecoverable, so empty.
+TASK_ATTRIBUTE_INDEX = {}
+
+
+def load_goods_table(path):
+    """{goods id: row} from sys_config/goods.jat (outer list holds one list)."""
+    rows = _load(path)
+    if isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], list):
+        rows = rows[0]
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of goods rows')
+    return {str(r['id']): r for r in rows
+            if isinstance(r, dict) and r.get('id') is not None}
+
+
+def load_kaige_table(path):
+    """{(slottype, num): row} from sys_config/KaiGeFeiYongBiao.jat."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of kaige rows')
+    table = {}
+    for row in rows:
+        if isinstance(row, dict) and row.get('slottype') is not None \
+                and row.get('id') is not None:
+            table[(str(row['slottype']), int(row['id']))] = row
     return table
 
 
@@ -78,11 +255,132 @@ def parse_item_attributes(text):
     return stars, pairs
 
 
+def _int(value):
+    """Java getIntValue: a missing or non-numeric cell is 0."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _at(entry, index):
+    """Element `index` of a JSON pair, 0 when the entry is short or not a list."""
+    if isinstance(entry, list) and len(entry) > index:
+        return entry[index]
+    return 0
+
+
+def equip_vo(text):
+    """GoodsEquipVo(String): qhcount, jjfailcount, qhxingxing, fjattrstr.
+
+    Java reads each key with getIntValue/getString, so a missing key is 0
+    or null. A blob that is not JSON is logged and read as blank instead of
+    failing the whole frame.
+    """
+    empty = {'qhcount': 0, 'jjfailcount': 0, 'qhxingxing': None, 'fjattrstr': None}
+    if not text:
+        return empty
+    try:
+        data = json.loads(text)
+    except ValueError:
+        log.warning('equipment attributes are not JSON; read as blank')
+        return empty
+    if not isinstance(data, dict):
+        return empty
+
+    def as_text(value):
+        if value is None or isinstance(value, str):
+            return value
+        return json.dumps(value, separators=(',', ':'))
+
+    return {'qhcount': _int(data.get('qhcount')),
+            'jjfailcount': _int(data.get('jjfailcount')),
+            'qhxingxing': as_text(data.get('qhxingxing')),
+            'fjattrstr': as_text(data.get('fjattrstr'))}
+
+
+def _goods_map(text):
+    """'goods|count[;...]' cell into {goods_id: count}, skips bad pairs."""
+    out = {}
+    for cell in str(text or '').split(';'):
+        gid, _, count = cell.partition('|')
+        if not gid:
+            continue
+        try:
+            need = int(count)
+        except (TypeError, ValueError):
+            continue
+        out[gid] = need
+    return out
+
+
+def _qh_pairs(vo):
+    """The parsed qhxingxing JSON array, or None when blank or not an array."""
+    text = vo.get('qhxingxing')
+    if text in (None, ''):
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        log.warning('qhxingxing is not JSON; treated as absent')
+        return None
+    return data if isinstance(data, list) else None
+
+
+def xingxing_lv(vo):
+    """GoodsEquipVo.getxingxingLv: how many star pairs carry the value 1."""
+    return sum(1 for entry in (_qh_pairs(vo) or []) if _int(_at(entry, 1)) == 1)
+
+
+def qh_xingxings_client(vo):
+    """GoodsEquipVo.getQhXingXingsClient: qhcount star values, zero-padded.
+
+    qhcount 0 gives ten zeros. Java returns null for a blank qhxingxing
+    or when the array has MORE entries than qhcount.
+    """
+    if vo.get('qhxingxing') in (None, ''):
+        return None
+    count = vo.get('qhcount') or 0
+    if count == 0:
+        return [0] * 10
+    pairs = _qh_pairs(vo)
+    if pairs is None or len(pairs) > count:
+        return None
+    values = [_at(entry, 1) for entry in pairs]
+    return values + [0] * (count - len(values))
+
+
+def fujia_client_map(vo):
+    """GoodsEquipVo.qhFuJiaAttrClient: {fujiaKey: [id, count]} or None.
+
+    Each fjattrstr value is 'id@count'; Java splits it and boxes both halves
+    as Integers.
+    """
+    text = vo.get('fjattrstr')
+    if text in (None, ''):
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        log.warning('fjattrstr is not JSON; treated as absent')
+        return None
+    if not isinstance(data, dict):
+        return None
+    out = {}
+    for key, value in data.items():
+        parts = str(value).split('@')
+        if len(parts) < 2:
+            log.warning('fjattrstr entry %r is not id@count; skipped', key)
+            continue
+        out[str(key)] = [_int(parts[0]), _int(parts[1])]
+    return out
+
+
 def load_equip_attribute_table(path):
     """Rows of sys_config/ZhuangBeiFuJiaShuXingBiao.jat keyed by goods id.
 
     This is EquipFuJiaAttributeConfig: the flat base columns, the Njichubili
-    rank rates and the starN<attr> 强化 columns EquipAttributeService reads.
+    rank rates and the starN<attr> enhancement (qianghua) columns EquipAttributeService reads.
     """
     rows = _load(path)
     if not isinstance(rows, list):
@@ -107,6 +405,13 @@ def load_fujia_random_table(path):
             continue
         table['%s-%s' % (row['fujiaid'], row['level'])] = row
     return table
+
+
+# WuPinChuShouBiao price column per MoneyType intType (the cost-map
+# builder reads exactly one column per row: YXB=1 coin, YB=2 gold,
+# BIND_YB=3 bindgole, BANGGONG=5 banggong).
+MALL_PRICE_COLUMNS = {1: 'coin', 2: 'gold', 3: 'bindgole',
+                      5: 'banggong'}
 
 
 def load_mall_table(path):
@@ -290,6 +595,15 @@ def load_jineng_table(path):
     return [r for r in rows if isinstance(r, dict)]
 
 
+def load_skillbook_table(path):
+    """Rows of sys_config/jinengshubiao.jat keyed by skillbook id."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of jinengshubiao rows')
+    return {str(r['id']): r for r in rows
+            if isinstance(r, dict) and r.get('id')}
+
+
 def load_zuoji_table(path):
     """Rows of sys_config/ZuoJiBiao.jat keyed by (int(stratum), int(ridelv)).
 
@@ -376,8 +690,24 @@ class GameConfig:
         self._cd = None
         self._xiaoguo = None
         self._jineng = None
+        self._skillbook = None
         self._jingyan = None
         self._shaguai = None
+        self._goods = None
+        self._dan = None
+        self._lihe = None
+        self._qianghua = None
+        self._fujia = None
+        self._fujia_random = None
+        self._zhujue_shuxing = None
+        self._jianding = None
+        self._vip_choujiang = None
+        self._vip_lingjiang = None
+        self._vip_huodong = None
+        self._kaige = None
+        self._task_main = None
+        self._task_sub = None
+        self._task_main_first = None
 
     @property
     def map_lines_path(self):
@@ -460,21 +790,6 @@ class GameConfig:
             return None
         return int(row['lasttime'])
 
-    def vip_buff_id(self, vip_level):
-        """XiaoGuoBiao buff id for a VIP level ('vip010' for 10), or None.
-
-        Ids are data (vip001..vip012, effectlevel '001'..'012', all
-        permanent); a level with no row sends no buff, exactly Java's
-        empty-source behavior."""
-        try:
-            level = int(vip_level or 0)
-        except (TypeError, ValueError):
-            return None
-        if level <= 0:
-            return None
-        buff_id = 'vip%03d' % level
-        return buff_id if self.buff_effect(buff_id) is not None else None
-
     def skill_cd_id(self, category):
         """JiNengBiao cd1 for a skill category ('normal003' -> 't070'), or None."""
         if self._jineng is None:
@@ -487,6 +802,298 @@ class GameConfig:
         for row in self._jineng:
             if row.get('skilltype') == category and row.get('cd1'):
                 return str(row['cd1'])
+        return None
+
+    def dan_buff(self, goods_id):
+        """ShuXinDan row for a dan goods id, or None when absent."""
+        if self._dan is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'shuxingdan.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad dan table: %s', e)
+                rows = []
+            self._dan = {str(r['id']): r for r in rows
+                         if isinstance(r, dict) and r.get('id') is not None}
+        return self._dan.get(str(goods_id))
+
+    def lihe_box(self, goods_id):
+        """Parsed LiHe.jat row: fixed reward, lottery ids, needs, bind."""
+        if self._lihe is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'LiHe.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad lihe table: %s', e)
+                rows = []
+            self._lihe = {str(r['id']): r for r in rows
+                          if isinstance(r, dict) and r.get('id') is not None}
+        row = self._lihe.get(str(goods_id))
+        if row is None:
+            return None
+        fixed, zubao = None, []
+        for num in range(1, 9):
+            cell = str(row.get(f'things{num}') or '')
+            if not cell:
+                continue
+            if cell.startswith('@'):
+                zubao.append(cell)
+                continue
+            parts = cell.split('|')
+            try:
+                fixed = {'goods': parts[0], 'count': int(parts[1])}
+            except (IndexError, TypeError, ValueError):
+                fixed = None
+        needs = {}
+        for cell in str(row.get('itemneed') or '').split(';'):
+            gid, _, count = cell.partition('|')
+            try:
+                needs[gid] = int(count)
+            except (TypeError, ValueError):
+                continue
+        def num(key):
+            try:
+                return int(row.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0
+        return {'id': str(goods_id), 'fixed': fixed, 'zubao': zubao,
+                'itemneed': needs, 'levelneed': num('levelneed'),
+                'zuoqi': num('zuoqi'), 'jb': num('moneyneed'),
+                'yb': num('goldneed'), 'bindyb': num('silverneed'),
+                'bind': num('thingbangding')}
+
+    def qianghua_config(self, goods_id, qhlv):
+        """ZhuangBeiQiangHua row for a gear id at one enhance level."""
+        if self._qianghua is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuangBeiQiangHua.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad qianghua table: %s', e)
+                rows = []
+            self._qianghua = {}
+            for r in rows:
+                if not isinstance(r, dict) or r.get('id') is None:
+                    continue
+                try:
+                    lv = int(r.get('qhlv') or 0)
+                except (TypeError, ValueError):
+                    continue
+                self._qianghua[(str(r['id']), lv)] = r
+        row = self._qianghua.get((str(goods_id), int(qhlv)))
+        if row is None:
+            return None
+        def num(key):
+            try:
+                return int(row.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0
+        try:
+            odds = float(row.get('qhodds') or 0)
+        except (TypeError, ValueError):
+            odds = 0.0
+        try:
+            jjodds = float(row.get('jjodds') or 0)
+        except (TypeError, ValueError):
+            jjodds = 0.0
+        gold = {}
+        for slot in range(1, 10):
+            parts = str(row.get(f'glod{slot}') or '').split('|')
+            try:
+                gold[slot] = [float(parts[0]), float(parts[1])]
+            except (IndexError, TypeError, ValueError):
+                continue
+        return {'maxQhLevel': num('qhmaxlv'),
+                'isQianghua': num('permitqh') != 0,
+                'costGoods': _goods_map(row.get('qhcostgoods')),
+                'qhJb': num('qhneedcoin'), 'qhodds': odds,
+                'qhNotice': num('qhnotice') != 0,
+                'goldOrGaiLv': gold,
+                'qingxiGoods': _goods_map(row.get('qingxi')),
+                'qingxiyb': num('qingxiyb'),
+                'isPermitjj': num('permitjj') != 0,
+                'jjEquipId': str(row.get('jjequipid') or ''),
+                'jjEquipQhLevel': num('jjequipqhlv'),
+                'jjCostGoods': _goods_map(row.get('jjcostgoods')),
+                'jjCostCoin': num('jjcostcoin'),
+                'jjMinTimes': num('jjmintimes'),
+                'jjMaxTimes': num('jjmaxtimes'), 'jjodds': jjodds}
+
+    def fujia_config(self, goods_id):
+        """ZhuangBeiFuJiaShuXingBiao row for a gear id, slots keyed by int."""
+        if self._fujia is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuangBeiFuJiaShuXingBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad fujia table: %s', e)
+                rows = []
+            self._fujia = {str(r['id']): r for r in rows
+                           if isinstance(r, dict) and r.get('id') is not None}
+        row = self._fujia.get(str(goods_id))
+        if row is None:
+            return None
+        slots = {}
+        for slot in range(0, 7):
+            cell = str(row.get(f'{slot}fujiaid') or '')
+            if not cell:
+                continue
+            try:
+                ids = [int(p) for p in cell.split(',') if p != '']
+            except (TypeError, ValueError):
+                continue
+            def cell_num(key, _slot=slot):
+                try:
+                    return int(row.get(f'{_slot}{key}') or 0)
+                except (TypeError, ValueError):
+                    return 0
+            slots[slot] = {
+                'ids': ids, 'needVip': cell_num('fujiaidkaiqi'),
+                'needLv': cell_num('fujiaidkaiqilv'),
+                'needEquipLv': cell_num('fujiaidqianghua'),
+                'money': cell_num('money'),
+                'clearGoods': _goods_map(row.get(f'{slot}fujiaidqingchu')),
+                'clearYb': cell_num('fujiaidqingchuyb')}
+        try:
+            addexp = [int(row.get('jiandingexp1') or 0),
+                      int(row.get('jiandingexp2') or 0)]
+        except (TypeError, ValueError):
+            addexp = [0, 0]
+        try:
+            fu_level = int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            fu_level = 0
+        rare_min, rare_max = {}, {}
+        for slot in range(0, 7):
+            for key, out in (('fujiamin', rare_min), ('fujiamax', rare_max)):
+                try:
+                    out[slot] = int(row.get(f'{slot}{key}') or 0)
+                except (TypeError, ValueError):
+                    continue
+        return {'slots': slots, 'fuJiaLevel': fu_level, 'addexp': addexp,
+                'rareMin': rare_min, 'rareMax': rare_max}
+
+    def fujia_random(self, fujia_id, level):
+        """ZhuangBeiFuJiaShuXingsuijiBiao row for (fujiaId, level)."""
+        if self._fujia_random is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuangBeiFuJiaShuXingsuijiBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad fujia random table: %s', e)
+                rows = []
+            self._fujia_random = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    key = (int(r.get('fujiaid')), int(r.get('level')))
+                except (TypeError, ValueError):
+                    continue
+                self._fujia_random[key] = r
+        try:
+            row = self._fujia_random.get((int(fujia_id), int(level)))
+        except (TypeError, ValueError):
+            return None
+        if row is None:
+            return None
+        rates, counts = {}, {}
+        for num in range(0, 5):
+            try:
+                rates[num] = float(row.get(f'{num}jilv') or 0)
+            except (TypeError, ValueError):
+                continue
+            weights = {}
+            for cell in str(row.get(f'{num}jiading') or '').split(';'):
+                count, _, weight = cell.partition('|')
+                try:
+                    weights[int(count)] = float(weight)
+                except (TypeError, ValueError):
+                    continue
+            if weights:
+                counts[num] = weights
+        return {'rates': rates, 'counts': counts}
+
+    def zhujue_jdexp(self, level):
+        """ZhuJueShuXingBiao.jdexp for a role level (jianding fail cap)."""
+        if self._zhujue_shuxing is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuJueShuXingBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zhujue shuxing table: %s', e)
+                rows = []
+            self._zhujue_shuxing = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    self._zhujue_shuxing[int(r.get('level'))] = int(
+                        r.get('jdexp') or 0)
+                except (TypeError, ValueError):
+                    continue
+        try:
+            return self._zhujue_shuxing.get(int(level), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def jianding_config(self, item_level):
+        """gaojijiandingbiao.jat row for an itemLevel (hecheng synthesis)."""
+        if self._jianding is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'gaojijiandingbiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad jianding table: %s', e)
+                rows = []
+            self._jianding = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    level = int(r.get('zhangbeiLV'))
+                except (TypeError, ValueError):
+                    continue
+                rewards = []
+                for cell in str(r.get('hechengwupin') or '').split(';'):
+                    gid, _, count = cell.partition(':')
+                    if not gid:
+                        continue
+                    try:
+                        rewards.append((gid, int(count)))
+                    except (TypeError, ValueError):
+                        continue
+                try:
+                    juanzhou = int(r.get('juanzhou') or 0) != 0
+                except (TypeError, ValueError):
+                    juanzhou = False
+                self._jianding[level] = {
+                    'juanzhou': juanzhou,
+                    'stones': _goods_map(r.get('hechengshi')),
+                    'rewards': rewards}
+        try:
+            return self._jianding.get(int(item_level))
+        except (TypeError, ValueError):
+            return None
+
+    def skill_info(self, category, level):
+        """JiNengBiao row for a category at one level (learn checks)."""
+        if not category:
+            return None
+        for row in self._jineng_rows():
+            try:
+                match = row.get('skilltype') == category and \
+                    int(row.get('level') or 0) == int(level)
+            except (TypeError, ValueError):
+                match = False
+            if match:
+                return row
         return None
 
     def skill_row(self, category):
@@ -508,6 +1115,67 @@ class GameConfig:
             if best is None or int(row.get('level') or 0) > int(best.get('level') or 0):
                 best = row
         return best
+
+    def skillbook_table(self):
+        """jinengshubiao rows keyed by skillbook id; empty if absent."""
+        if self._skillbook is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'jinengshubiao.jat')
+            try:
+                self._skillbook = load_skillbook_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad skillbook table: %s', e)
+                self._skillbook = {}
+        return self._skillbook
+
+    def skillbook_book(self, goods_id):
+        """SkillBookConfig row for a skillbook goods id, or None.
+
+        Port of loadBySkillBookId: the configure map is keyed by the
+        row's id cell, which is the goods id.
+        """
+        if goods_id is None:
+            return None
+        return self.skillbook_table().get(str(goods_id))
+
+    def skillbook_type(self, ridetype, rare_level, level):
+        """SkillBookConfig row for a (ridetype, rare, level) tier, or None.
+
+        Port of loadBySkillBookType: configureDataResolve indexes every
+        row under 'ridetype-rarelevel-skillbooklevel' and resolves through
+        that key, so the lookup scans for the matching triple.
+        """
+        for row in self.skillbook_table().values():
+            try:
+                match = str(row.get('ridetype')) == str(ridetype) and \
+                    int(row.get('rarelevel') or 0) == int(rare_level) and \
+                    int(row.get('skillbooklevel') or 0) == int(level)
+            except (TypeError, ValueError):
+                match = False
+            if match:
+                return row
+        return None
+
+    def zuoqi_skill_open(self, rank, role_level, index):
+        """Whether a mount's skill slot `index` (1..6) is unlocked.
+
+        Port of RoleZuoQiServiceImpl.isOpen over loadByRankLevel: the
+        level row's mutex1..mutex6 cell above 0 opens its slot.
+        """
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            return False
+        if index < 1 or index > 6:
+            return False
+        pet = self.zuoqi_pet(rank, role_level)
+        if pet is None:
+            return False
+        try:
+            return float(pet[1].get(f'mutex{index}') or 0) > 0
+        except (TypeError, ValueError):
+            return False
 
     def exp_decay(self, lv_diff):
         """JingYanShuaiJianBiao subtractfactor for a role-minus-monster gap.
@@ -645,7 +1313,7 @@ class GameConfig:
         return self._fujia_random
 
     def fujia_attribute_map(self, pairs, level):
-        """Random 附加 affix bonuses for one item's fujia pairs at its fujia level.
+        """Random extra (fujia) affix bonuses for one item's fujia pairs at its fujia level.
 
         Port of EquipAttributeService.getEquipFuJiaAttribute: key each
         pair as '<fujiaid>-<level>' (the item's ZhuangBeiFuJiaShuXingBiao
@@ -694,6 +1362,310 @@ class GameConfig:
             for name, value in self.fujia_attribute_map(pairs, row.get('level')).items():
                 totals[name] = totals.get(name, 0.0) + value
         return totals
+
+    def _goods_table(self):
+        """Goods rows by id; empty when goods.jat is absent."""
+        if self._goods is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'goods.jat')
+            try:
+                self._goods = load_goods_table(path) if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad goods table: %s', e)
+                self._goods = {}
+        return self._goods
+
+    def goods_category(self, goods_id):
+        """Category code of a goods id (GoodsCategoryUtil compares as strings)."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None or row.get('category') in ('', None):
+            return None
+        return str(row['category'])
+
+    def _kaige_table(self):
+        """Kaige rows by (slottype, num); empty when the file is absent."""
+        if self._kaige is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'KaiGeFeiYongBiao.jat')
+            try:
+                self._kaige = load_kaige_table(path) if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad kaige table: %s', e)
+                self._kaige = {}
+        return self._kaige
+
+    def kaige_max_slot_num(self, slottype):
+        """Max slot num for slottype ('B' bag, 'C' storage); 0 when unknown."""
+        nums = [num for (stype, num) in self._kaige_table() if stype == slottype]
+        return max(nums) if nums else 0
+
+    def kaige_init_slot_num(self, slottype):
+        """Slots unlocked before the first kaige row (min id - 1).
+
+        Inferred, not traced: live role_bag_state rows carry exactly these
+        values (bag 34, storage 30) for roles that never unlocked a slot.
+        """
+        nums = [num for (stype, num) in self._kaige_table() if stype == slottype]
+        return min(nums) - 1 if nums else 0
+
+    def kaige_row(self, slottype, num):
+        """Kaige row for one unlockable slot number, or None."""
+        return self._kaige_table().get((str(slottype), int(num)))
+
+    def kaige_slot(self, slottype, num):
+        """Parsed OpenSlotConfig for one kaige slot, or None when missing.
+
+        cost 'a:b' pays abs(b) in YXB (copper) when a is 1, else YB
+        (lingshi); needtime seconds, expadd and propertyvalue default to 0.
+        """
+        row = self.kaige_row(slottype, num)
+        if row is None:
+            return None
+        try:
+            first, _, second = str(row.get('cost') or '').partition(':')
+            money = 'YXB' if int(first) == 1 else 'YB'
+            cost_num = abs(int(second))
+        except (TypeError, ValueError):
+            return None
+        try:
+            open_time = int(row.get('needtime') or 0)
+        except (TypeError, ValueError):
+            open_time = 0
+        try:
+            add_exp = abs(int(row.get('expadd') or 0))
+        except (TypeError, ValueError):
+            add_exp = 0
+        try:
+            add_attr = abs(float(row.get('propertyvalue') or 0))
+        except (TypeError, ValueError):
+            add_attr = 0.0
+        return {'money': money, 'cost_num': cost_num,
+                'open_time': open_time, 'add_exp': add_exp,
+                'add_attr_name': str(row.get('property') or ''),
+                'add_attr_value': add_attr}
+
+    def goods_max_stack(self, goods_id):
+        """Max stack (maxstack cell) for a goods id, or None when unknown."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return None
+        try:
+            return int(row.get('maxstack') or 0)
+        except (TypeError, ValueError):
+            return None
+
+    def _task_assembly(self):
+        """(quests by id2, subchapters by id, first id) from ZhuXianRenWu."""
+        if self._task_main is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuXianRenWu.jat')
+            try:
+                rows = load_task_main_table(path) if os.path.isfile(path) \
+                    else []
+            except ValueError as e:
+                log.error('bad task table: %s', e)
+                rows = []
+            table, subs = {}, {}
+            first, prev_id, prev_sub = None, None, None
+            accum, seq, sub_seq = {}, 1, 1
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                task_id = row.get('id2')
+                sub_id = row.get('id')
+                if task_id is None or sub_id is None:
+                    break
+                task_id, sub_id = str(task_id), str(sub_id)
+                if first is None:
+                    first = task_id
+                cfg = self._parse_task_main(task_id, row)
+                cfg['last_task_id'] = prev_id
+                cfg['sequence'] = seq
+                table[task_id] = cfg
+                sub = subs.get(sub_id)
+                if sub is None:
+                    sub = {'id': sub_id,
+                           'name': str(row.get('name1') or ''),
+                           'disc': str(row.get('disc1') or ''),
+                           'ico': str(row.get('ico1') or ''),
+                           'shuoming': str(row.get('dijizizhang') or ''),
+                           'reward': parse_task_attr_map(row.get('reward')),
+                           'last_sub_id': prev_sub,
+                           'sequence': sub_seq,
+                           'task_ids': [],
+                           'last_task_id': None,
+                           'last_task_seq': 0}
+                    if accum:
+                        merged = dict(accum)
+                        for name, value in (sub['reward'] or {}).items():
+                            merged[name] = merged.get(name, 0.0) + value
+                        sub['reward'] = merged or None
+                    subs[sub_id] = sub
+                    prev_sub = sub_id
+                    sub_seq += 1
+                    accum = dict(sub['reward'] or {})
+                sub['task_ids'].append(task_id)
+                if seq > sub['last_task_seq']:
+                    sub['last_task_seq'] = seq
+                    sub['last_task_id'] = task_id
+                prev_id, seq = task_id, seq + 1
+            self._task_main = table
+            self._task_sub = subs
+            self._task_main_first = first
+        return self._task_main
+
+    def _parse_task_main(self, task_id, row):
+        """Parsed TaskMainConfig dict for one ZhuXianRenWu row."""
+        items = parse_task_item_order(row.get('itemOrder') or '')
+        full, shenjiang = [], []
+        for item in items or []:
+            # Awards parse splits shenjiang-category goods (category 40)
+            # into the shenjiang id list; the rest grant through the bag.
+            if self.goods_category(item['goods_id']) == '40':
+                shenjiang.append(item['goods_id'])
+            else:
+                full.append(item)
+        return {'id': task_id,
+                'chapter_sub_id': str(row.get('id') or ''),
+                'name': str(row.get('name2') or ''),
+                'complete_npc': str(row.get('completeNpc') or ''),
+                'describe': str(row.get('describe') or ''),
+                'duologue': str(row.get('duologue') or ''),
+                'pay_type': '' if row.get('pay') is None
+                else str(row.get('pay')),
+                'next_task_id': str(row.get('autoTask') or ''),
+                'trace': str(row.get('trace')).split('_')
+                if row.get('trace') else None,
+                'recevie_level': config_int(row.get('limit')),
+                'jb': config_int(row.get('gold')),
+                'bound_ob': config_int(row.get('boundOb')),
+                'exp': config_int(row.get('exp')),
+                'prestige': config_int(row.get('prestige')),
+                'zhiqi': config_int(row.get('zhenqi')),
+                'reward_items': items,
+                'reward_grant': full,
+                'shenjiang': shenjiang,
+                'reward_bind': config_int(row.get('bound')),
+                'is_xinshou': config_int(row.get('xinshou')),
+                'caiji_id': str(row.get('caiji') or ''),
+                'complete_items': parse_task_goods(str(row.get('completeItem')
+                                                      or '')),
+                'complete_monsters': parse_task_monsters(
+                    str(row.get('completeMonster') or '')),
+                'recover_items': parse_task_goods(str(row.get('recoverItem')
+                                                       or '')),
+                'rewards_success': str(row.get('rewardsSuccess') or ''),
+                'last_task_id': None,
+                'sequence': 0}
+
+    def _task_main_table(self):
+        """Main-quest configs by id2; empty when the table is absent."""
+        return self._task_assembly()
+
+    def task_subchapter(self, sub_id):
+        """Assembled subchapter (tasks, rewards, last task), or None."""
+        self._task_assembly()
+        return (self._task_sub or {}).get(str(sub_id))
+
+    def task_attr_index_convert(self, mapping):
+        """Subchapter/tips reward map with names resolved via the index table."""
+        return convert_index_attribute(mapping, TASK_ATTRIBUTE_INDEX)
+
+    def task_main_first_id(self):
+        """First task id in file order (configureDataResolve keeps it)."""
+        self._task_assembly()
+        return self._task_main_first
+
+    def task_main(self, task_id):
+        """Parsed TaskMainConfig for a quest id, or None when unknown.
+
+        Column mapping follows createTaskMainConfig; numerics tolerate '#N/A', category-40 awards land in shenjiang.
+        """
+        return self._task_assembly().get(str(task_id))
+
+    def goods_job(self, goods_id):
+        """Job gate of a goods id ('0' means any job); None when unknown."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None or row.get('job') in ('', None):
+            return None
+        return str(row['job'])
+
+    def goods_sort_num(self, goods_id):
+        """Sort group (sortNum) for a goods id, or None when unknown.
+
+        The jar never calls GoodsConfig.setSortNum, so this is 0 for every
+        known goods; the tidy-up grouping still reads it per slot exactly
+        as BagClearUpUtil.pickup does.
+        """
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return None
+        try:
+            return int(row.get('sortNum') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _jineng_rows(self):
+        """JiNengBiao rows (every skill level); empty when the file is absent."""
+        if self._jineng is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'JiNengBiao.jat')
+            try:
+                self._jineng = load_jineng_table(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad JiNengBiao table: %s', e)
+                self._jineng = []
+        return self._jineng
+
+    def skill_fight(self, skills):
+        """[skill, kangxin] fight ints from a role's owned skills.
+
+        Port of ZhanDouLiServiceImpl.getSkillFighting: each owned skill adds
+        the JiNengBiao combat of its (category, level) row to the bucket
+        named by tabshow (2 -> skill, 1 -> kangxin). Non-numeric combat
+        formulas such as 'x*4' (level-0 rows) count as 0.
+        """
+        totals = [0, 0]
+        for skill in skills or []:
+            category = str(skill.get('category') or '')
+            level = _int(skill.get('level'))
+            row = next((r for r in self._jineng_rows()
+                        if r.get('skilltype') == category
+                        and _int(r.get('level')) == level), None)
+            if row is None:
+                continue
+            bucket = {2: 0, 1: 1}.get(_int(row.get('tabshow')))
+            if bucket is not None:
+                totals[bucket] += _int(row.get('combat'))
+        return totals
+
+    def shenjiang_skill_upgrade_fight(self, shenjiang_rows):
+        """Slot [6][2]: ZhanDouLiServiceImpl.getShenJiangSkill over owned shenjiang.
+
+        Each row's skills map {skillCategory: level} adds the JiNengBiao combat
+        of the matching (category, level) row.
+        """
+        total = 0
+        for shenjiang in shenjiang_rows or []:
+            try:
+                skills = json.loads(shenjiang.get('skills') or '{}')
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(skills, dict):
+                continue
+            for category, level in skills.items():
+                row = next((r for r in self._jineng_rows()
+                            if r.get('skilltype') == str(category)
+                            and _int(r.get('level')) == _int(level)), None)
+                if row is not None:
+                    total += _int(row.get('combat'))
+        return total
+
+    def equip_item_fight(self, item):
+        """ZhanDouLiServiceImpl.getRoleEquipFight: getFight over one item's map.
+
+        Every role_equip row is equipped gear, so the equip-category test
+        always passes for migrated rows.
+        """
+        return self.fight_value(self.equip_attribute_map([item]))
 
     def shuxingdan_attribute_map(self, attribute_ids):
         """Permanent attribute-pill bonuses for AttributeBuff rows.
@@ -747,6 +1719,44 @@ class GameConfig:
         """
         return list(self.mall_table().get(str(category), []))
 
+    def mall_offer(self, sellid, npc_id):
+        """Merged offer for a sellid at one npc, or None when not sold there.
+
+        Mirrors loadById(sellid) + containsNpcId plus the resolve merge:
+        rows sharing a sellid fold into one entity, each contributing its
+        modelid to the npc map and its {moneytype: price} to the cost map
+        (cheapest wins per type). Later non-empty losttime and positive
+        duration overwrite, like the merge block. Unparseable prices are
+        skipped instead of faked (shipped rows are clean).
+        """
+        offer = None
+        for rows in self.mall_table().values():
+            for row in rows:
+                if str(row.get('sellid')) != str(sellid) or \
+                        str(row.get('modelid')) != str(npc_id):
+                    continue
+                if offer is None:
+                    offer = {'costs': {}, 'losttime': '', 'duration': 0}
+                try:
+                    price = int(row.get(
+                        MALL_PRICE_COLUMNS.get(int(row.get('moneytype') or 0),
+                                             '') or 0))
+                    money = int(row.get('moneytype') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if money not in offer['costs'] or \
+                        price < offer['costs'][money]:
+                    offer['costs'][money] = price
+                if str(row.get('losttime') or '').strip():
+                    offer['losttime'] = row.get('losttime')
+                try:
+                    duration = int(row.get('duration') or 0)
+                except (TypeError, ValueError):
+                    duration = 0
+                if duration > 0:
+                    offer['duration'] = duration
+        return offer
+
     def zuwu_table(self):
         """ZuWuShuxing.jat as {type: first jieshu==1 id}; empty if absent."""
         if self._zuwu is None:
@@ -794,6 +1804,202 @@ class GameConfig:
                 log.error('bad vip table: %s', e)
                 self._vip = {}
         return self._vip
+
+    def vip_hecheng(self, vip_level):
+        """VipConfig.getHecheng for a level (vipbiao's hechengci cell)."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+        except (TypeError, ValueError):
+            return 0
+        if not row:
+            return 0
+        try:
+            return int(row.get('hechengci') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _vip_parcels(cell):
+        """vipbiao gift cell 'gid:count:bind[:expire][;...]' to tuples.
+
+        The 4th expire-hours field has no _task_grant counterpart, so it
+        is parsed and dropped (documented with the grant call).
+        """
+        out = []
+        for part in str(cell or '').split(';'):
+            fields = part.split(':')
+            if len(fields) < 3 or not fields[0]:
+                continue
+            try:
+                out.append((fields[0], int(fields[1]), int(fields[2])))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def vip_gifts(self, vip_level):
+        """VipConfig day/week/tejia gifts for a level (vipbiao cells)."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+        except (TypeError, ValueError):
+            return None
+        if not row:
+            return None
+        try:
+            price = int(row.get('specialprice') or 0)
+        except (TypeError, ValueError):
+            price = 0
+        return {'daybag': self._vip_parcels(row.get('daybag')),
+                'weekbag': self._vip_parcels(row.get('weekbag')),
+                'libaoid': self._vip_parcels(row.get('libaoid')),
+                'specialprice': price}
+
+    def vip_choujiang(self):
+        """vipchoujiang.jat: prize rows by id plus day window and vip floor.
+
+        kaifuday/needvipLv are row-statics (last row wins, as Java
+        overwrites them per parsed row); the lottery map covers every
+        row unfiltered.
+        """
+        if self._vip_choujiang is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'vipchoujiang.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad vip choujiang table: %s', e)
+                rows = []
+            prizes, day, floor = {}, [0, 0], 0
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    pid = int(r.get('id'))
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    rate = float(r.get('rate') or 0)
+                except (TypeError, ValueError):
+                    continue
+                prizes[pid] = {
+                    'rate': rate,
+                    'item': self._vip_parcels(r.get('item'))[:1] or [(None, 0,
+                                                                     0)]}
+                try:
+                    floor = int(r.get('vip') or 0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    lo, _, hi = str(r.get('time') or '').partition('-')
+                    day = [int(lo), int(hi)]
+                except (TypeError, ValueError):
+                    pass
+            self._vip_choujiang = {'prizes': prizes, 'kaifuday': day,
+                                   'needvip': floor}
+        return self._vip_choujiang
+
+    def vip_lingjiang(self, reward_id):
+        """viplingjiang.jat row for an id: kaifu day plus one parcel."""
+        if self._vip_lingjiang is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'viplingjiang.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad vip lingjiang table: %s', e)
+                rows = []
+            self._vip_lingjiang = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    rid = int(r.get('id'))
+                    day = int(r.get('date'))
+                except (TypeError, ValueError):
+                    continue
+                parcels = self._vip_parcels(r.get('item'))
+                if parcels:
+                    self._vip_lingjiang[rid] = {'date': day,
+                                               'item': parcels[0]}
+        try:
+            return self._vip_lingjiang.get(int(reward_id))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _huodong_parcels(cell):
+        """kaifuchoujiang goods cell 'gid:count[:bind][...]' to tuples.
+
+        Port of convertGoodsesStrs2List2/3's head fields: only goods,
+        count and bind feed putInBag; later segments (expire hours,
+        qianghua pairs) have no grant counterpart and are dropped,
+        like _vip_parcels. A non-positive count nulls like Java.
+        """
+        if not cell:
+            return None
+        out = []
+        for part in str(cell).split(';'):
+            fields = part.split(':')
+            if len(fields) < 2 or not fields[0]:
+                continue
+            try:
+                count = int(fields[1])
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                return None
+            try:
+                bind = int(fields[2]) if len(fields) > 2 else 0
+            except (TypeError, ValueError):
+                bind = 0
+            out.append((fields[0], count, bind))
+        return out or None
+
+    def vip_huodong(self, vip_level):
+        """kaifuchoujiang.jat row for a vip: window, bisong, odds, prizes.
+
+        'time' is 'lo;hi' kaifu days; jilvN/jiangpinN (N 1..8) build the
+        uniform-pick odds map and the prize map.
+        """
+        if self._vip_huodong is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'kaifuchoujiang.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad vip huodong table: %s', e)
+                rows = []
+            self._vip_huodong = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    vip = int(r.get('vip'))
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    lo, _, hi = str(r.get('time') or '').partition(';')
+                    window = [int(lo), int(hi)]
+                except (TypeError, ValueError):
+                    window = [0, 0]
+                odds, prizes = {}, {}
+                for index in range(1, 9):
+                    try:
+                        rate = float(r.get(f'jilv{index}'))
+                    except (TypeError, ValueError):
+                        continue
+                    goods = self._huodong_parcels(r.get(f'jiangpin{index}'))
+                    if goods is None:
+                        continue
+                    odds[index] = rate
+                    prizes[index] = goods
+                self._vip_huodong[vip] = {
+                    'window': window,
+                    'bisong': self._huodong_parcels(r.get('bisong')),
+                    'odds': odds, 'prizes': prizes}
+        try:
+            return self._vip_huodong.get(int(vip_level))
+        except (TypeError, ValueError):
+            return None
 
     def vip_fight(self, vip_level):
         """VipConfig.getZhanli for a level (vipZHanLi); 0 when unlisted."""
@@ -936,6 +2142,70 @@ class GameConfig:
             for key, value in bag.items():
                 totals[key] = totals.get(key, 0.0) + value
         return totals
+
+    def zuoqi_attribute_map(self, max_rank, role_level):
+        """ZuoQiLevelConfig bag for a mount rank at a role level.
+
+        Port of RoleFactoryHelper.replaceZuoqiAttribute: the gate is
+        business maxRank (RoleZuoqi.rank via ZuoQiWrapper, set only when
+        > 0 in RoleFactory.create), the level row is loadByRank(rank) at
+        getZuoqiLevel (role level clamped to [0, maxlv]; minLevel is never
+        set in the jar so the floor is 0), and the bag is the row's
+        attribute2Map minus velocity (ConfigAnalyzeUtil-
+        .refineAttributeMapWithOutMoveGongjiSp drops only that key). The
+        attribute-goods multiplier path is unwired: no migrated role
+        carries attribute_goods_id, so its map is always empty here.
+        """
+        try:
+            rank = int(max_rank or 0)
+        except (TypeError, ValueError):
+            return {}
+        if rank <= 0:
+            return {}
+        table = self.zuoqi_table()
+        maxlv = next((int(r.get('maxlv') or 0)
+                      for (rk, _lv), r in table.items() if rk == rank), None)
+        if maxlv is None:
+            log.warning('zuoqi rank %r has no config row; skipped', max_rank)
+            return {}
+        try:
+            level = max(0, min(int(role_level or 0), maxlv))
+        except (TypeError, ValueError):
+            return {}
+        row = table.get((rank, level))
+        if row is None:
+            log.warning('zuoqi rank %r level %r has no config row; skipped',
+                        rank, level)
+            return {}
+        bag = {name: _number(row.get(name)) for name in MEIREN_ATTRIBUTE_NAMES
+               if _number(row.get(name))}
+        bag.pop('velocity', None)
+        return bag
+
+    def zuoqi_fight(self, max_rank, role_level):
+        """ZhanDouLiServiceImpl.getZuoQiJiChuFight for a mount rank/level.
+
+        getFight over loadByRankLevel(getZuoQiRank, roleLevel)-
+        .getAttributeMap: rank 0 (or a missing row) yields null, hence 0.
+        The attributeMap field IS ConfigAttributeParser.attribute2Map
+        (createLevelConfig), so this reuses zuoqi_attribute_map; velocity
+        needs no special-casing here because its ZhanLiXiShu factor is
+        0.0, making the refined bag and the raw map agree exactly.
+        """
+        return self.fight_value(self.zuoqi_attribute_map(max_rank, role_level))
+
+    def zuoqi_equip_fight(self, items):
+        """ZhanDouLiServiceImpl.getZuoEquipFight over a role's equip rows.
+
+        getFight over getEquipAttributeAll (one merged map, one
+        truncation) of the rows in the zuoqi slot range
+        (EquipConstants.ZUOQI_SLOT_MIN/MAX = -105/-100, inclusive
+        EquipSlotBetweenFilter). No legacy role_equip_slot row falls in
+        that range, so this is 0 for every migrated role.
+        """
+        zuoqi_items = [item for item in items or []
+                       if -105 <= int(item.get('slot_num') or 0) <= -100]
+        return self.fight_value(self.equip_attribute_map(zuoqi_items))
 
     def meiren_type_for(self, meiren_id):
         """meinvtype for a meiren.jat meinvid, or None when unlisted.

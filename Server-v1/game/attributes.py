@@ -7,8 +7,10 @@ never recorded as changed, which is why Java's entry push omits it.
 
 Each value is the jar's formula (GongJiFormula, FangYuFormula, BaoJiFormula,
 ShanBiFormula, GongjiSuduFormula, ShenFaFormula, MaxShanBiValFormula) over
-the level row plus the migrated gear/dan bags; effect slots stay empty
-(VIP/title/meiren/buff bags are not migrated yet).
+the level row plus the migrated gear/dan/xianjie/chenghao/meiren bags; the
+effect slots carry the VIP buff's XiaoGuoBiao effectpro cells (BuffConfig-
+ExportServiceImpl.createBuffAttributes, applied by BuffFactory +
+BuffManager.addBuff in replaceVipAttribute).
 """
 
 

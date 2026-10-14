@@ -1,9 +1,9 @@
 """HTTP account API mirroring the legacy PHP contract (ThreadingHTTPServer).
 
   POST /AjaxRequest/AccountHandler.php {Action:Login, uName, uPas}
-      -> text containing '登陆成功' (sets mko_session cookie)
+      -> text containing '登陆成功' ("login succeeded"; sets mko_session cookie)
   POST /AjaxRequest/AccountHandler.php {Action:Register, uName, uPas, sCode}
-      -> text containing '注册成功' (captcha-checked when enabled)
+      -> text containing '注册成功' ("registration succeeded"; captcha-checked when enabled)
   GET  /configuration/VerifyCode.php -> 4-char captcha PNG (Pillow)
   GET  /gamesession.php -> {ok,uid,t,sign,seid,sport,ip,pid} (401 logged out)
       sign = md5(uid.'xianlingkey'.t), same as LoginHelper/PHP.

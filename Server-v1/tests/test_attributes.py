@@ -165,15 +165,19 @@ class FormulaTest(unittest.TestCase):
         boosted = entry_attribute_map(row, effect={'6': 0.5, '5': 10.0})
         self.assertAlmostEqual(boosted['2'], 100.0 * 1.5 + 10.0, places=6)
 
-    def test_captured_java_attack_is_level_plus_gear_plus_the_other_bags(self):
-        """Java sent 2049.8 for this role; level 800 + gear 127.8 leaves 1122.0
-        from bags this port does not cover yet (meiren/titles/buffs), the exact
-        figure meiren.jat carries for nvwa075."""
+    def test_captured_java_attack_decomposes_over_the_traced_bags(self):
+        """Java sent 2049.8 for this role; the traced Phase 5 bags give
+        800 (level) + 127.8 (gear) + 10 (gj_001 dan) + 30 (xianjie 1)
+        + 15 (chenghao 2) + 1000 (VIP10 e5 effect slot) = 1982.8, with a
+        67.0 residual from bags later phases port (shenjiang/zuoqi/...).
+        See test_effect_bags.CaptureGoldenTest for the full 12000 oracle."""
         row = {'physicdamage': 800, 'physicdefence': 400, 'critical': 150,
                'volt': 150, 'attackrate': 1, 'velocity': 550, 'dunshudian': 1}
-        bags = [{'physicdamage': 127.8}, {'physicdamage': 1122.0}]
-        self.assertAlmostEqual(entry_attribute_map(row, bags=bags)['2'],
-                               2049.8, places=4)
+        bags = [{'physicdamage': 127.8}, {'physicdamage': 10.0},
+                {'physicdamage': 30.0}, {'physicdamage': 15.0}]
+        got = entry_attribute_map(row, bags=bags, effect={'5': 1000.0})
+        self.assertAlmostEqual(got['2'], 1982.8, places=4)
+        self.assertAlmostEqual(2049.800048828125 - got['2'], 67.0, places=4)
 
 
 if __name__ == '__main__':

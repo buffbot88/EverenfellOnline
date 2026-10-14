@@ -44,6 +44,10 @@ one currency row.
 | `role_vip` (level/day/week/tejia/props) | `role_vip` | VIP level drives the buff push and the effect slots. |
 | `role_xianjiechenhao` (`xianjie_id`/`chenhao_id` JSON) | `role_xianjiechenhao` | Xianjie id array + chenghao id array for the title bags. |
 | `role_meiren` (meiren_id/level/heti) | `role_meiren` | One row per owned meiren; empty for the captured roles. |
+| `role_zuoqi` (rank/cur_rank) | `role_zuoqi` | Mount rank gates the ZUOQI bag; `attribute_goods_id` is NULL for every role so it is not copied. |
+| `role_bag_slot` (slot/goods/count/blob) | `role_bag_slot` | Bag slots 1..150 (151+ are storage); drives the 30000 goods maps. |
+| `role_skillbook_slot` (slot/goods/count/blob) | `role_skillbook_slot` | Worn skillbook slots 10001..10056; drives the 99000 maps. |
+| `role_bag_state` (capacities/timers) | `role_bag_state` | Capacities gate the 30000 lock VOs; timers feed the unlock countdown. |
 
 `role_stage` is a **separate table** mirroring Java's `role_stage` columns, not extra
 columns on `characters`. The SQLite table has 21 columns including `role_id`. The

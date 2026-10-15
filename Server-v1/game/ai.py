@@ -41,6 +41,9 @@ PET_SKILL = 'zuoqi11'
 MOVE_KIND_MONSTER = 6
 MOVE_KIND_PET = 2
 
+# PetFightServiceImpl.defaultHandle: inScope(owner, pet, 10, GRID) failing triggers telport.
+PET_TELEPORT_RANGE = 10
+
 
 def chebyshev(a, b):
     """Tile distance in king moves."""

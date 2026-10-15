@@ -359,6 +359,13 @@ def _bag_slots_can_move(from_slot, to_slot):
             or (zfrom == 'xunbao' and zto == 'bag'))
 # Meditation (RoleBehaviourAction -> RoleBehaviourServiceImpl). 44004 is the
 # 15 s stage timer push, not a client command; errors are StageErrorCode.
+CMD_HORN_CHAT = 11005
+# Chat (RoleBehaviourAction.normalChat / StageInfoAction.arroundBroadcast, point2point).
+CMD_AREA_CHAT = 10050
+CMD_WHISPER = 10051
+CMD_NORMAL_CHAT = 11000
+# 57000 gift-code redeem (GiftAction.useCode): stubbed until the public-code data source exists.
+CMD_GIFT_CODE_USE = 57000
 CMD_DAZUO_SINGLE = 44001
 CMD_DAZUO_BOTH = 44002
 CMD_DAZUO_EXIT = 44003
@@ -369,6 +376,8 @@ DAZUO_TICK_SECONDS = 15
 CMD_TILE = 40000
 CMD_JUMP = 40001
 CMD_TELEPORT = 40100
+CMD_FACE = 40201
+CMD_TOWN_REVIVE = 43001
 CMD_SKILL_MOVE = 42001
 CMD_MOVE = 42001
 CMD_SKILL_FIRE = 42002
@@ -430,6 +439,11 @@ def decode_zuoqi_info(text):
         log.warning('zuoqi_info is not JSON: %r', text[:80])
         return None
     return data if isinstance(data, dict) else None
+
+
+def _is_int(value):
+    """True for a plain AMF integer (bools excluded)."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _find_role(roles, role_id):
@@ -679,6 +693,16 @@ class Session:
             return self.create_role(msg)
         if cmd_num == CMD_GETTIME:
             return frame(amf3_encode(['19001', int(time.time() * 1000)]))
+        if cmd_num == CMD_HORN_CHAT:
+            return self.horn_chat(msg)
+        if cmd_num == CMD_NORMAL_CHAT:
+            return self.normal_chat(msg)
+        if cmd_num == CMD_AREA_CHAT:
+            return self.area_chat(msg)
+        if cmd_num == CMD_WHISPER:
+            return self.whisper(msg)
+        if cmd_num == CMD_GIFT_CODE_USE:
+            return self.gift_code_use(msg)
         if cmd_num == CMD_DAZUO_SINGLE:
             return self.dazuo_single(msg)
         if cmd_num == CMD_DAZUO_BOTH:
@@ -691,6 +715,10 @@ class Session:
             return self.jump(msg)
         if cmd_num == CMD_TELEPORT:
             return self.teleport(msg)
+        if cmd_num == CMD_FACE:
+            return self.change_face(msg)
+        if cmd_num == CMD_TOWN_REVIVE:
+            return self.town_revive(msg)
         if cmd_num == CMD_SKILL_MOVE:
             return self.skill_move(msg)
         if cmd_num == CMD_SKILL_FIRE:
@@ -1203,10 +1231,158 @@ class Session:
         log.info('conn %d: jump %r (logged, no reply)', self.conn_id, msg[1:2])
         return None
 
-    def teleport(self, msg):
-        """Command 40100: log only; no Java reply captured."""
-        log.info('conn %d: teleport %r (logged, no reply)', self.conn_id, msg[1:2])
+    def horn_chat(self, msg):
+        """Command 11005: BagEasyAction.hornChat has an empty body, so log only."""
+        log.info('conn %d: horn chat %r (logged, no reply)', self.conn_id, msg[1:2])
         return None
+
+    def _chat_sender(self):
+        """Role id and level of this connection's own role (first placed role), or (None, 0)."""
+        if self.stage_registry is None:
+            return None, 0
+        owned = self.stage_registry.roles_of(self)
+        if not owned:
+            return None, 0
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, owned[0])
+        return owned[0], int((role or {}).get('level') or 0)
+
+    def normal_chat(self, msg):
+        """Command 11000: level-gated chat broadcast to the 3x3 surround (chat log skipped)."""
+        sender, level = self._chat_sender()
+        data = self.safe(msg, 1, None)
+        if sender is None or not isinstance(data, list) or self.config is None:
+            return None
+        if level < self.config.chat_level():
+            return None
+        out = self._dazuo_broadcast(sender, CMD_NORMAL_CHAT, data)
+        return tuple(out) if out else None
+
+    def area_chat(self, msg):
+        """Command 10050: area broadcast [senderId, data] to the 3x3 surround."""
+        sender, _ = self._chat_sender()
+        data = self.safe(msg, 1, None)
+        if sender is None:
+            return None
+        out = self._dazuo_broadcast(sender, CMD_AREA_CHAT, [sender, data])
+        return tuple(out) if out else None
+
+    def whisper(self, msg):
+        """Command 10051: [targetRoleId, content] delivered to the target as [senderId, content]."""
+        sender, _ = self._chat_sender()
+        args = self.safe(msg, 1, None)
+        if sender is None or not isinstance(args, list) or not args:
+            return None
+        target = str(args[0])
+        content = args[1] if len(args) > 1 else None
+        if self.stage_registry is None:
+            return None
+        target_sess = self.stage_registry.session_of(target)
+        if target_sess is None:
+            log.info('conn %d: whisper to offline role %r (silent)', self.conn_id, target)
+            return None
+        target_sess.push_frames([frame(amf3_encode([str(CMD_WHISPER), [sender, content]]))])
+        return None
+
+    def gift_code_use(self, msg):
+        """Command 57000 stub: gift-code redeem is deferred, so log only and send no reply."""
+        log.info('conn %d: gift code %r (stub, logged, no reply)', self.conn_id, msg[1:2])
+        return None
+
+    def teleport(self, msg):
+        """Command 40100 C> [x, y, _, roleId]: move an owned role and echo to its new surround."""
+        args = self.safe(msg, 1, None)
+        if not isinstance(args, list) or len(args) < 4:
+            log.info('conn %d: teleport without [x, y, _, roleId] (ignored)', self.conn_id)
+            return None
+        x, y = args[0], args[1]
+        if not _is_int(x) or not _is_int(y):
+            log.info('conn %d: teleport with non-int coords (ignored)', self.conn_id)
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, str(args[3] or ''))
+        if role is None:
+            log.info('conn %d: teleport for unowned %r (ignored)', self.conn_id, args[3])
+            return None
+        rid = _wire_id(role)
+        self.save_role_state(rid, map_x=x, map_y=y)
+        if self.stage_registry is not None:
+            self.stage_registry.set_position(rid, x, y)
+        out = self._dazuo_broadcast(rid, CMD_TELEPORT, args)
+        return tuple(out) if out else None
+
+    def change_map(self, rid, map_id, x, y):
+        """Move a placed role to another map at (x, y): leave the old map, enter the new one.
+
+        Collapses Java's SC:APPLY_CHANG_MAP and its client-ready commit into one step: the
+        own-session frames are 20000 [1, mapId, [x, y]], 21000 and the monster snapshot. The
+        old map's peers get no leave notice and the new map's peers no enter record (unported).
+        """
+        if self.stage_registry is not None:
+            self.stage_registry.unregister(rid)
+            self.stage_registry.register(rid, map_id, self, x=x, y=y)
+        self.save_role_state(rid, map_id=map_id, map_x=x, map_y=y)
+        frames = [frame(amf3_encode(['20000', [1, map_id, [x, y]]])),
+                  frame(amf3_encode(['21000', [1, 1, self.map_type_for(map_id)]]))]
+        snapshot = self.monster_snapshot_frame(map_id)
+        if snapshot is not None:
+            frames.append(snapshot)
+        return frames
+
+    def town_revive(self, msg):
+        """Command 43001 (no args): living role echoes to its surround; a dead role resets HP/MP, then revives at its dead-map birth point (FightServiceImpl.townRevive).
+
+        Cross-map revives move the role through change_map (one-step SC:APPLY_CHANG_MAP).
+        """
+        sender, _ = self._chat_sender()
+        if sender is None or self.stage_registry is None:
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, sender)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        if rid not in self._dead:
+            out = self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
+            return tuple(out) if out else None
+        self._dead.discard(rid)
+        max_hp = int(role.get('max_hp') or 0)
+        max_mp = int(role.get('max_mp') or 0)
+        self.save_role_state(rid, hp=max_hp, mp=max_mp)
+        own = [frame(amf3_encode(['12004', [rid, max_hp, max_hp, max_mp, max_mp]]))]
+        own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
+        birth = self.config.dead_birth(role.get('map_id')) if self.config else None
+        if birth is None:
+            log.info('conn %d: no revive config for map %r', self.conn_id, role.get('map_id'))
+            return tuple(own)
+        x, y = random.choice(birth['points'])
+        if birth['map'] != str(role.get('map_id')):
+            # Java queues SC:APPLY_CHANG_MAP, so the second 43001 still uses the old surround.
+            own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
+            own += self.change_map(rid, birth['map'], x, y)
+            return tuple(own)
+        self.stage_registry.set_position(rid, x, y)
+        self.save_role_state(rid, map_x=x, map_y=y)
+        own += self._dazuo_broadcast(rid, CMD_TELEPORT, [x, y, 0, rid])
+        own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
+        return tuple(own)
+
+    def change_face(self, msg):
+        """Command 40201: echo the client's facing payload to the 3x3 surround of the sender's role."""
+        sender, _ = self._chat_sender()
+        if sender is None or self.stage_registry is None:
+            return None
+        targets = self.stage_registry.surround(sender)
+        if not targets:
+            return None
+        body = frame(amf3_encode([str(CMD_FACE), self.safe(msg, 1, None)]))
+        own = []
+        for _, sess in targets:
+            if sess is self:
+                own.append(body)
+            else:
+                sess.push_frames([body])
+        return tuple(own) if own else None
 
     def skill_move(self, msg):
         """Command 42001 C> [actor, action, [px, py], [path], 1]."""
@@ -1675,6 +1851,9 @@ class Session:
             if owner is None or pet.get('pos') is None:
                 continue
             opos = [int(owner.get('map_x')), int(owner.get('map_y'))]
+            if ai_lib.chebyshev(pet['pos'], opos) > ai_lib.PET_TELEPORT_RANGE and \
+                    self._pet_teleport(pet_id, pet, owner, frames):
+                continue
             if ai_lib.chebyshev(pet['pos'], opos) > 2:
                 walkable = self._walkable(str(owner.get('map_id')))
                 if walkable is None:
@@ -1759,6 +1938,41 @@ class Session:
     def _dazuo_key(self, role_id):
         """Stage timer key for one role's meditation tick."""
         return f'timing_dazuo_get:{role_id}'
+
+    def _pet_teleport(self, pet_id, pet, owner, frames):
+        """PetFightServiceImpl.telport: jump a distant pet to a free cell beside its owner.
+
+        Returns False when the owner's surround has no valid cell (the pet stays put).
+        The 40100 echo [x, y, 0, petId] goes to the 3x3 AOI around the new cell.
+        """
+        if self.config is None:
+            return False
+        map_id = str(owner.get('map_id'))
+        ox, oy = int(owner.get('map_x')), int(owner.get('map_y'))
+        occupied = {(ox, oy)} | self.config.monster_spawn_cells(map_id)
+        point = self.config.surround_valid_point(map_id, ox, oy, occupied)
+        if point is None:
+            return False
+        pet['pos'] = [int(point[0]), int(point[1])]
+        frames.extend(self._point_broadcast(
+            map_id, point, CMD_TELEPORT, [int(point[0]), int(point[1]), 0, pet_id]))
+        return True
+
+    def _point_broadcast(self, map_id, point, command, payload):
+        """Send a command to the 3x3 AOI around a tile; this session's own copies are returned."""
+        body = frame(amf3_encode([str(command), payload]))
+        if self.stage_registry is None:
+            return [body]
+        targets = self.stage_registry.surround_at(map_id, point)
+        if not targets:
+            return [body]
+        own = []
+        for _, sess in targets:
+            if sess is self:
+                own.append(body)
+            else:
+                sess.push_frames([body])
+        return own
 
     def _dazuo_broadcast(self, role_id, command, payload):
         """Send a command to the role's surround; this session's own copies are returned."""

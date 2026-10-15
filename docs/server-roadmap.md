@@ -13,7 +13,7 @@ ID track: 86 of 886 dispatched (9.7%) — 78 golden-tested, 8 dispatched-only, 8
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
 | 1 core loop (69) | bag 21, equip 13, vip 12, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 54 | 0 | 12: equip 3; bag 5 (incl. 30301 prop-use); role 3; account 1 |
-| 2 scene (210) | stage | 9 | 0 | 201; scheduler mirror landed (Phase 2a: tick loop + Session.tick), no event bus |
+| 2 scene (210) | stage | 9 | 0 | 193; scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); 193 open |
 | 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 | 5 | 109 not started + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
 | 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | ~127 |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
@@ -30,7 +30,7 @@ Module history (how the 38 touched modules landed): socket framing/login/enter-w
 buyGoods portable: no guild/coupon-discount; buyback cluster
 32002/32003/32004/32006 with the 32005 eviction push and a null 32006
 without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
-- Phase 2: the scheduler mirror landed (Phase 2a: HeartBeatRateUtil, StageScheduleManager, Quartz cron/one-shot, token runnables in `game/scheduler.py`, drained per-session via `Session.tick()` on a 1s server loop, `--tick-interval 0` disables); the in-process event bus is the remaining structural gap. 201 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
+- Phase 2: the scheduler mirror landed (Phase 2a: HeartBeatRateUtil, StageScheduleManager, Quartz cron/one-shot, token runnables in `game/scheduler.py`, drained per-session via `Session.tick()` on a 1s server loop, `--tick-interval 0` disables); the in-process event bus has landed (`game/eventbus.py`, Phase 2b), chat/presence (10050/10051/11000) is the first scene slice, in-stage coordinate teleport + face change (40100/40201) is the second, and town revive 43001 is the third (role death was already tracked in `_dead`). Cross-map change is one-step: SC:APPLY_CHANG_MAP's client-ready handshake is collapsed, and the old map gets no leave notice nor the new map an enter record. 193 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
 - Definition-of-done gap (structural): per-command client verification cannot happen under the no-live-runs rule, so no row can reach `client-verified` until the endgame; the phase plan's "live run once per phase, only when asked" is the agreed valve. Do not mark rows verified without a run.
 - Security before cutover (from the parity audit): forgeable MD5 game sign, cookie flags, ownership checks on mutating commands, rate limits.
 - Data rule unchanged: migrate a table only when a command module needs it, via tools/migrate_mysql_to_sqlite.py; update the audit mapping table.
@@ -154,11 +154,12 @@ without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/9900
 - Session drives one ai_tick() after every 42002 in handle() plus explicit
   calls: hatred retaliation (ready + _resolve_fire), greedy walkable chase
   steps (A* degraded, documented), BACK-to-born on hatred loss/leash, pet
-  follow steps past 2 tiles, asheslast/creattime leave->respawn clock (1
-  tick = 1s). Pet auto-fire rides the owner's swing with a single-waypoint
+  follow steps past 2 tiles, pet teleport-to-owner past 10 tiles (Java clears
+  the pet's own hatred manager, a no-op here since the port keeps no pet-side hatred; monster hatred is kept), asheslast/creattime
+  leave->respawn clock (1 tick = 1s). Pet auto-fire rides the owner's swing with a single-waypoint
   path (Java sends the A* path).
 - Known gaps: XUNLUO random wandering, HeartBeatRate/XUNLUO_PERIOD scheduler
-  cadence (action-driven instead), pet teleport-to-owner, boss/summon/speak
+  cadence (action-driven instead), boss/summon/speak
   AI, item/money drops (deadDrop), role-vs-role hatred, tile->pixel offsets
   while moving.
 

@@ -726,6 +726,7 @@ class GameConfig:
         self._task_main = None
         self._task_sub = None
         self._task_main_first = None
+        self._birth = None
 
     @property
     def map_lines_path(self):
@@ -1174,6 +1175,37 @@ class GameConfig:
             return self._jianding.get(int(item_level))
         except (TypeError, ValueError):
             return None
+
+    def dead_birth(self, map_id):
+        """{'map': dest map id, 'points': [(x, y)]} for a dead map, or None.
+
+        Port of BornZuoBiaoConfigExportServiceImpl's DEAD_TYPE (borntype 2) rows: keyed by map1,
+        the map2 cell is the revive map and map2target holds 'x|y' birth points.
+        """
+        if self._birth is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ChuShengZuoBiaoPeiZhibBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad born table: %s', e)
+                rows = []
+            self._birth = {}
+            for r in rows:
+                if not isinstance(r, dict) or str(r.get('borntype')) != '2' \
+                        or r.get('map1') is None:
+                    continue
+                points = []
+                for cell in str(r.get('map2target') or '').split(';'):
+                    x, _, y = cell.partition('|')
+                    try:
+                        points.append((int(x), int(y)))
+                    except ValueError:
+                        continue
+                if points:
+                    self._birth[str(r['map1'])] = {
+                        'map': str(r.get('map2')), 'points': points}
+        return self._birth.get(str(map_id))
 
     def skill_info(self, category, level):
         """JiNengBiao row for a category at one level (learn checks)."""
@@ -1882,6 +1914,21 @@ class GameConfig:
         """
         return [[[zid, 0, 0, 0, kind]
                  for kind, zid in sorted(self.zuwu_table().items())], 0]
+
+    def chat_level(self):
+        """chat_level from config/localization.properties; 0 (no gate) when unreadable."""
+        path = os.path.join(self.config_dir, '..', 'localization.properties')
+        try:
+            with open(path, encoding='utf-8') as f:
+                for line in f:
+                    key, _, value = line.partition('=')
+                    if key.strip() == 'chat_level':
+                        return int(value.strip())
+        except (OSError, ValueError):
+            log.warning('chat_level unreadable at %s; chat level gate off', path)
+            return 0
+        log.warning('chat_level missing from %s; chat level gate off', path)
+        return 0
 
     def dazuo_table(self):
         """DaZuoPeiZhiBiao keyed by level; empty if absent."""

@@ -1352,5 +1352,29 @@ class PropBoxTest(unittest.TestCase):
         self.assertIsNone(self.sess.prop_teshu_count(None))
 
 
+class HornChatTest(unittest.TestCase):
+    def test_horn_chat_is_silent_and_routed(self):
+        import struct
+        from game import amf3
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [], server_start_ms=0)
+        hello = amf3.encode('INITKEY')
+        sess.feed(struct.pack('>I', len(hello)) + hello)
+        req = [11005, 'hello horn']
+        self.assertEqual(sess.feed(frame(sess.cipher.encode(amf3.encode(req)))), [])
+
+
+class GiftCodeStubTest(unittest.TestCase):
+    def test_gift_code_stub_is_silent_and_routed(self):
+        import struct
+        from game import amf3
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [], server_start_ms=0)
+        hello = amf3.encode('INITKEY')
+        sess.feed(struct.pack('>I', len(hello)) + hello)
+        req = [57000, 'ABCD1234']
+        self.assertEqual(sess.feed(frame(sess.cipher.encode(amf3.encode(req)))), [])
+
+
 if __name__ == '__main__':
     unittest.main()

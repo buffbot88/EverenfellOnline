@@ -82,6 +82,12 @@ class StageRegistry:
             members = list(self._maps.get(str(map_id), {}).items())
         return [(r, s) for r, s in members if r != exclude]
 
+    def roles_of(self, session):
+        """Role ids currently placed under a session (the connection's own roles)."""
+        with self._lock:
+            return [r for r, m in self._where.items()
+                    if self._maps.get(m, {}).get(r) is session]
+
     def session_of(self, role_id):
         """Session currently owning a role, or None when it is not placed."""
         role_id = str(role_id)
@@ -101,6 +107,18 @@ class StageRegistry:
             positions = {r: self._pos.get(r) for r, _ in members}
         if here is None:
             return [(r, s) for r, s in members if r == role_id]
+        return self._block_members(positions, members, here)
+
+    def surround_at(self, map_id, point):
+        """(role_id, session) pairs in the 3x3 AOI block around a tile on a map."""
+        with self._lock:
+            members = list(self._maps.get(str(map_id), {}).items())
+            positions = {r: self._pos.get(r) for r, _ in members}
+        return self._block_members(positions, members, point)
+
+    @staticmethod
+    def _block_members(positions, members, here):
+        """Members whose AOI cell lies within one cell of the tile `here`."""
         cx, cy = aoi_cell(*here)
         out = []
         for r, s in members:

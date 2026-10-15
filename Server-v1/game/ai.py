@@ -25,10 +25,10 @@ Provenance (shapes/order verified against output/orig-stack/tap-decoded.txt):
   eyeshot presence; D040011 eyeshot 5, maxrange 9, ifactive 1, velocity 450).
 
 Approximations (all logged where they bite): one ai_tick() call advances
-both combat and a 1-second clock (Java runs HeartBeatRate(velocity) /
-XUNLUO_PERIOD+roll(5000) scheduler ticks; without a server loop the tick is
-driven inline off role actions instead, which the capture's interleaving --
-a few monster swings per role swing -- supports). A* degrades to a greedy
+both combat and a 1-second clock (Java staggers per-monster delays off
+HeartBeatRate(velocity) / XUNLUO_PERIOD+roll(5000); see game/scheduler.py
+for the mirrored formulas. The server tick loop drives tick(), and handle()
+still runs ai_tick() after every 42002). A* degrades to a greedy
 walkable step on the path.mm grid; tile->pixel is x*60/y*30; pet ready paths
 are a single straight-line waypoint (Java sends the A* path). The 42001
 hit-flag roleId on monster readies is the hatred target's role id.

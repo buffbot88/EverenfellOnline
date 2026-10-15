@@ -37,6 +37,7 @@ import logging
 import random
 import re
 import struct
+import threading
 import time
 import uuid
 
@@ -45,6 +46,8 @@ from .attributes import entry_attribute_map
 from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from . import ai as ai_lib
 from . import combat as combat_lib
+from . import eventbus as eventbus_lib
+from . import scheduler as scheduler_lib
 from .amf3 import decode as amf3_decode
 from .config import MALL_PRICE_COLUMNS, equip_vo, fujia_client_map, qh_xingxings_client, xingxing_lv
 from .amf3 import encode as amf3_encode
@@ -354,6 +357,15 @@ def _bag_slots_can_move(from_slot, to_slot):
             or {zfrom, zto} == {'bag', 'storage'}
             or {zfrom, zto} == {'bag', 'zuoqi'}
             or (zfrom == 'xunbao' and zto == 'bag'))
+# Meditation (RoleBehaviourAction -> RoleBehaviourServiceImpl). 44004 is the
+# 15 s stage timer push, not a client command; errors are StageErrorCode.
+CMD_DAZUO_SINGLE = 44001
+CMD_DAZUO_BOTH = 44002
+CMD_DAZUO_EXIT = 44003
+CMD_DAZUO_TIMING = 44004
+DAZUO_ERR_FIGHT = 440001
+DAZUO_ERR_ROLE = 440002
+DAZUO_TICK_SECONDS = 15
 CMD_TILE = 40000
 CMD_JUMP = 40001
 CMD_TELEPORT = 40100
@@ -466,7 +478,7 @@ class Session:
                  move_role_bag_slot=None, insert_role_bag_slot=None,
                  rewrite_role_bag_slots=None, save_role_bag_state=None,
                  get_task_main=None, save_task_main=None,
-                  config=None):
+                  config=None, stage_registry=None):
         self.conn_id = conn_id
         self.config = config
         self.get_role_equip = get_role_equip or (lambda role_id: [])
@@ -576,11 +588,35 @@ class Session:
         self._spawning = []
         self._respawn_next = {}
         self._ai_seq = 0
+        # Stage timers (StageScheduleManager mirror): the server tick loop
+        # drains these via tick(); handle() still runs ai_tick after 42002.
+        self.stage_scheduler = scheduler_lib.StageScheduleManager()
+        # One state lock serializes the connection thread (feed) and the
+        # server tick thread (tick); send_lock only orders sendall.
+        self.state_lock = threading.RLock()
+        self.send_lock = None
+        self.bus = eventbus_lib.EventCenter()
+        self.inner_handlers = {}
+        self._inner_out = None
         # Prop-use HP cooldowns: role id -> last-ms (HpMpPropType 1500ms).
         self._prop_hpcd = {}
+        # Cross-session pushes: the shared registry routes a role to its
+        # session, whose outbox joins the next tick (outbox_lock is a leaf).
+        self.stage_registry = stage_registry
+        self.outbox = []
+        self.outbox_lock = threading.Lock()
+        # Meditation: role id -> {'daZuo': bool, 'target': role id or None}, and
+        # state changes queued by other connections, run under this tick.
+        self._dazuo = {}
+        self._ops = []
 
     def feed(self, data: bytes):
-        """Consume TCP bytes, return list of complete out-frames to send."""
+        """Consume TCP bytes under the state lock, return complete out-frames."""
+        with self.state_lock:
+            return self._feed_unlocked(data)
+
+    def _feed_unlocked(self, data: bytes):
+        """Frame parsing and dispatch; feed() holds the state lock."""
         self.buf += data
         out = []
         # Flash socket-policy handshake is answered raw, in-band (NetListener).
@@ -643,6 +679,12 @@ class Session:
             return self.create_role(msg)
         if cmd_num == CMD_GETTIME:
             return frame(amf3_encode(['19001', int(time.time() * 1000)]))
+        if cmd_num == CMD_DAZUO_SINGLE:
+            return self.dazuo_single(msg)
+        if cmd_num == CMD_DAZUO_BOTH:
+            return self.dazuo_both(msg)
+        if cmd_num == CMD_DAZUO_EXIT:
+            return self.dazuo_exit(msg)
         if cmd_num == CMD_TILE:
             return self.tile_step(msg)
         if cmd_num == CMD_JUMP:
@@ -982,6 +1024,9 @@ class Session:
         # reconnect/enter-world returns the role where it actually is.
         if target_map:
             self.save_role_state(role_id, map_id=map_id, map_x=x, map_y=y)
+        if self.stage_registry is not None:
+            self.stage_registry.register(_wire_id(role), map_id, self,
+                                         x=x, y=y)
         return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
 
     def xianjie_id_for(self, stored):
@@ -1148,6 +1193,8 @@ class Session:
             return None
         log.info('conn %d: tile role=%r -> (%s, %s)', self.conn_id, actor, x, y)
         self.save_role_state(_wire_id(role), map_x=int(x), map_y=int(y))
+        if self.stage_registry is not None:
+            self.stage_registry.set_position(_wire_id(role), x, y)
         self._presence_aggro(role, int(x), int(y))
         return None
 
@@ -1576,9 +1623,9 @@ class Session:
         toward born, clearing hatred on arrival). Pets step toward owners
         past 2 tiles. The 1-second clock retires corpses (24002 after
         asheslast) and re-produces spawns (23002 after creattime, flag
-        True). Without a server loop the tick rides role actions (handle()
-        runs it after every 42002); explicit calls drive tests. Returns the
-        frame tuple, or None when the stage is quiet.
+        True). The server tick loop drives this via tick(); handle() also
+        runs it after every 42002, and explicit calls drive tests. Returns
+        the frame tuple, or None when the stage is quiet.
         """
         frames = []
         for mid in sorted(self._hatred):
@@ -1676,6 +1723,272 @@ class Session:
                 ['23002', [ai_lib.respawn_record(nid, tpl, born)]])))
         self._spawning = still
         return tuple(frames) if frames else None
+
+    def schedule_stage(self, key, command, callback, delay=0,
+                       unit='SECONDS', now_ms=None):
+        """Queue a stage-timer callback on this session (same key replaces)."""
+        return self.stage_scheduler.schedule(key, command,
+                                             {'callback': callback},
+                                             delay, unit, now_ms)
+
+    def push_op(self, fn):
+        """Queue a state change from another connection; it runs on this session's tick."""
+        with self.outbox_lock:
+            self._ops.append(fn)
+
+    def _dazuo_state(self, role_id):
+        """Meditation state of one role on this connection, created on first use."""
+        return self._dazuo.setdefault(str(role_id),
+                                      {'daZuo': False, 'target': None})
+
+    def _dazuo_actor(self, msg):
+        """Role id a meditation request names (msg[1], or its first item), else the sole role."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        arg = self.safe(msg, 1, None)
+        if isinstance(arg, list):
+            arg = self.safe(arg, 0, None)
+        role = _find_role(roles, str(arg)) if arg is not None else None
+        if role is None and len(roles) == 1:
+            role = roles[0]
+        return _wire_id(role) if role is not None else None
+
+    def _dazuo_in_fight(self, role_id):
+        """Approximate role FIGHT: a monster in this session holds hatred on the role."""
+        return any(str(v) == str(role_id) for v in self._hatred.values())
+
+    def _dazuo_key(self, role_id):
+        """Stage timer key for one role's meditation tick."""
+        return f'timing_dazuo_get:{role_id}'
+
+    def _dazuo_broadcast(self, role_id, command, payload):
+        """Send a command to the role's surround; this session's own copies are returned."""
+        body = frame(amf3_encode([str(command), payload]))
+        if self.stage_registry is None:
+            return [body]
+        targets = self.stage_registry.surround(role_id)
+        if not targets:
+            return [body]
+        own = []
+        for _, sess in targets:
+            if sess is self:
+                own.append(body)
+            else:
+                sess.push_frames([body])
+        return own
+
+    def _dazuo_timer(self, role_id):
+        """Arm the 15 s meditation tick for a role on this session."""
+        self.schedule_stage(self._dazuo_key(role_id), str(CMD_DAZUO_TIMING),
+                            lambda: self.dazuo_timing(role_id),
+                            delay=DAZUO_TICK_SECONDS, unit='SECONDS')
+
+    def dazuo_single(self, msg):
+        """Command 44001: start meditating alone and broadcast to the surround."""
+        rid = self._dazuo_actor(msg)
+        if rid is None:
+            return None
+        if self._dazuo_in_fight(rid):
+            return frame(amf3_encode(['44001', [0, DAZUO_ERR_FIGHT]]))
+        state = self._dazuo_state(rid)
+        state['daZuo'] = True
+        state['target'] = None
+        out = self._dazuo_broadcast(rid, CMD_DAZUO_SINGLE, [1, rid])
+        self._dazuo_timer(rid)
+        return tuple(out) if out else None
+
+    def dazuo_both(self, msg):
+        """Command 44002: ask a solo meditator to pair; the target answers on its tick."""
+        rid = self._dazuo_actor(msg)
+        arg = self.safe(msg, 1, [])
+        target_id = str(arg[1]) if isinstance(arg, list) and len(arg) > 1 else None
+        if rid is None or target_id is None:
+            return None
+        state = self._dazuo_state(rid)
+        error = frame(amf3_encode(['44002', [0, DAZUO_ERR_ROLE]]))
+        if state['target'] is not None:
+            return error
+        if not state['daZuo']:
+            return None
+        target_sess = (self.stage_registry.session_of(target_id)
+                       if self.stage_registry is not None else None)
+        if target_sess is None:
+            return error
+        target_sess.push_op(
+            lambda: target_sess._dazuo_accept(target_id, rid, self))
+        return None
+
+    def _dazuo_accept(self, target_id, rid, requester):
+        """Target side of 44002: accept a solo meditator, or refuse a paired one."""
+        ts = self._dazuo.get(str(target_id))
+        if ts is not None and ts['target'] is not None:
+            requester.push_op(lambda: requester._dazuo_refuse(rid))
+            return None
+        if ts is None or not ts['daZuo']:
+            return None
+        ts['target'] = str(rid)
+        requester.push_op(
+            lambda: requester._dazuo_link(rid, target_id, self))
+        return None
+
+    def _dazuo_refuse(self, rid):
+        """Requester side: the target already has a partner (44002 DA_ZUO_ROLE)."""
+        return frame(amf3_encode(['44002', [0, DAZUO_ERR_ROLE]]))
+
+    def _dazuo_link(self, rid, target_id, target_sess):
+        """Requester side: link both roles and broadcast 44002, or undo the target's link."""
+        state = self._dazuo_state(rid)
+        if not state['daZuo'] or state['target'] is not None:
+            target_sess.push_op(
+                lambda: target_sess._dazuo_unlink(target_id, rid))
+            return frame(amf3_encode(['44002', [0, DAZUO_ERR_ROLE]]))
+        state['target'] = str(target_id)
+        return tuple(self._dazuo_broadcast(
+            rid, CMD_DAZUO_BOTH, [1, rid, target_id]))
+
+    def _dazuo_unlink(self, role_id, partner_id):
+        """Clear a role's partner link when it still points at the leaving partner."""
+        state = self._dazuo.get(str(role_id))
+        if state is not None and state['target'] == str(partner_id):
+            state['target'] = None
+        return None
+
+    def dazuo_exit(self, msg):
+        """Command 44003: leave meditation, unlink the partner, broadcast 44003."""
+        rid = self._dazuo_actor(msg)
+        if rid is None:
+            return None
+        state = self._dazuo_state(rid)
+        partner = state['target']
+        state['daZuo'] = False
+        state['target'] = None
+        self.stage_scheduler.cancel(self._dazuo_key(rid))
+        if partner is not None and self.stage_registry is not None:
+            partner_sess = self.stage_registry.session_of(partner)
+            if partner_sess is not None:
+                partner_sess.push_op(
+                    lambda: partner_sess._dazuo_unlink(partner, rid))
+        out = self._dazuo_broadcast(rid, CMD_DAZUO_EXIT, None)
+        return tuple(out) if out else None
+
+    def dazuo_timing(self, role_id):
+        """Command 44004 timer: award one tick of meditation exp/zhenqi, then re-arm."""
+        state = self._dazuo.get(str(role_id))
+        if state is None or not state['daZuo'] or self.config is None:
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, str(role_id))
+        if role is None:
+            return None
+        # selfFlag is 1 (no meiren pet is modelled yet); targetFlag is 1 with a partner.
+        flag_sum = 1 + (1 if state['target'] is not None else 0)
+        gain = self.config.dazuo_gain(role.get('level'), flag_sum)
+        if gain is None:
+            return None
+        exp_gain, zhenqi_gain = gain
+        if exp_gain > 0:
+            self.save_role_state(role_id, exp=int(role.get('exp') or 0) + exp_gain)
+        if zhenqi_gain > 0:
+            self.save_role_state(role_id,
+                                 zhenqi=int(role.get('zhenqi') or 0) + zhenqi_gain)
+        self._dazuo_timer(role_id)
+        return frame(amf3_encode(['44004', [exp_gain, zhenqi_gain]]))
+
+    def tick(self, now_ms=None):
+        """One server-loop second under the state lock: timers, then ai_tick."""
+        with self.state_lock:
+            return self._tick_unlocked(now_ms)
+
+    def subscribe(self, event_type, order, handler):
+        """Subscribe a handler to a bus event type (EventCenter.subscribe)."""
+        self.bus.subscribe(event_type, order, handler)
+
+    def publish(self, event_type, source=None, data=None):
+        """Publish a bus event under the state lock (EventCenter.publish)."""
+        with self.state_lock:
+            self.bus.publish(eventbus_lib.Event(event_type, source, data))
+
+    def register_inner(self, command, handler):
+        """Register the handler a routed inner token for command calls."""
+        self.inner_handlers[str(command)] = handler
+
+    def _dispatch_inner(self, role_id, stage_id, command, data, token):
+        """StageMsgDispatcher.in: run the command handler, frames join the tick."""
+        handler = self.inner_handlers.get(str(command))
+        if handler is None:
+            log.info('conn %d: inner token %r skipped (no handler)',
+                     self.conn_id, command)
+            return
+        out = handler(role_id, stage_id, data, token)
+        if out is None:
+            return
+        if self._inner_out is None:
+            log.info('conn %d: inner token %r ran outside a tick (frames dropped)',
+                     self.conn_id, command)
+            return
+        self._inner_out.extend(tuple(out) if isinstance(out, tuple) else [out])
+
+    def schedule_inner(self, key, module, command, role_id, stage_id, data,
+                       delay, unit='SECONDS', now_ms=None):
+        """Queue a routed stage inner token (StageTokenRunable) after a delay."""
+        job = scheduler_lib.StageTokenRunable.scoped(
+            module, role_id, stage_id, command, data,
+            on_stage=self._dispatch_inner)
+        return self.stage_scheduler.schedule(key, command, {'runnable': job},
+                                             delay, unit, now_ms)
+
+    def _tick_unlocked(self, now_ms=None):
+        """Tick body; tick() holds the state lock."""
+        frames = []
+        for entry in self.stage_scheduler.due(now_ms):
+            data = entry.get('data')
+            if isinstance(data, dict) and data.get('runnable') is not None:
+                self._inner_out = []
+                try:
+                    data['runnable'].run()
+                except Exception:
+                    log.warning('conn %d: inner token %r failed',
+                                self.conn_id, entry.get('command'), exc_info=True)
+                frames.extend(self._inner_out)
+                self._inner_out = None
+                continue
+            callback = data.get('callback') if isinstance(data, dict) else None
+            if callback is None:
+                log.info('conn %d: stage timer %r skipped (no handler)',
+                         self.conn_id, entry.get('command'))
+                continue
+            try:
+                out = callback()
+            except Exception:
+                log.warning('conn %d: stage timer %r failed',
+                            self.conn_id, entry.get('command'), exc_info=True)
+                continue
+            if out is None:
+                continue
+            frames.extend(tuple(out) if isinstance(out, tuple) else [out])
+        extra = self.ai_tick()
+        if extra is not None:
+            frames.extend(tuple(extra) if isinstance(extra, tuple) else [extra])
+        with self.outbox_lock:
+            ops, self._ops = self._ops, []
+        for op in ops:
+            try:
+                out = op()
+            except Exception:
+                log.warning('conn %d: queued op failed', self.conn_id,
+                            exc_info=True)
+                continue
+            if out is not None:
+                frames.extend(tuple(out) if isinstance(out, (tuple, list)) else [out])
+        with self.outbox_lock:
+            pending, self.outbox = self.outbox, []
+        frames.extend(pending)
+        return tuple(frames) if frames else None
+
+    def push_frames(self, frames):
+        """Queue frames from another connection; they go out on this session's next tick."""
+        items = list(frames) if isinstance(frames, (list, tuple)) else [frames]
+        with self.outbox_lock:
+            self.outbox.extend(items)
 
     def aoi_leave_frame(self, fighter_id):
         """24002 AOI leave [[fighterId]] (builder for the respawn phase)."""
@@ -1828,6 +2141,10 @@ class Session:
         if role is None:
             return None
         map_id = str(role.get('map_id') or '')
+        if self.stage_registry is not None:
+            self.stage_registry.register(_wire_id(role), map_id, self,
+                                         x=role.get('map_x'),
+                                         y=role.get('map_y'))
         map_type = self.map_type_for(map_id)
         frames = [frame(amf3_encode(['21000', [1, 1, map_type]]))]
         snapshot = self.monster_snapshot_frame(map_id)

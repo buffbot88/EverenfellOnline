@@ -13,7 +13,7 @@ ID track: 86 of 886 dispatched (9.7%) — 78 golden-tested, 8 dispatched-only, 8
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
 | 1 core loop (69) | bag 21, equip 13, vip 12, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 54 | 0 | 12: equip 3; bag 5 (incl. 30301 prop-use); role 3; account 1 |
-| 2 scene (210) | stage | 9 | 0 | 201; no scheduler (ai_tick runs off role actions), no event bus |
+| 2 scene (210) | stage | 9 | 0 | 201; scheduler mirror landed (Phase 2a: tick loop + Session.tick), no event bus |
 | 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 | 5 | 109 not started + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
 | 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | ~127 |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
@@ -30,7 +30,7 @@ Module history (how the 38 touched modules landed): socket framing/login/enter-w
 buyGoods portable: no guild/coupon-discount; buyback cluster
 32002/32003/32004/32006 with the 32005 eviction push and a null 32006
 without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
-- Phase 2: the 1-second scheduler (Quartz mirror) and the in-process event bus are the structural gaps; 201 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
+- Phase 2: the scheduler mirror landed (Phase 2a: HeartBeatRateUtil, StageScheduleManager, Quartz cron/one-shot, token runnables in `game/scheduler.py`, drained per-session via `Session.tick()` on a 1s server loop, `--tick-interval 0` disables); the in-process event bus is the remaining structural gap. 201 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
 - Definition-of-done gap (structural): per-command client verification cannot happen under the no-live-runs rule, so no row can reach `client-verified` until the endgame; the phase plan's "live run once per phase, only when asked" is the agreed valve. Do not mark rows verified without a run.
 - Security before cutover (from the parity audit): forgeable MD5 game sign, cookie flags, ownership checks on mutating commands, rate limits.
 - Data rule unchanged: migrate a table only when a command module needs it, via tools/migrate_mysql_to_sqlite.py; update the audit mapping table.
@@ -759,6 +759,104 @@ without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/9900
   take-error, youhui triple plus take-error, teshu missing/today/
   stale). Server-v1 511/511, tools 39/39. Ledger: three
   golden-tested (78 total), 800 open.
+
+## Phase 2a evidence log (scheduler mirror, all from `dntg_start.jar`)
+
+- `HeartBeatRateUtil.getHeartBeat`: velocity 0 -> 400, else 166682 idiv
+  velocity (bytecode runs integer division before `Math.round`; D040011
+  velocity 450 -> 370ms). `AiFightServiceImpl.calNextOptDelay`: XUNLUO ->
+  `IAi.XUNLUO_PERIOD` (10000, from the `<clinit>`) + `Lottery.roll(5000)`
+  (mirrored as `randrange`), DEAD -> -1, else the heartbeat of the
+  truncated move speed (`getYiDongSuDu`, `f2i`).
+- `StageScheduleManager.schedule` keeps the `scheduleMap` keyed by task
+  name (both overloads `put` the name) and delegates with a `TimeUnit`
+  delay; `cancelSchedule`/`clear` drop entries. The port stores due-ms
+  entries off a monotonic clock with the same keying and unit set.
+- `QuartzScheduleExportServiceImpl.schedule` answers `'' + nanoTime`
+  (`time_ns` here) and registers a one-shot call or a Quartz CronTrigger;
+  `KuangZhanQuartz.init` registers `checkKuangZhanStart` on
+  `'0 */1 * * * ?'`, and `GuaiWuGongChengQuartz` fans out the configured
+  time expressions the same way (`register_stage_quartz`). Cron supports
+  exact, `*`/`?`, `*/n` fields, covering every expression recovered.
+- `StageTokenRunable`/`BusTokenRunable.run` redeliver module/command/data
+  through the stage/bus inner-token senders (scoped ctors throw on null
+  roleId/stageId; typo kept in the messages); with no bus the port logs
+  and skips, like every other slice. `Session.tick()` drains due stage
+  timers (unknown commands logged/skipped, failures contained) then runs
+  `ai_tick`; `server.py` ticks every connected session each
+  `--tick-interval` seconds (default 1.0) under per-session send locks.
+  One clock per tick for all fighters (Java staggers per-monster delays;
+  the helpers are exposed for that). 33 goldens in
+  `tests/test_scheduler.py`. Server-v1 544/544, tools 39/39. Ledger
+  unchanged (no new commands): 78 golden-tested, 8 dispatched-only,
+  800 open.
+
+## Phase 2b evidence log (event bus + inner tokens, all from `dntg_start.jar`)
+
+- `EventCenter.subscribe(type, order, handler)` creates the `EventType` per
+  type string; `EventType.subscribe` adds a `HandlerNode` and re-sorts
+  ascending by handleOrder (`EventType$1.compare`). Equal orders keep
+  subscription order here (Java's comparator is not total on ties).
+- `EventType.publish` runs handlers in order under the type monitor. A
+  handler exception is isolated: `role_logout` logs via
+  `XianlingLog.offlineError`, others via `frameError` (`eventType:{},
+  handler:{} handle error! {}`), and the loop continues. `EventCenter.publish`
+  is a no-op without subscribers. Port: `game/eventbus.py`.
+- Inner tokens are NOT bus publishes: `StageMsgSender.send2StageInnerToken`
+  builds a Message routed by `StageMsgDispatcher.in` to the stage runnable.
+  The port mirrors that as `Session.register_inner` + `schedule_inner`,
+  dispatched inside `tick()`; no handler means a silent skip.
+- Concurrency fix from Phase 2a: `Session.feed()` and `Session.tick()` now
+  hold one per-session `RLock` (`state_lock`), so the connection and tick
+  threads can no longer interleave state mutation. `send_lock` only orders
+  `sendall`; `tick_sessions` ticks without it and sends under it.
+- Still unwired: the logged/skipped events (UseMoneyPropEvent,
+  GoodsSellkEvent, GoodsBuyBackEvent) can now publish through `Session.publish`,
+  but no call site uses it yet. Goldens: `tests/test_eventbus.py` (14).
+  Server-v1 558/558, tools 39/39.
+
+## Phase 2c evidence log (dazuo 44001-44004 prerequisites, all from `dntg_start.jar` + config)
+
+- `loadDaZuoByLevel(level, flag)`: the second argument is `selfFlag + targetFlag`.
+  selfFlag is 1 when the role has no meiren pet, else 2. targetFlag is 0 with no
+  target role (or the target has no element), else the same 1/2 rule on the target.
+  `DazuoConfig` is one row per level, and its value map is keyed by that flag sum.
+  Config table: `sys_config/DaZuoPeiZhiBiao.jat` (`level`, `exp1..4`, `zhenqi1..4`).
+- Surround set (`getSurroundRoleIds`): `AbsAoiStage` looks up the role's AOI cell
+  (`baby center` = `x / AOI_WIDTH + 1`, `y / AOI_HEIGHT + 1`) and returns
+  `AOI.getElements(ROLE, 9)`, the 3x3 neighbourhood. The cell size is not a
+  constant: `AutoFightStageFactory` passes `CslStageCfg.getStageAoiWidth/Height`, from
+  `config/stage/csl-stage.properties` (`aoi_width = 600`, `aoi_height = 400`,
+  borders 0). In tile units that is 10 tiles wide (60px per tile) and roughly
+  13.3 tiles high (30px per tile).
+  Verified in bytecode: `AOI.getElements(type, n)` reads `directAoisMap.get(n)`,
+  and the keys are CENTER=9 plus the eight compass directions (TOP, BOTTOM, LEFT,
+  RIGHT and the four diagonals), so the set is the 3x3 block and the caller's own
+  AOI is excluded by an identity check.
+
+## Phase 9a evidence log (meditation 44001-44004, stage registry + outbox)
+
+- Stage registry (`game/stage_registry.py`): map -> roles -> session, tile
+  positions, and `surround` = the 3x3 AOI block (60 px per tile wide, 30 px tall;
+  600x400 px cells). Sessions queue cross-connection frames and state changes
+  on an outbox that runs on the owner's tick; no session takes another's state lock.
+- 44001 solo: 440001 when fighting, else broadcast `[1, roleId]` to the surround
+  and arm the 15 s timer (`timing_dazuo_get`).
+- 44002 pair: 440002 when the target is offline or either side already has a
+  partner. The target accepts on its tick and the requester links and broadcasts
+  `[1, roleId, targetId]`. Both must be meditating solo, else silent.
+- 44003 exit: clears self, cancels the timer, clears the partner's link when it
+  points back, broadcasts a null payload.
+- 44004 timer: awards the `DaZuoPeiZhiBiao` row for the flag sum, then re-arms
+  while meditating, and pushes `[exp, zhenqi]` to the role.
+- Approximations (documented in code): "in fight" = a monster in the session
+  holds hatred on the role (no role FIGHT state exists yet). selfFlag is always
+  1 (no meiren pet is modelled). Exp/zhenqi follow the existing kill-exp
+  convention: no level-up and ewai odds 0. The 44001/44002 inbound request shape
+  (role id in msg[1]) is unverified against a captured client request.
+- Goldens: `tests/test_dazuo.py` (gain table, solo, fight refusal, cross-session
+  pair, refusal, offline target, exit, timer, timer stop). Server-v1 581/581,
+  tools 39/39.
 
 ## Conventions
 

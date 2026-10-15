@@ -551,6 +551,21 @@ def load_xishu_table(path):
             and r.get('factor') is not None}
 
 
+def load_dazuo_table(path):
+    """Rows of sys_config/DaZuoPeiZhiBiao.jat as {level: {'exp': {k: n}, 'zhenqi': {k: n}}}."""
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of dazuo rows')
+    table = {}
+    for r in rows:
+        if not isinstance(r, dict) or r.get('level') is None:
+            continue
+        table[int(r['level'])] = {
+            'exp': {k: int(r.get(f'exp{k}') or 0) for k in range(1, 5)},
+            'zhenqi': {k: int(r.get(f'zhenqi{k}') or 0) for k in range(1, 5)}}
+    return table
+
+
 def load_vip_table(path):
     """Rows of sys_config/vipbiao.jat keyed by vip level."""
     rows = _load(path)
@@ -683,6 +698,7 @@ class GameConfig:
         self._mall = None
         self._zuwu = None
         self._xishu = None
+        self._dazuo = None
         self._vip = None
         self._xianjie = None
         self._chenghao = None
@@ -1866,6 +1882,27 @@ class GameConfig:
         """
         return [[[zid, 0, 0, 0, kind]
                  for kind, zid in sorted(self.zuwu_table().items())], 0]
+
+    def dazuo_table(self):
+        """DaZuoPeiZhiBiao keyed by level; empty if absent."""
+        if self._dazuo is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'DaZuoPeiZhiBiao.jat')
+            try:
+                self._dazuo = load_dazuo_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad dazuo table: %s', e)
+                self._dazuo = {}
+        return self._dazuo
+
+    def dazuo_gain(self, level, flag_sum):
+        """(exp, zhenqi) of a level row at a flag sum (1..4), or None when unlisted."""
+        row = self.dazuo_table().get(int(level or 0))
+        key = int(flag_sum)
+        if row is None or key not in (1, 2, 3, 4):
+            return None
+        return row['exp'][key], row['zhenqi'][key]
 
     def xishu_table(self):
         """ZhanLiXiShu factors keyed by attribute name; empty if absent."""

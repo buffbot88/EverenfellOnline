@@ -9,15 +9,30 @@ Python + SQLite (Pillow only for the captcha image).
 import argparse
 import logging
 import socketserver
+import threading
 import time
 
 from auth import Sessions, check_sign
 from db import Store
+from game import scheduler as scheduler_lib
 from game.config import DEFAULT_CONFIG_DIR, GameConfig
 from game.protocol import Session as GameSession
+from game.stage_registry import StageRegistry
 from web import serve as serve_web
 
 log = logging.getLogger()
+
+
+def tick_loop(server, interval):
+    """1-second scheduler cadence: tick every session, push due frames."""
+    while True:
+        time.sleep(interval)
+        try:
+            with server.sessions_lock:
+                pairs = list(server.sessions.items())
+            scheduler_lib.tick_sessions(pairs)
+        except Exception:
+            log.warning('tick loop failed', exc_info=True)
 
 
 import itertools as _itertools
@@ -70,8 +85,13 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_task_main=self.server.save_task_main,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
-            config=self.server.game_config)
+            config=self.server.game_config,
+            stage_registry=self.server.stage_registry)
         log.info('game conn from %s', self.client_address)
+        sess.send_lock = threading.Lock()
+        sender = lambda frames: [self.request.sendall(f) for f in frames]
+        with self.server.sessions_lock:
+            self.server.sessions[sess] = sender
         try:
             while True:
                 data = self.request.recv(65536)
@@ -86,9 +106,14 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                         except Exception:
                             log.info('conn %d: -> %d raw bytes',
                                      sess.conn_id, len(out))
-                    self.request.sendall(out)
+                    with sess.send_lock:
+                        self.request.sendall(out)
         except (ConnectionResetError, BrokenPipeError, ValueError) as e:
             log.info('game conn closed: %s', e)
+        finally:
+            with self.server.sessions_lock:
+                self.server.sessions.pop(sess, None)
+            self.server.stage_registry.unregister_session(sess)
 
 
 def main():
@@ -112,6 +137,8 @@ def main():
                     help='create a character for an account, then exit')
     ap.add_argument('--server-id', default='fu1304',
                     help='server id characters are scoped to')
+    ap.add_argument('--tick-interval', type=float, default=1.0,
+                    help='scheduler tick seconds (0 disables the tick loop)')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.debug else logging.INFO,
                         format='%(asctime)s [%(name)s] %(message)s')
@@ -135,6 +162,8 @@ def main():
 
     tcpd = socketserver.ThreadingTCPServer((g_host, int(g_port)), GameTCPHandler)
     tcpd.daemon_threads = True
+    tcpd.sessions = {}
+    tcpd.sessions_lock = threading.Lock()
     tcpd.check_sign = staticmethod(check_sign)
     tcpd.get_roles = lambda u, s: [
         dict(r)
@@ -190,10 +219,14 @@ def main():
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id
     tcpd.game_config = GameConfig(a.config_dir)
+    tcpd.stage_registry = StageRegistry()
     tcpd.server_start_ms = int(time.time() * 1000)
 
-    import threading
     threading.Thread(target=tcpd.serve_forever, daemon=True).start()
+    if a.tick_interval > 0:
+        threading.Thread(target=tick_loop, args=(tcpd, a.tick_interval),
+                         daemon=True).start()
+        log.info('scheduler tick every %ss', a.tick_interval)
     log.info('game up: %s:%s', g_host, g_port)
     try:
         serve_web(store, sessions, w_host, int(w_port), a.captcha)

@@ -101,9 +101,11 @@ LAYERS = [
     ('Config data', 'AMF3 `.jat`/`.mm` read through BlazeDS `Amf3Input` (`game-data-inventory.md`)',
      'Own AMF3 codec `game/amf3.py` + loaders in `game/config.py`', 'Decodes all 218 `.jat`; see game-data inventory'),
     ('Scheduling', 'Quartz scheduled jobs (`com.xianling.global`)',
-     'No scheduler; `ai_tick` runs after role actions (`game/protocol.py`)', 'Gap: timed events and cadence'),
+     'Mirror in `game/scheduler.py` (heartbeat, schedule map, quartz cron,'
+     ' token runnables) + 1s server tick driving `Session.tick()`', 'Partial: timed stage pushes flow; per-monster stagger still single-clock'),
     ('Event bus / services', 'Event service and ~90 ServiceImpl classes per large family (`com.xianling.eventservice`)',
-     'Direct method calls inside `protocol.py`', 'Gap: no event dispatch layer'),
+     '`game/eventbus.py` EventCenter mirror (per-session via `Session.publish`); inner tokens dispatch in `tick()`',
+     'Partial: bus exists, no call sites publish yet'),
     ('Cross-server', 'kuafu and messageswap (`com.xianling.bus.kuafu`, `com.xianling.messageswap`)',
      'None', 'Out of scope for single-server play'),
     ('Auth on game socket', 'MD5 of uid + key + timestamp (parity audit, security section)',

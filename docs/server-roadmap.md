@@ -7,25 +7,30 @@ and the parity audit per phase. No servers start/stop without the user asking.
 
 ## Completion tracker (primary denominator: 886 command IDs in docs/command-ledger.md; module count secondary)
 
-ID track: 76 of 886 dispatched (8.6%) — 68 golden-tested, 8 dispatched-only, 810 not started. Module track: 40 of 71 `*Commands` modules touched (~56%). Tables: 17 SQLite vs 176 MySQL (163 unmapped). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track: 86 of 886 dispatched (9.7%) — 78 golden-tested, 8 dispatched-only, 800 not started. Module track: 41 of 71 `*Commands` modules touched (~58%). Tables: 19 SQLite vs 176 MySQL (162 unmapped). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
-| 1 core loop (69) | bag 21, equip 13, vip 12, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 52 | 0 | 14: equip 3; bag 5 (incl. 30301 prop-use); mall 2; role 3; account 1 |
-| 2 scene (210) | stage | 6 | 0 | 204; no scheduler (ai_tick runs off role actions), no event bus |
+| 1 core loop (69) | bag 21, equip 13, vip 12, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 54 | 0 | 12: equip 3; bag 5 (incl. 30301 prop-use); role 3; account 1 |
+| 2 scene (210) | stage | 9 | 0 | 201; no scheduler (ai_tick runs off role actions), no event bus |
 | 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 | 5 | 109 not started + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
 | 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | ~127 |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
 | triage | public_ 183, gamerule 13, vipqq 6, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase |
 
-Module history (how the 38 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1). Evidence logs below are unchanged.
+Module history (how the 38 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
+32002/32003/32004/32006 (+4), prop gift-box selection 30305/30306/30307
+(+3). Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)
 
 - Phase 0: ledger generator is the only source of counts (never hand-edit); still missing the `persisted` and `client-verified` statuses the definition of done requires — that is a code change to tools/architecture_audit.py plus its tests. Replay generalizes only world entry; recapture and per-phase live projector runs are blocked until a run is explicitly asked for.
-- Phase 1: bag is closest (15/21; 30301 needs the Phase 2 stage runtime, 30104/30105 are push-only IDs covered by test mentions). Vip inbound is done (all 10 routable IDs; 62003/62006 service-internal push-only, 62005 a stage push). Setting is done (13000-13004). The equip 3 (30106/31015/31016) have no inbound route jar-wide and are already emitted plus golden-asserted as pushes, so they need no slice. Next largest wins: bag 5, mall 2 (32001 buyGoods landed portable: no guild/coupon-discount; 32002/32006 shop cluster left), role 3. Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
-- Phase 2: the 1-second scheduler (Quartz mirror) and the in-process event bus are the structural gaps; 204 stage IDs sit behind them.
+- Phase 1: bag is closest (15/21; 30301 needs the Phase 2 stage runtime, 30104/30105 are push-only IDs covered by test mentions). Vip inbound is done (all 10 routable IDs; 62003/62006 service-internal push-only, 62005 a stage push). Setting is done (13000-13004). The equip 3 (30106/31015/31016) have no inbound route jar-wide and are already emitted plus golden-asserted as pushes, so they need no slice. Next largest wins: bag 5, role 3. Mall is done (32000 list; 32001
+buyGoods portable: no guild/coupon-discount; buyback cluster
+32002/32003/32004/32006 with the 32005 eviction push and a null 32006
+without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
+- Phase 2: the 1-second scheduler (Quartz mirror) and the in-process event bus are the structural gaps; 201 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
 - Definition-of-done gap (structural): per-command client verification cannot happen under the no-live-runs rule, so no row can reach `client-verified` until the endgame; the phase plan's "live run once per phase, only when asked" is the agreed valve. Do not mark rows verified without a run.
 - Security before cutover (from the parity audit): forgeable MD5 game sign, cookie flags, ownership checks on mutating commands, rate limits.
 - Data rule unchanged: migrate a table only when a command module needs it, via tools/migrate_mysql_to_sqlite.py; update the audit mapping table.
@@ -683,6 +688,77 @@ Module history (how the 38 touched modules landed): socket framing/login/enter-w
   gate: zj0013 job, zj0601 level, zqzb0101 zuoqi rank; the sex gate is
   unreachable in live data). Server-v1 469/469, tools 39/39. Ledger:
   one golden-tested (68 total), 810 open.
+
+## Phase 8l evidence log (buyback cluster 32002/32003/32004/32006)
+
+- `GoodsBuyBackAction` parses C> [guidString, Integer] for 32002 (the
+  Integer is never read: the whole stack sells), a bare guid string for
+  32003, and nothing for 32004; `BuyBackModuleInit` routes exactly
+  32002/32003/32004 while `MallModuleInit` routes 32000/32001/32006
+  (32002 is declared SELL_GOODS in MallCommands but handled by the
+  buyback module). `backBuyGoods` (32006) takes no args and answers
+  getGongHuiMallBuyCount: null without a RoleMallBangpai row or with an
+  empty mallDate map, else [[sellid, count]] pairs in JSON key order.
+- `addGoodsBuyBack`: missing bag row returns null (silent); missing
+  goods config replies [0, '430405'] (String code); the row converts via
+  model2Entity (id = sold bag guid, slot kept, createtime = now), the bag
+  row is removed (removeGoodsById sends no pushes, verified), and past
+  27 rows the createtime-ascending oldest is evicted with a 32005
+  [evictedId, formart] push before the insert. The price (recycle x
+  count) is paid in YXB via incr; success replies [1, formartMap]. The
+  GoodsSellkEvent has no bus (logged, skipped).
+- `removeGoodsBuyBack` (32003): missing row silent; price = recycle x
+  count checked then paid in YXB ([0, '1003'] short, String code),
+  checkPutInBag1 ([0, '1006'] full), then delete + putInBag1 (bind kept)
+  + decr, replying [1, id, [formart1Record], price] (formart1(single)
+  wraps the 18-slot record in a one-element array). The GoodsBuyBackEvent
+  has no bus (logged, skipped). `getGoodsBuyBackAll` (32004) answers the
+  bare formart1 list (null when empty, no [1, ...] envelope).
+- New role_bag_buyback table (Store + migrator --users scoped, MySQL
+  role_bag_buyback columns incl. createTime) ordered by createtime;
+  32006 stays a null reply (no guild system, no table per the data
+  rule); 32005 stays ledger push-only by design. New
+  GameConfig.goods_recycle (None on empty/missing cell). Thirteen
+  goldens in `tests/test_protocol.py` (sell pay + count-arg ignored +
+  silent + 430405 + 27-row eviction order, huigou triple + silent +
+  1003/1006, list null/order, 32006 null, guards, 32004 dispatch).
+  Server-v1 502/502, tools 39/39. Ledger: four golden-tested
+  (75 total), 803 open.
+
+## Phase 8m evidence log (prop gift-box selection 30305/30306/30307)
+
+- `PropStageAction.duoxuanlibao` takes C> [slotInteger, choiceString]
+  and `yougHuiQuanLiBao` takes C> [slotInteger]; both call the service
+  and flush non-null results as 30305/30306 through the StageMsgQueue.
+  `getTeShuTypeCount` takes a bare type string and sends the Integer
+  straight back as 30307 via send2One. `PropModuleInit.getInCmd`
+  registers 30301/use_shouyidan/prop_30301/30303/30305/30306/30307, but
+  30303 has no Action method jar-wide (and no sender: the inventory maps
+  it only to getInCmd), so it stays unrouted and silent by design.
+- `duoXuanLiBao` (30305): loadGoodsBySlot, missing row -> [0, 1005]
+  (GOODS_NOT_ENOUGH); the DuoXuanLiBaoConfig (duoxuanlibao.jat, choice
+  keys libao1..4 built in createDuoXuanLiBaoConfig from the libaoN /
+  libaoNcost columns, goods via convertGoodsesStrs2List2) supplies the
+  choice parcel plus its YB gold cost; short YB -> [0, 1002] via
+  decrCheck; checkPutInBag false -> [0, 1006]; decrGoodses fail ->
+  getError(PROP_ERROR_100009); success decrs the box, decrs YB, puts
+  the parcel, pushes 30304 [configId, [[goodsId, count]]] via send2One,
+  publishes UseMoneyPropEvent (no bus: logged, skipped), and replies
+  [1, bagRowId]. Unknown box goods or choice keys NPE in Java, so the
+  port stays silent on both. `youHuiQuanLiBao` (30306) mirrors it off
+  YouHuiQuanConfig (youhuiquan.jat: libaocost YB, libao parcel via
+  convertGoodsesStrs2List3), except a failed take replies getError
+  (PROP_ERROR_100008); costshow is display-only.
+- `getTeShuTypeCount` (30307): clearTeShuTypeCount first resets the
+  type's RoleProp row (useCount 0, fresh useStartTime, cacheUpdate)
+  when useStartTime is off today (DatatimeUtil.dayIsToday, server-local
+  day), then answers the row's useCount or 0 with no row. New role_prop
+  table (Store get/save + migrator --users scoped over the sqlmap
+  columns) keyed by (role_id, goods_id). Nine goldens in
+  `tests/test_bag.py` (duoxuan free/paid/errors/silence/full-bag/
+  take-error, youhui triple plus take-error, teshu missing/today/
+  stale). Server-v1 511/511, tools 39/39. Ledger: three
+  golden-tested (78 total), 800 open.
 
 ## Conventions
 

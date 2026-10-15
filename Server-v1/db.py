@@ -178,6 +178,36 @@ CREATE TABLE IF NOT EXISTS role_skillbook_slot (
   PRIMARY KEY(role_id, slot_num),
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Sold-item buyback per role (legacy role_bag_buyback subset: the id is the
+-- sold bag row's guid, slot_num its origin slot; createtime orders eviction).
+CREATE TABLE IF NOT EXISTS role_bag_buyback (
+  role_id INTEGER NOT NULL,
+  buyback_id TEXT NOT NULL,
+  slot_num INTEGER,
+  goods_id TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  bind INTEGER DEFAULT 0,
+  expire_time INTEGER,
+  rare_level INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  createtime INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, buyback_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Special-type prop use counts per role (legacy role_prop subset: daily
+-- useCount per goods id feeds the 30307 count query).
+CREATE TABLE IF NOT EXISTS role_prop (
+  role_id INTEGER NOT NULL,
+  goods_id TEXT NOT NULL,
+  use_start_time INTEGER,
+  use_stop_time INTEGER,
+  surplus_value INTEGER,
+  surplus_time INTEGER,
+  use_count INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, goods_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Vip event state per role (legacy role_vip_huodong subset: the fixed
 -- reward and lottery marks keyed by vip tier).
 CREATE TABLE IF NOT EXISTS role_vip_huodong (
@@ -840,6 +870,81 @@ class Store:
                 (str(role_id), slot_num))
             self.db.commit()
             return cur.rowcount == 1
+
+    def get_role_buyback_all(self, role_id):
+        """Every buyback row for a role, oldest createtime first."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT buyback_id, slot_num, goods_id, count, bind,'
+                ' expire_time, rare_level, item_level, attributes, createtime'
+                ' FROM role_bag_buyback WHERE role_id=?'
+                ' ORDER BY createtime, buyback_id',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_role_buyback(self, role_id, buyback_id):
+        """One buyback row by its id (the sold bag guid), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT buyback_id, slot_num, goods_id, count, bind,'
+                ' expire_time, rare_level, item_level, attributes, createtime'
+                ' FROM role_bag_buyback WHERE role_id=? AND buyback_id=?',
+                (str(role_id), buyback_id)).fetchone()
+            return dict(row) if row else None
+
+    def insert_role_buyback(self, role_id, row):
+        """Insert one buyback row; the id is the sold bag guid."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_bag_buyback(role_id, buyback_id, slot_num,'
+                ' goods_id, count, bind, expire_time, rare_level, item_level,'
+                ' attributes, createtime) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (str(role_id), row.get('buyback_id'),
+                 row.get('slot_num'), row.get('goods_id'),
+                 row.get('count') or 0, row.get('bind') or 0,
+                 row.get('expire_time'), row.get('rare_level') or 0,
+                 row.get('item_level') or 0, row.get('attributes'),
+                 row.get('createtime') or 0))
+            self.db.commit()
+            return True
+
+    def delete_role_buyback(self, role_id, buyback_id):
+        """Delete one buyback row; True when a row was removed."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM role_bag_buyback'
+                ' WHERE role_id=? AND buyback_id=?',
+                (str(role_id), buyback_id))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def get_role_prop(self, role_id, goods_id):
+        """One role_prop row by role and goods id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT goods_id, use_start_time, use_stop_time,'
+                ' surplus_value, surplus_time, use_count'
+                ' FROM role_prop WHERE role_id=? AND goods_id=?',
+                (str(role_id), str(goods_id))).fetchone()
+            return dict(row) if row else None
+
+    def save_role_prop(self, role_id, goods_id, **fields):
+        """Upsert one role_prop row (only known columns are written)."""
+        cols = ('use_start_time', 'use_stop_time', 'surplus_value',
+                'surplus_time', 'use_count')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_prop(role_id, goods_id) VALUES(?,?)'
+                ' ON CONFLICT(role_id, goods_id) DO NOTHING',
+                (str(role_id), str(goods_id)))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_prop SET {key}=?'
+                    ' WHERE role_id=? AND goods_id=?',
+                    (val, str(role_id), str(goods_id)))
+            self.db.commit()
+            return True
 
     def get_role_vip_huodong_all(self, role_id):
         """Every vip event row for a role (tier plus both marks)."""

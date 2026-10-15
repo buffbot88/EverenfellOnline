@@ -696,6 +696,8 @@ class GameConfig:
         self._goods = None
         self._dan = None
         self._lihe = None
+        self._duoxuan = None
+        self._youhui = None
         self._qianghua = None
         self._fujia = None
         self._fujia_random = None
@@ -862,6 +864,81 @@ class GameConfig:
                 'zuoqi': num('zuoqi'), 'jb': num('moneyneed'),
                 'yb': num('goldneed'), 'bindyb': num('silverneed'),
                 'bind': num('thingbangding')}
+
+    @staticmethod
+    def _libao_goods(cell):
+        """'gid:count:bind[;...]' cell into [(gid, count, bind)]."""
+        items = []
+        for part in str(cell or '').split(';'):
+            fields = part.split(':')
+            if len(fields) < 2 or not fields[0]:
+                continue
+            try:
+                count = int(fields[1])
+            except (TypeError, ValueError):
+                continue
+            try:
+                bind = int(fields[2]) if len(fields) > 2 else 0
+            except (TypeError, ValueError):
+                bind = 0
+            if count <= 0:
+                continue
+            items.append((fields[0], count, bind))
+        return items
+
+    def duoxuan_box(self, goods_id):
+        """DuoXuanLiBaoConfig for a box id: libao1..4 choices with goods+gold."""
+        if self._duoxuan is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'duoxuanlibao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad duoxuan table: %s', e)
+                rows = []
+            table = {}
+            for r in rows:
+                if not isinstance(r, dict) or r.get('id') is None:
+                    continue
+                options = {}
+                for num in range(1, 5):
+                    goods = self._libao_goods(r.get(f'libao{num}'))
+                    if not goods:
+                        continue
+                    try:
+                        gold = int(r.get(f'libao{num}cost') or 0)
+                    except (TypeError, ValueError):
+                        gold = 0
+                    options[f'libao{num}'] = {'goods': goods,
+                                             'gold': gold}
+                table[str(r['id'])] = {'id': str(r['id']),
+                                       'options': options}
+            self._duoxuan = table
+        return self._duoxuan.get(str(goods_id))
+
+    def youhui_box(self, goods_id):
+        """YouHuiQuanConfig for a coupon id: YB cost plus the goods list."""
+        if self._youhui is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'youhuiquan.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad youhui table: %s', e)
+                rows = []
+            table = {}
+            for r in rows:
+                if not isinstance(r, dict) or r.get('id') is None:
+                    continue
+                try:
+                    cost = int(r.get('libaocost') or 0)
+                except (TypeError, ValueError):
+                    cost = 0
+                table[str(r['id'])] = {
+                    'id': str(r['id']), 'cost': cost,
+                    'goods': self._libao_goods(r.get('libao'))}
+            self._youhui = table
+        return self._youhui.get(str(goods_id))
 
     def qianghua_config(self, goods_id, qhlv):
         """ZhuangBeiQiangHua row for a gear id at one enhance level."""
@@ -1450,6 +1527,16 @@ class GameConfig:
             return None
         try:
             return int(row.get('maxstack') or 0)
+        except (TypeError, ValueError):
+            return None
+
+    def goods_recycle(self, goods_id):
+        """Sell price (recycle cell) for a goods id, or None when unknown."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None or row.get('recycle') in ('', None):
+            return None
+        try:
+            return int(row.get('recycle'))
         except (TypeError, ValueError):
             return None
 

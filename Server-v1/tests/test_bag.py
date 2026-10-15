@@ -1172,5 +1172,185 @@ already proves their shapes and this class pins their command ids.
             (30104, 30105, 30301))
 
 
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class PropBoxTest(unittest.TestCase):
+    """Commands 30305/30306/30307: duoXuanLiBao/youHuiQuanLiBao/getTeShuTypeCount.
+
+    Shapes from PropStageAction (C> layouts, 30305/30306 queue replies,
+    30307 direct send) plus PropServiceImpl.duoXuanLiBao/youHuiQuanLiBao
+    (missing slot [0, 1005], short YB [0, 1002], full bag [0, 1006],
+    failed takes [0, 100009]/[0, 100008], silent unknown boxes/choices,
+    the 30304 [configId, [[goodsId, count]]] push ahead of [1, bagId])
+    and getTeShuTypeCount (stale-day reset, missing rows answer 0).
+    30303 is registered in PropModuleInit.getInCmd but has no Action
+    method jar-wide, so it stays unrouted and silent.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(os.path.join(self.tmp.name, 't.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56, tongqian=100,
+            bind_lingshi=0, lingshi=50)
+        self.cfg = GameConfig(str(REAL_CONFIG))
+        self.sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0,
+            get_role_bag_slots=self.store.get_role_bag_slots,
+            get_role_bag_state=self.store.get_role_bag_state,
+            get_role_bag_slot=self.store.get_role_bag_slot,
+            get_role_bag_slot_by_bag_id=
+            self.store.get_role_bag_slot_by_bag_id,
+            update_role_bag_slot=self.store.update_role_bag_slot,
+            delete_role_bag_slot=self.store.delete_role_bag_slot,
+            insert_role_bag_slot=self.store.insert_role_bag_slot,
+            save_role_bag_state=self.store.save_role_bag_state,
+            get_role_prop=self.store.get_role_prop,
+            save_role_prop=self.store.save_role_prop,
+            save_role_state=self.store.update_character_state,
+            config=self.cfg)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        self.store.save_role_bag_state(self.role_id, bag_capacity=144,
+                                       storage_capacity=30)
+
+    def row(self, slot, goods, count=1, bag_id=None):
+        return {'slot_num': slot, 'goods_id': goods, 'count': count,
+                'bag_id': bag_id or f'x{slot}', 'bind': 0,
+                'expire_time': 0, 'rare_level': 0, 'item_level': 1,
+                'attributes': None}
+
+    def frames(self, out):
+        self.assertIsNotNone(out)
+        if not isinstance(out, tuple):
+            return [decode(out[4:])]
+        return [decode(f[4:]) for f in out]
+
+    def role(self):
+        return self.store.list_roles('hero', 'fu1304')[0]
+
+    def test_command_ids(self):
+        from game.protocol import (CMD_PROP_DUOXUAN, CMD_PROP_YOUHUI,
+                                   CMD_PROP_TESHU)
+        self.assertEqual(
+            (CMD_PROP_DUOXUAN, CMD_PROP_YOUHUI, CMD_PROP_TESHU),
+            (30305, 30306, 30307))
+
+    def test_duoxuan_free_choice_pushes_grants_and_consumes(self):
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(50, 'zuoqizhenbao', 1)])
+        got = self.frames(self.sess.prop_duoxuan([50, 'libao4']))
+        self.assertEqual([f[0] for f in got], ['30304', '30305'])
+        self.assertEqual(got[0][1],
+                         ['zuoqizhenbao', [['jinjiedan001', 3]]])
+        self.assertEqual(got[1][1], [1, 'x50'])
+        self.assertIsNone(
+            self.store.get_role_bag_slot(self.role_id, 50))
+        pills = [s for s in
+                 self.store.get_role_bag_slots(self.role_id, 1, 150)
+                 if s['goods_id'] == 'jinjiedan001']
+        self.assertEqual(sum(s['count'] for s in pills), 3)
+        self.assertEqual(self.role()['lingshi'], 50)
+
+    def test_duoxuan_paid_choice_decrs_yb(self):
+        self.store.update_character_state(self.role_id, lingshi=1000)
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(51, 'zuoqizhenbao', 1)])
+        got = self.frames(self.sess.prop_duoxuan([51, 'libao1']))
+        self.assertEqual([f[0] for f in got], ['30304', '30305'])
+        self.assertEqual(got[1][1], [1, 'x51'])
+        self.assertEqual(self.role()['lingshi'], 1000 - 688)
+        self.assertIsNone(
+            self.store.get_role_bag_slot(self.role_id, 51))
+
+    def test_duoxuan_errors_and_silence(self):
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(52, 'zuoqizhenbao', 1)])
+        out = self.sess.prop_duoxuan([99, 'libao4'])
+        self.assertEqual(decode(out[4:]), ['30305', [0, 1005]])
+        out = self.sess.prop_duoxuan([52, 'libao1'])
+        self.assertEqual(decode(out[4:]), ['30305', [0, 1002]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.role_id, 52)['count'], 1)
+        self.assertIsNone(self.sess.prop_duoxuan([52, 'libao9']))
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(53, 'nope', 1)])
+        self.assertIsNone(self.sess.prop_duoxuan([53, 'libao4']))
+        self.assertIsNone(self.sess.prop_duoxuan('nope'))
+        self.assertIsNone(self.sess.prop_duoxuan([52]))
+        self.assertIsNone(self.sess.prop_duoxuan(['52', 'libao4']))
+        self.assertIsNone(self.sess.prop_duoxuan([52, 4]))
+        self.assertIsNone(self.sess.prop_duoxuan([52, '']))
+
+    def test_duoxuan_full_bag_reports_no_slot(self):
+        self.store.save_role_bag_state(self.role_id, bag_capacity=2,
+                                       storage_capacity=30)
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(1, 'zuoqizhenbao', 1),
+                           self.row(2, 'bscl2', 1)])
+        out = self.sess.prop_duoxuan([1, 'libao4'])
+        self.assertEqual(decode(out[4:]), ['30305', [0, 1006]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.role_id, 1)['count'], 1)
+
+    def test_duoxuan_empty_row_reports_take_error(self):
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(54, 'zuoqizhenbao', 0)])
+        out = self.sess.prop_duoxuan([54, 'libao4'])
+        self.assertEqual(decode(out[4:]), ['30305', [0, 100009]])
+
+    def test_youhui_success_and_errors(self):
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(60, 'zuoqiyouhui', 1),
+                           self.row(61, 'zuoqiyouhui', 1)])
+        out = self.sess.prop_youhui([60])
+        self.assertEqual(decode(out[4:]), ['30306', [0, 1002]])
+        self.store.update_character_state(self.role_id, lingshi=1000)
+        got = self.frames(self.sess.prop_youhui([61]))
+        self.assertEqual([f[0] for f in got], ['30304', '30306'])
+        self.assertEqual(got[0][1],
+                         ['zuoqiyouhui', [['jinjiedan001', 34]]])
+        self.assertEqual(got[1][1], [1, 'x61'])
+        self.assertEqual(self.role()['lingshi'], 1000 - 850)
+        self.assertIsNone(
+            self.store.get_role_bag_slot(self.role_id, 61))
+        out = self.sess.prop_youhui([99])
+        self.assertEqual(decode(out[4:]), ['30306', [0, 1005]])
+        self.assertIsNone(self.sess.prop_youhui('nope'))
+        self.assertIsNone(self.sess.prop_youhui([]))
+        self.assertIsNone(self.sess.prop_youhui([True]))
+
+    def test_youhui_empty_row_reports_take_error(self):
+        self.store.update_character_state(self.role_id, lingshi=1000)
+        self.store.save_role_bag_slots(
+            self.role_id, [self.row(62, 'zuoqiyouhui', 0)])
+        out = self.sess.prop_youhui([62])
+        self.assertEqual(decode(out[4:]), ['30306', [0, 100008]])
+
+    def test_teshu_count_missing_today_and_stale(self):
+        out = self.sess.prop_teshu_count('teshu_fire')
+        self.assertEqual(decode(out[4:]), ['30307', 0])
+        now = int(time.time() * 1000)
+        self.store.save_role_prop(self.role_id, 'teshu_fire',
+                                  use_count=3, use_start_time=now)
+        out = self.sess.prop_teshu_count('teshu_fire')
+        self.assertEqual(decode(out[4:]), ['30307', 3])
+        stale = now - 2 * 86400 * 1000
+        self.store.save_role_prop(self.role_id, 'teshu_ice',
+                                  use_count=5, use_start_time=stale)
+        out = self.sess.prop_teshu_count('teshu_ice')
+        self.assertEqual(decode(out[4:]), ['30307', 0])
+        row = self.store.get_role_prop(self.role_id, 'teshu_ice')
+        self.assertEqual(row['use_count'], 0)
+        self.assertTrue(abs(int(time.time() * 1000) -
+                            row['use_start_time']) < 60000)
+        self.assertIsNone(self.sess.prop_teshu_count(5))
+        self.assertIsNone(self.sess.prop_teshu_count(None))
+
+
 if __name__ == '__main__':
     unittest.main()

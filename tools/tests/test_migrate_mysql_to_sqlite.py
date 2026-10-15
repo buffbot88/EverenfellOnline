@@ -79,6 +79,8 @@ class ScopeTest(unittest.TestCase):
                                   'role_xianjiechenhao': 1, 'role_meiren': 1,
                                   'role_zuoqi': 1, 'role_skill': 1,
                                   'role_shenjiang': 1, 'role_bag_slot': 1,
+                                  'role_bag_buyback': 1,
+                                  'role_prop': 1,
                                   'role_skillbook_slot': 1,
                                   'role_bag_state': 1, 'task_main': 1})
 
@@ -138,9 +140,15 @@ class FakeDataMySql:
         if 'from role_skill' in sql:
             # skill_key, user_role_id, skill_category_id, skill_level.
             return [['fu0RS1-0-1-1', '7', 'niumowang1', '1']]
+        if 'from role_bag_buyback' in sql:
+            return [['fu0RBS1-0-1-77', '36', '7', 'silver50', '1', '1',
+                     '0', '3', '1', None, '1394468076000']]
         if 'from role_bag_slot' in sql:
             return [['fu0RBS1-0-1-77', '36', '7', 'silver50', '1', '1',
                      '0', '3', '1', None]]
+        if 'from role_prop' in sql:
+            return [['7', 'teshu_fire', '1394468076000', None, None,
+                     None, '3']]
         if 'from task_main' in sql:
             # id, user_role_id, current_task_id, current_state,
             # current_condition, current_recevie_time, create_time.
@@ -216,6 +224,16 @@ class MigrateCharactersTest(unittest.TestCase):
         self.assertEqual(bag_state['bag_capacity'], 144)
         self.assertEqual(bag_state['storage_capacity'], 31)
         self.assertEqual(report['bag_slots_written'], 1)
+        buyback = conn.execute('SELECT * FROM role_bag_buyback').fetchone()
+        self.assertEqual(buyback['buyback_id'], 'fu0RBS1-0-1-77')
+        self.assertEqual(buyback['goods_id'], 'silver50')
+        self.assertEqual(buyback['createtime'], 1394468076000)
+        self.assertEqual(report['buyback_written'], 1)
+        prop = conn.execute('SELECT * FROM role_prop').fetchone()
+        self.assertEqual(prop['goods_id'], 'teshu_fire')
+        self.assertEqual(prop['use_count'], 3)
+        self.assertEqual(prop['use_start_time'], 1394468076000)
+        self.assertEqual(report['role_prop_written'], 1)
         self.assertEqual(report['bag_state_written'], 1)
         book = conn.execute('SELECT * FROM role_skillbook_slot').fetchone()
         self.assertEqual(book['slot_num'], 10001)

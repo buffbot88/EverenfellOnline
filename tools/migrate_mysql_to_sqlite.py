@@ -125,6 +125,8 @@ def plan_counts(mysql, users):
              'role_skill': ' ' + role_filter(role_ids),
              'role_shenjiang': ' ' + role_filter(role_ids),
              'role_bag_slot': ' ' + role_filter(role_ids),
+             'role_bag_buyback': ' ' + role_filter(role_ids),
+             'role_prop': ' ' + role_filter(role_ids),
              'role_skillbook_slot': ' ' + role_filter(role_ids),
              'role_bag_state': ' ' + role_filter(role_ids),
              'task_main': ' ' + role_filter(role_ids)}
@@ -139,9 +141,10 @@ def plan_counts(mysql, users):
               'role_meiren': ('dntg', 'role_meiren'),
               'role_zuoqi': ('dntg', 'role_zuoqi'),
               'role_skill': ('dntg', 'role_skill'),
-              'role_shenjiang': ('dntg', 'role_shenjiang'),
-              'role_bag_slot': ('dntg', 'role_bag_slot'),
-              'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
+              'role_shenjiang': ('dntg', 'role_shenjiang'),               'role_bag_slot': ('dntg', 'role_bag_slot'),
+               'role_bag_buyback': ('dntg', 'role_bag_buyback'),
+               'role_prop': ('dntg', 'role_prop'),
+               'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
               'role_bag_state': ('dntg', 'role_bag_state'),
               'task_main': ('dntg', 'task_main')}
     counts = {}
@@ -159,7 +162,9 @@ def migrate(mysql, db_path, users, dry_run=False):
               'equip_written': 0, 'attr_buffs_written': 0, 'vip_written': 0,
               'xianjiechenhao_written': 0, 'meiren_written': 0,
               'zuoqi_written': 0, 'skills_written': 0, 'shenjiang_written': 0,
-              'bag_slots_written': 0, 'skillbook_slots_written': 0,
+              'bag_slots_written': 0, 'buyback_written': 0,
+              'role_prop_written': 0,
+              'skillbook_slots_written': 0,
               'bag_state_written': 0,
               'task_main_written': 0,
               'roles_missing_account': [], 'notes': []}
@@ -206,6 +211,16 @@ def migrate(mysql, db_path, users, dry_run=False):
                                     'count,bind,expire_time,rare_level,item_level,'
                                     'attributes from role_bag_slot ' + role_where
                                     + ' order by user_role_id,slot_num')
+    buyback = mysql.query('dntg', 'select id,slot_num,user_role_id,goods_id,'
+                                  'count,bind,expire_time,rare_level,item_level,'
+                                  'attributes,createTime from role_bag_buyback '
+                                  + role_where
+                                  + ' order by user_role_id')
+    role_props = mysql.query('dntg', 'select user_role_id,goods_id,'
+                                     'use_start_time,use_stop_time,'
+                                     'surplus_value,surplus_time,use_count'
+                                     ' from role_prop ' + role_where
+                                     + ' order by user_role_id')
     skillbook_slots = mysql.query('dntg', 'select id,slot_num,user_role_id,'
                                           'goods_id,count,bind,expire_time,'
                                           'rare_level,item_level,attributes'
@@ -233,6 +248,8 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['meiren_written'] = len(meiren)
         report['zuoqi_written'] = len(zuoqi)
         report['bag_slots_written'] = len(bag_slots)
+        report['buyback_written'] = len(buyback)
+        report['role_prop_written'] = len(role_props)
         report['skillbook_slots_written'] = len(skillbook_slots)
         report['bag_state_written'] = len(bag_state)
         report['task_main_written'] = len(task_main)
@@ -423,6 +440,63 @@ def migrate(mysql, db_path, users, dry_run=False):
                  as_int(count) or 0, as_int(bind) or 0, as_int(expire_time),
                  as_int(rare_level) or 0, as_int(item_level) or 0, attributes))
             report['skillbook_slots_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_bag_buyback(role_id INTEGER NOT NULL,'
+                     ' buyback_id TEXT NOT NULL, slot_num INTEGER, goods_id TEXT NOT NULL,'
+                     ' count INTEGER DEFAULT 0, bind INTEGER DEFAULT 0,'
+                     ' expire_time INTEGER, rare_level INTEGER DEFAULT 0,'
+                     ' item_level INTEGER DEFAULT 0, attributes TEXT,'
+                     ' createtime INTEGER DEFAULT 0,'
+                     ' PRIMARY KEY(role_id, buyback_id))')
+        for row in buyback:
+            buyback_id, slot_num, user_role_id, goods_id, count, bind, \
+                expire_time, rare_level, item_level, attributes, \
+                createtime = (row + [None] * 11)[:11]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not buyback_id or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_bag_buyback(role_id, buyback_id, slot_num,'
+                ' goods_id, count, bind, expire_time, rare_level, item_level,'
+                ' attributes, createtime) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, buyback_id) DO UPDATE SET'
+                ' slot_num=excluded.slot_num, goods_id=excluded.goods_id,'
+                ' count=excluded.count, bind=excluded.bind,'
+                ' expire_time=excluded.expire_time,'
+                ' rare_level=excluded.rare_level,'
+                ' item_level=excluded.item_level,'
+                ' attributes=excluded.attributes,'
+                ' createtime=excluded.createtime',
+                (local_id, buyback_id, as_int(slot_num), goods_id,
+                 as_int(count) or 0, as_int(bind) or 0, as_int(expire_time),
+                 as_int(rare_level) or 0, as_int(item_level) or 0, attributes,
+                 as_int(createtime) or 0))
+            report['buyback_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_prop(role_id INTEGER NOT NULL,'
+                     ' goods_id TEXT NOT NULL, use_start_time INTEGER,'
+                     ' use_stop_time INTEGER, surplus_value INTEGER,'
+                     ' surplus_time INTEGER, use_count INTEGER DEFAULT 0,'
+                     ' PRIMARY KEY(role_id, goods_id))')
+        for row in role_props:
+            user_role_id, goods_id, use_start_time, use_stop_time, \
+                surplus_value, surplus_time, use_count = \
+                (row + [None] * 7)[:7]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_prop(role_id, goods_id, use_start_time,'
+                ' use_stop_time, surplus_value, surplus_time, use_count)'
+                ' VALUES(?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id, goods_id) DO UPDATE SET'
+                ' use_start_time=excluded.use_start_time,'
+                ' use_stop_time=excluded.use_stop_time,'
+                ' surplus_value=excluded.surplus_value,'
+                ' surplus_time=excluded.surplus_time,'
+                ' use_count=excluded.use_count',
+                (local_id, goods_id, as_int(use_start_time),
+                 as_int(use_stop_time), as_int(surplus_value),
+                 as_int(surplus_time), as_int(use_count) or 0))
+            report['role_prop_written'] += 1
         for row in bag_state:
             (user_role_id, bag_capacity, bag_slot_time, bag_update_slot_time,
              storage_capacity, storage_slot_time,

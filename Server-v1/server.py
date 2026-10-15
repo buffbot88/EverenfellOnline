@@ -172,6 +172,12 @@ def main():
     tcpd.insert_role_skillbook_slot = store.insert_role_skillbook_slot
     tcpd.update_role_skillbook_slot = store.update_role_skillbook_slot
     tcpd.delete_role_skillbook_slot = store.delete_role_skillbook_slot
+    tcpd.get_role_buyback_all = store.get_role_buyback_all
+    tcpd.get_role_buyback = store.get_role_buyback
+    tcpd.insert_role_buyback = store.insert_role_buyback
+    tcpd.delete_role_buyback = store.delete_role_buyback
+    tcpd.get_role_prop = store.get_role_prop
+    tcpd.save_role_prop = store.save_role_prop
     tcpd.update_role_bag_slot = store.update_role_bag_slot
     tcpd.delete_role_bag_slot = store.delete_role_bag_slot
     tcpd.move_role_bag_slot = store.move_role_bag_slot

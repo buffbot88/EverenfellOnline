@@ -87,6 +87,20 @@ RECIVE_YB_ERR_OVERFLOW = 424017
 INT64_MAX = 9223372036854775807
 CMD_MALL = 32000
 CMD_MALL_BUY = 32001
+# 32002 is declared in MallCommands (SELL_GOODS) but its inbound route lives
+# in BuyBackModuleInit; 32005 is a server push with no inbound route (like
+# the 30104/30105 split pushes).
+CMD_BUYBACK_SELL = 32002
+CMD_BUYBACK_HUIGOU = 32003
+CMD_BUYBACK_LIST = 32004
+CMD_BUYBACK_EVICT = 32005
+CMD_GONGHUI_MALL_COUNT = 32006
+# GoodsBuyBackError codes are Strings on the wire (unlike the int General
+# codes), so the buyback replies carry '1003'/'1006'/'430405' as strings.
+BUYBACK_ERR_NO_CONFIG = '430405'
+BUYBACK_ERR_JB_SHORT = '1003'
+BUYBACK_ERR_NO_SLOT = '1006'
+BUYBACK_MAX_ROWS = 27
 CMD_JUQING_AWARD = 64010
 CMD_JUQING_INFO = 64001
 CMD_VIP = 62000
@@ -233,6 +247,10 @@ CMD_BAG_SPLIT = 30100
 CMD_BAG_DISCARD = 30101
 CMD_BAG_DELETE = 30102
 CMD_PROP_USE = 30301
+CMD_PROP_DUOXUAN = 30305
+CMD_PROP_YOUHUI = 30306
+CMD_PROP_TESHU = 30307
+PROP_ERROR_100009 = 100009
 CMD_BAG_SPLIT_COUNT = 30104
 CMD_BAG_SPLIT_NEW = 30105
 CMD_STUDY_SKILL = 42004
@@ -432,6 +450,12 @@ class Session:
                  insert_role_skillbook_slot=None,
                  update_role_skillbook_slot=None,
                  delete_role_skillbook_slot=None,
+                 get_role_buyback_all=None,
+                 get_role_buyback=None,
+                 insert_role_buyback=None,
+                 delete_role_buyback=None,
+                 get_role_prop=None,
+                 save_role_prop=None,
                  get_role_jianding=None, save_role_jianding=None,
                  save_role_vip=None, get_role_vip_kaifu=None,
                  save_role_vip_kaifu=None,
@@ -486,6 +510,16 @@ class Session:
                                            or (lambda *a, **k: False))
         self.delete_role_skillbook_slot = (delete_role_skillbook_slot
                                            or (lambda *a: False))
+        self.get_role_buyback_all = (get_role_buyback_all
+                                     or (lambda role_id: []))
+        self.get_role_buyback = (get_role_buyback
+                                 or (lambda r, b: None))
+        self.insert_role_buyback = (insert_role_buyback
+                                    or (lambda r, row: False))
+        self.delete_role_buyback = (delete_role_buyback
+                                    or (lambda r, b: False))
+        self.get_role_prop = get_role_prop or (lambda r, g: None)
+        self.save_role_prop = save_role_prop or (lambda *a, **k: False)
         self.update_role_bag_slot = update_role_bag_slot or (lambda *a, **k: False)
         self.delete_role_bag_slot = delete_role_bag_slot or (lambda *a: False)
         self.move_role_bag_slot = move_role_bag_slot or (lambda *a: False)
@@ -760,10 +794,24 @@ class Session:
             return self.bag_delete(msg)
         if cmd_num == CMD_PROP_USE:
             return self.prop_use(msg)
+        if cmd_num == CMD_PROP_DUOXUAN:
+            return self.prop_duoxuan(msg)
+        if cmd_num == CMD_PROP_YOUHUI:
+            return self.prop_youhui(msg)
+        if cmd_num == CMD_PROP_TESHU:
+            return self.prop_teshu_count(msg)
         if cmd_num == CMD_MALL:
             return self.mall_info(msg)
         if cmd_num == CMD_MALL_BUY:
             return self.mall_buy(msg)
+        if cmd_num == CMD_BUYBACK_SELL:
+            return self.buyback_sell(msg)
+        if cmd_num == CMD_BUYBACK_HUIGOU:
+            return self.buyback_huigou(msg)
+        if cmd_num == CMD_BUYBACK_LIST:
+            return self.buyback_list()
+        if cmd_num == CMD_GONGHUI_MALL_COUNT:
+            return self.gonghui_mall_count()
         if cmd_num == CMD_JUQING_AWARD:
             return frame(amf3_encode(['64010', None]))
         if cmd_num == CMD_JUQING_INFO:
@@ -5433,6 +5481,180 @@ class Session:
             except Exception:
                 pass
 
+    def prop_duoxuan(self, msg):
+        """Command 30305: PropStageAction.duoxuanlibao -> duoXuanLiBao.
+
+        C> is [bagSlot, choiceKey] (choiceKey is a libao1..4 key). Bad
+        shapes or types are silent like Java's casts; a missing slot
+        replies [0, 1005], short YB [0, 1002], a full bag [0, 1006],
+        and a failed take [0, 100009]. Unknown boxes or choices stay
+        silent (Java NPEs on the missing config). Success consumes one
+        box, decrs the YB cost, grants the choice, pushes 30304
+        [configId, [[goodsId, count]]] ahead of the [1, bagId] reply.
+        """
+        args = msg if isinstance(msg, (list, tuple)) else None
+        if args is None or len(args) != 2:
+            return None
+        slot, choice = args[0], args[1]
+        if isinstance(slot, bool) or not isinstance(slot, int):
+            return None
+        if not isinstance(choice, str) or not choice:
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            box_row = self.get_role_bag_slot(rid, slot)
+        except Exception:
+            box_row = None
+        if box_row is None:
+            return frame(amf3_encode(
+                [str(CMD_PROP_DUOXUAN), [0, GENERAL_GOODS]]))
+        cfg = self.config.duoxuan_box(str(box_row.get('goods_id')))
+        if cfg is None:
+            return None
+        opt = cfg['options'].get(choice)
+        if opt is None:
+            return None
+        gold = opt['gold']
+        if gold:
+            try:
+                have = int(role.get('lingshi') or 0)
+            except (TypeError, ValueError):
+                have = 0
+            if have < gold:
+                return frame(amf3_encode(
+                    [str(CMD_PROP_DUOXUAN), [0, GENERAL_YB]]))
+        for gid, count, bind in opt['goods']:
+            if not self._prop_fits(rid, {'goods': gid, 'count': count},
+                                   bind):
+                return frame(amf3_encode(
+                    [str(CMD_PROP_DUOXUAN), [0, GENERAL_NOSLOT]]))
+        if not self._prop_decr(rid, box_row):
+            return frame(amf3_encode(
+                [str(CMD_PROP_DUOXUAN), [0, PROP_ERROR_100009]]))
+        if gold:
+            self._bag_money_decr(rid, 'YB', gold)
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in opt['goods']])
+        pairs = [[gid, count] for gid, count, _ in opt['goods']]
+        log.info('conn %d: duoxuan %r -> %r (events skipped, no bus)',
+                 self.conn_id, box_row.get('goods_id'), choice)
+        return (frame(amf3_encode(
+                    [str(CMD_LIHE_PREVIEW), [cfg['id'], pairs]])),
+                frame(amf3_encode(
+                    [str(CMD_PROP_DUOXUAN), [1, box_row.get('bag_id')]])))
+
+    def prop_youhui(self, msg):
+        """Command 30306: PropStageAction.yougHuiQuanLiBao.
+
+        C> is [bagSlot]. Guards, error codes, and the 30304 push ahead
+        of the [1, bagId] reply mirror duoXuanLiBao, except a failed
+        take replies [0, 100008] and the reward/cost come from
+        youhuiquan.jat (single fixed parcel plus the YB libaocost).
+        """
+        args = msg if isinstance(msg, (list, tuple)) else None
+        if args is None or len(args) != 1:
+            return None
+        slot = args[0]
+        if isinstance(slot, bool) or not isinstance(slot, int):
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            box_row = self.get_role_bag_slot(rid, slot)
+        except Exception:
+            box_row = None
+        if box_row is None:
+            return frame(amf3_encode(
+                [str(CMD_PROP_YOUHUI), [0, GENERAL_GOODS]]))
+        cfg = self.config.youhui_box(str(box_row.get('goods_id')))
+        if cfg is None:
+            return None
+        cost = cfg['cost']
+        if cost:
+            try:
+                have = int(role.get('lingshi') or 0)
+            except (TypeError, ValueError):
+                have = 0
+            if have < cost:
+                return frame(amf3_encode(
+                    [str(CMD_PROP_YOUHUI), [0, GENERAL_YB]]))
+        for gid, count, bind in cfg['goods']:
+            if not self._prop_fits(rid, {'goods': gid, 'count': count},
+                                   bind):
+                return frame(amf3_encode(
+                    [str(CMD_PROP_YOUHUI), [0, GENERAL_NOSLOT]]))
+        if not self._prop_decr(rid, box_row):
+            return frame(amf3_encode(
+                [str(CMD_PROP_YOUHUI), [0, PROP_ERROR_100008]]))
+        if cost:
+            self._bag_money_decr(rid, 'YB', cost)
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in cfg['goods']])
+        pairs = [[gid, count] for gid, count, _ in cfg['goods']]
+        log.info('conn %d: youhui %r opened (events skipped, no bus)',
+                 self.conn_id, box_row.get('goods_id'))
+        return (frame(amf3_encode(
+                    [str(CMD_LIHE_PREVIEW), [cfg['id'], pairs]])),
+                frame(amf3_encode(
+                    [str(CMD_PROP_YOUHUI), [1, box_row.get('bag_id')]])))
+
+    def prop_teshu_count(self, msg):
+        """Command 30307: getTeShuTypeCount answers the daily use count.
+
+        C> is the bare special-type string (non-strings are silent
+        like Java's cast). Stale day rows reset to 0 first
+        (clearTeShuTypeCount: a useStartTime off today re-arms
+        useCount 0 with a fresh stamp); missing rows answer 0.
+        """
+        if not isinstance(msg, str):
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            row = self.get_role_prop(rid, msg)
+        except Exception:
+            row = None
+        if row is not None and not self._prop_count_today(row):
+            try:
+                self.save_role_prop(rid, msg, use_count=0,
+                                    use_start_time=int(time.time() * 1000))
+            except Exception:
+                pass
+            count = 0
+        elif row is None:
+            count = 0
+        else:
+            try:
+                count = int(row.get('use_count') or 0)
+            except (TypeError, ValueError):
+                count = 0
+        return frame(amf3_encode([str(CMD_PROP_TESHU), count]))
+
+    @staticmethod
+    def _prop_count_today(row):
+        """dayIsToday over a role_prop use_start_time (server-local day)."""
+        try:
+            stamp = int(row.get('use_start_time') or 0)
+        except (TypeError, ValueError):
+            return False
+        if stamp <= 0:
+            return False
+        now = int(time.time() * 1000)
+        return (time.localtime(stamp / 1000)[:3] ==
+                time.localtime(now / 1000)[:3])
+
     def _prop_fits(self, rid, fixed, bind):
         """checkBagSlots: reward stacks plus empty slots cover it."""
         try:
@@ -6931,6 +7153,211 @@ class Session:
         return frame(amf3_encode(
             [str(CMD_MALL_BUY),
              [1, [str(goods_id), count, total, money_type]]]))
+
+    def buyback_map(self, role, row):
+        """One StoreGoodsOutput.formart map for a buyback row (32002/32005)."""
+        category = (self.config.goods_category(row.get('goods_id'))
+                    if self.config else None)
+        vo = None
+        if category == '20' and row.get('attributes'):
+            try:
+                vo = equip_vo(row.get('attributes'))
+            except Exception:
+                vo = None
+        fight = (self.config.equip_item_fight(row)
+                 if self.config is not None and vo is not None else 0)
+        exp_val = self._bag_exp_cell(row) if category in ('100', '108') else 0
+        return {
+            '0': str(row.get('goods_id')),
+            '1': str(row.get('buyback_id') or row.get('goods_id')),
+            '2': row.get('slot_num'),
+            '3': row.get('count') or 0,
+            '4': str(role.get('id')),
+            '5': row.get('item_level') or 0,
+            '6': row.get('rare_level') or 0,
+            '7': row.get('bind') or 0,
+            '8': row.get('expire_time'),
+            '9': _fujia_wire(fujia_client_map(vo)) if vo is not None else None,
+            '10': xingxing_lv(vo) if vo is not None else 0,
+            '11': None,
+            '12': fight,
+            '13': '',
+            '14': qh_xingxings_client(vo) if vo is not None else None,
+            '15': exp_val if category == '100' else 0,
+            '16': 0,
+            '17': exp_val if category == '108' else 0,
+        }
+
+    def buyback_record(self, role, row):
+        """One StoreGoodsOutput.formart1 record (18 slots) for a buyback row."""
+        shared = self.buyback_map(role, row)
+        return [shared['0'], shared['1'], shared['2'], shared['3'],
+                shared['4'], shared['5'], shared['6'], shared['7'],
+                shared['8'], shared['9'], shared['10'], shared['11'],
+                shared['12'], shared['13'], shared['14'], shared['15'],
+                shared['16'], shared['17']]
+
+    @staticmethod
+    def _buyback_created(row):
+        """Createtime as int for the eviction sort (missing reads as 0)."""
+        try:
+            return int(row.get('createtime') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def buyback_sell(self, msg):
+        """Command 32002: GoodsBuyBackServiceImpl.addGoodsBuyBack.
+
+        C> [bagGuid, countArg]: the count arg is parsed but never read by
+        the service (the whole stack sells), so any int is accepted. A
+        missing bag row answers nothing (Java returns null); a missing
+        goods config replies [0, '430405']. At 27 stored rows the oldest
+        (createtime ascending, the GoodsBackComppator order) is evicted
+        with a 32005 [evictedId, formart] push before the 32002 reply.
+        The sell price (recycle x count) is paid in YXB; the sell/buyback
+        events have no bus here, so that tail is logged and skipped.
+        """
+        args = self.safe(msg, 1, []) or []
+        if len(args) < 2:
+            return None
+        guid = args[0]
+        if not guid or not isinstance(guid, str):
+            return None
+        if isinstance(args[1], bool) or not isinstance(args[1], int):
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            src = self.get_role_bag_slot_by_bag_id(rid, guid)
+        except Exception:
+            src = None
+        if src is None:
+            return None
+        recycle = self.config.goods_recycle(src.get('goods_id'))
+        if recycle is None:
+            return frame(amf3_encode(
+                [str(CMD_BUYBACK_SELL), [0, BUYBACK_ERR_NO_CONFIG]]))
+        self.delete_role_bag_slot(rid, src.get('slot_num'))
+        entity = {'buyback_id': str(guid),
+                  'slot_num': src.get('slot_num'),
+                  'goods_id': src.get('goods_id'),
+                  'count': src.get('count') or 0,
+                  'bind': src.get('bind') or 0,
+                  'expire_time': src.get('expire_time'),
+                  'rare_level': src.get('rare_level') or 0,
+                  'item_level': src.get('item_level') or 0,
+                  'attributes': src.get('attributes'),
+                  'createtime': int(time.time() * 1000)}
+        frames = []
+        try:
+            stored = self.get_role_buyback_all(rid) or []
+        except Exception:
+            stored = []
+        if len(stored) >= BUYBACK_MAX_ROWS:
+            oldest = sorted(stored, key=self._buyback_created)[0]
+            frames.append(frame(amf3_encode(
+                [str(CMD_BUYBACK_EVICT),
+                 [oldest.get('buyback_id'),
+                  self.buyback_map(role, entity)]])))
+            self.delete_role_buyback(rid, oldest.get('buyback_id'))
+        self.insert_role_buyback(rid, entity)
+        try:
+            total = int(role.get('tongqian') or 0) + \
+                recycle * int(src.get('count') or 0)
+        except (TypeError, ValueError):
+            total = int(role.get('tongqian') or 0)
+        self.save_role_state(rid, tongqian=total)
+        log.info('conn %d: sold %r (no event bus; skipped)',
+                 self.conn_id, src.get('goods_id'))
+        frames.append(frame(amf3_encode(
+            [str(CMD_BUYBACK_SELL), [1, self.buyback_map(role, entity)]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def buyback_huigou(self, msg):
+        """Command 32003: GoodsBuyBackServiceImpl.removeGoodsBuyBack.
+
+        C> is the buyback id (the sold bag guid); anything else is silent.
+        A missing row answers nothing (Java returns null). The price
+        (recycle x count) is checked then paid in YXB: short money replies
+        [0, '1003'], no bag room [0, '1006']. Success deletes the row,
+        restores the stack with its bind flag, and replies the
+        GetGoodsBuyBackOutPut.getData triple [1, id, [record], price].
+        """
+        args = self.safe(msg, 1, []) or []
+        if not args:
+            return None
+        guid = args[0]
+        if not guid or not isinstance(guid, str):
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            row = self.get_role_buyback(rid, guid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        recycle = self.config.goods_recycle(row.get('goods_id'))
+        if recycle is None:
+            return frame(amf3_encode(
+                [str(CMD_BUYBACK_HUIGOU), [0, BUYBACK_ERR_NO_CONFIG]]))
+        try:
+            price = recycle * int(row.get('count') or 0)
+            balance = int(role.get('tongqian') or 0)
+        except (TypeError, ValueError):
+            return frame(amf3_encode(
+                [str(CMD_BUYBACK_HUIGOU), [0, BUYBACK_ERR_JB_SHORT]]))
+        if balance < price:
+            return frame(amf3_encode(
+                [str(CMD_BUYBACK_HUIGOU), [0, BUYBACK_ERR_JB_SHORT]]))
+        if not self._prop_fits(rid, {'goods': row.get('goods_id'),
+                                     'count': row.get('count') or 0},
+                               row.get('bind') or 0):
+            return frame(amf3_encode(
+                [str(CMD_BUYBACK_HUIGOU), [0, BUYBACK_ERR_NO_SLOT]]))
+        self.delete_role_buyback(rid, guid)
+        self._task_grant(rid, [{'goods_id': row.get('goods_id'),
+                                'count': row.get('count') or 0,
+                                'bind': row.get('bind') or 0,
+                                'expire': row.get('expire_time')}])
+        self.save_role_state(rid, tongqian=balance - price)
+        log.info('conn %d: bought back %r (no event bus; skipped)',
+                 self.conn_id, row.get('goods_id'))
+        return frame(amf3_encode(
+            [str(CMD_BUYBACK_HUIGOU),
+             [1, str(guid), [self.buyback_record(role, row)], price]]))
+
+    def buyback_list(self):
+        """Command 32004: getGoodsBuyBackAll -> formart1 list or null."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        try:
+            rows = self.get_role_buyback_all(role.get('id')) or []
+        except Exception:
+            rows = []
+        records = [self.buyback_record(role, row) for row in rows]
+        return frame(amf3_encode([str(CMD_BUYBACK_LIST), records or None]))
+
+    def gonghui_mall_count(self):
+        """Command 32006: getGongHuiMallBuyCount, always null here.
+
+        Java answers null without a RoleMallBangpai row (or with an empty
+        mallDate map); the guild mall that writes that row is unmigrated,
+        so the row can never exist and the reply stays null.
+        """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        return frame(amf3_encode([str(CMD_GONGHUI_MALL_COUNT), None]))
 
     def zuwu_info(self):
         """Command 111000: [entries[], wuhunsuipianCount].

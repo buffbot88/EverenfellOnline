@@ -1352,6 +1352,210 @@ class MallBuyTest(unittest.TestCase):
                          ['32001', [1, ['xuechi', 1, 15, 2]]])
 
 
+class MallBuyBackTest(unittest.TestCase):
+    """Commands 32002/32003/32004/32006 goldens: GoodsBuyBackAction + service.
+
+    Oracle: GoodsBuyBackAction sellGoodsBuyBack/goodsHuiGou/getGoodsBuyBack
+    parsing, BuyBackModuleInit routes (32002/32003/32004), MallModuleInit
+    (32006), GoodsBuyBackServiceImpl add/remove/getAll/model2Entity, the
+    GoodsBackComppator createtime-ascending eviction at 27 rows, and
+    GetGoodsBuyBackOutPut getData/getError shapes via tools/javap.py.
+    32005 is a server push with no inbound route (ledger push-only, like
+    30104/30105); 32006 stays null (the guild mall that writes
+    RoleMallBangpai is unmigrated, and Java answers null without the row).
+    """
+
+    def setUp(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        self.store = temp_store(cleanups)
+        self.store.create_account('hero', 'x')
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56, tongqian=10000,
+            bind_lingshi=5000, lingshi=1000)
+        cfg = os.path.normpath(os.path.join(os.path.dirname(__file__), '..',
+                                            DEFAULT_CONFIG_DIR))
+        self.s = Session(
+            conn_id=7, check_sign=check_sign,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=1234567890000,
+            save_role_state=self.store.update_character_state,
+            get_role_bag_slots=self.store.get_role_bag_slots,
+            get_role_bag_state=self.store.get_role_bag_state,
+            get_role_bag_slot_by_bag_id=
+            self.store.get_role_bag_slot_by_bag_id,
+            update_role_bag_slot=self.store.update_role_bag_slot,
+            delete_role_bag_slot=self.store.delete_role_bag_slot,
+            insert_role_bag_slot=self.store.insert_role_bag_slot,
+            get_role_buyback_all=self.store.get_role_buyback_all,
+            get_role_buyback=self.store.get_role_buyback,
+            insert_role_buyback=self.store.insert_role_buyback,
+            delete_role_buyback=self.store.delete_role_buyback,
+            config=GameConfig(cfg))
+        self.s.authed_user, self.s.server_id = 'hero', 'fu1304'
+        self.store.save_role_bag_state(self.role_id, bag_capacity=144,
+                                       storage_capacity=30)
+
+    def role(self):
+        return self.store.list_roles('hero', 'fu1304')[0]
+
+    def seed_bag(self, bag_id, goods, count, slot=1, bind=0):
+        self.store.save_role_bag_slots(
+            self.role_id, [{'slot_num': slot, 'bag_id': bag_id,
+                            'goods_id': goods, 'count': count, 'bind': bind}])
+
+    def seed_buyback(self, bid, goods, count, created, bind=0):
+        self.store.insert_role_buyback(
+            self.role_id, {'buyback_id': bid, 'slot_num': 5,
+                           'goods_id': goods, 'count': count, 'bind': bind,
+                           'expire_time': None, 'rare_level': 0,
+                           'item_level': 0, 'attributes': None,
+                           'createtime': created})
+
+    @staticmethod
+    def assoc(m):
+        """Unwrap the decoder's dynamic-object envelope around formart maps."""
+        return m.get('__assoc__', m)
+
+    def sell(self, *args):
+        out = self.s.buyback_sell([32002, list(args)])
+        if out is None:
+            return None
+        if isinstance(out, tuple):
+            return tuple(amf3.decode(f[4:]) for f in out)
+        return amf3.decode(out[4:])
+
+    def huigou(self, *args):
+        out = self.s.buyback_huigou([32003, list(args)])
+        return None if out is None else amf3.decode(out[4:])
+
+    def test_sell_pays_recycle_and_moves_row_to_buyback(self):
+        # xuechi recycles at 10; a stack of 2 pays 20 YXB.
+        self.seed_bag('g1', 'xuechi', 2)
+        env = self.sell('g1', 1)
+        self.assertEqual(env[0], '32002')
+        self.assertEqual(env[1][0], 1)
+        sold = self.assoc(env[1][1])
+        self.assertEqual((sold['0'], sold['1'], sold['3'], sold['4']),
+                         ('xuechi', 'g1', 2, str(self.role_id)))
+        self.assertIsNone(
+            self.store.get_role_bag_slot_by_bag_id(self.role_id, 'g1'))
+        kept = self.store.get_role_buyback(self.role_id, 'g1')
+        self.assertEqual((kept['goods_id'], kept['count']), ('xuechi', 2))
+        self.assertEqual(self.role()['tongqian'], 10020)
+
+    def test_sell_count_arg_is_parsed_but_ignored(self):
+        self.seed_bag('g1', 'xuechi', 2)
+        env = self.sell('g1', 99)
+        self.assertEqual(env[1][0], 1)
+        self.assertIsNone(
+            self.store.get_role_bag_slot_by_bag_id(self.role_id, 'g1'))
+        self.assertEqual(self.role()['tongqian'], 10020)
+
+    def test_sell_missing_row_is_silent(self):
+        self.assertIsNone(self.sell('nope', 1))
+        self.assertEqual(self.role()['tongqian'], 10000)
+
+    def test_sell_unknown_goods_replies_430405_with_bag_intact(self):
+        self.seed_bag('g1', 'no-such-goods', 1)
+        self.assertEqual(self.sell('g1', 1), ['32002', [0, '430405']])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot_by_bag_id(self.role_id, 'g1'))
+        self.assertEqual(
+            self.store.get_role_buyback_all(self.role_id), [])
+
+    def test_sell_evicts_oldest_with_a_32005_push_at_27(self):
+        for i in range(1, 28):
+            self.seed_buyback('b%d' % i, 'xuechi', 1, i)
+        self.seed_bag('g1', 'xuechi', 1)
+        env = self.sell('g1', 1)
+        self.assertIsInstance(env, tuple)
+        self.assertEqual(len(env), 2)
+        self.assertEqual(env[0][0], '32005')
+        self.assertEqual(env[0][1][0], 'b1')
+        self.assertEqual(self.assoc(env[0][1][1])['1'], 'g1')
+        self.assertEqual(env[1][0], '32002')
+        self.assertEqual(env[1][1][0], 1)
+        self.assertEqual(self.assoc(env[1][1][1]),
+                         self.assoc(env[0][1][1]))
+        self.assertIsNone(self.store.get_role_buyback(self.role_id, 'b1'))
+        kept = self.store.get_role_buyback_all(self.role_id)
+        self.assertEqual(len(kept), 27)
+        self.assertEqual(kept[0]['buyback_id'], 'b2')
+        self.assertEqual(kept[-1]['buyback_id'], 'g1')
+
+    def test_huigou_restores_the_stack_for_recycle_times_count(self):
+        self.seed_buyback('g1', 'xuechi', 2, 7)
+        env = self.huigou('g1')
+        self.assertEqual(env[0], '32003')
+        self.assertEqual(env[1][0], 1)
+        self.assertEqual(env[1][1], 'g1')
+        record = env[1][2][0]
+        self.assertEqual(len(record), 18)
+        self.assertEqual(record[0], 'xuechi')
+        self.assertEqual(record[1], 'g1')
+        self.assertEqual(record[3], 2)
+        self.assertEqual(record[4], str(self.role_id))
+        self.assertEqual(env[1][3], 20)
+        self.assertEqual(self.role()['tongqian'], 9980)
+        self.assertIsNone(self.store.get_role_buyback(self.role_id, 'g1'))
+        held = [s for s in
+                self.store.get_role_bag_slots(self.role_id, 1, 150)
+                if s['goods_id'] == 'xuechi']
+        self.assertEqual(sum(s['count'] for s in held), 2)
+
+    def test_huigou_missing_row_is_silent(self):
+        self.assertIsNone(self.huigou('nope'))
+        self.assertEqual(self.role()['tongqian'], 10000)
+
+    def test_huigou_short_money_replies_1003_with_row_intact(self):
+        self.seed_buyback('g1', 'xuechi', 2, 7)
+        self.store.update_character_state(self.role_id, tongqian=10)
+        self.assertEqual(self.huigou('g1'), ['32003', [0, '1003']])
+        self.assertIsNotNone(
+            self.store.get_role_buyback(self.role_id, 'g1'))
+        self.assertEqual(self.role()['tongqian'], 10)
+
+    def test_huigou_full_bag_replies_1006(self):
+        # zj0013 stacks to 1, so a zero-capacity bag has no room.
+        self.store.save_role_bag_state(self.role_id, bag_capacity=0,
+                                       storage_capacity=30)
+        self.seed_buyback('g9', 'zj0013', 1, 7)
+        self.assertEqual(self.huigou('g9'), ['32003', [0, '1006']])
+        self.assertIsNotNone(
+            self.store.get_role_buyback(self.role_id, 'g9'))
+
+    def test_list_empty_is_null_and_rows_come_oldest_first(self):
+        out = self.s.buyback_list()
+        self.assertEqual(amf3.decode(out[4:]), ['32004', None])
+        self.seed_buyback('new', 'xuechi', 1, 9)
+        self.seed_buyback('old', 'xuechi', 1, 3)
+        out = self.s.buyback_list()
+        env = amf3.decode(out[4:])
+        self.assertEqual(env[0], '32004')
+        self.assertEqual([r[1] for r in env[1]], ['old', 'new'])
+
+    def test_gonghui_mall_count_stays_null_without_guild(self):
+        out = self.s.gonghui_mall_count()
+        self.assertEqual(amf3.decode(out[4:]), ['32006', None])
+
+    def test_entry_guards_are_silent(self):
+        self.assertIsNone(self.s.buyback_sell([32002, []]))
+        self.assertIsNone(self.s.buyback_sell([32002, ['g1']]))
+        self.assertIsNone(self.s.buyback_sell([32002, [123, 1]]))
+        self.assertIsNone(self.s.buyback_sell([32002, ['g1', 'x']]))
+        self.assertIsNone(self.s.buyback_sell([32002, ['g1', True]]))
+        self.assertIsNone(self.s.buyback_huigou([32003, []]))
+        self.assertIsNone(self.s.buyback_huigou([32003, [123]]))
+
+    def test_dispatched_as_32004(self):
+        self.s.feed(CAPTURED_INITKEY)
+        out = self.s.feed(frame(
+            self.s.cipher.encode(amf3.encode([32004, []]))))
+        self.assertEqual(amf3.decode(out[0][4:]), ['32004', None])
+
+
 class TestEntryBuffs(unittest.TestCase):
     """Phase 2 entry pushes: 42100 buff flush, 42005 skill cooldown, 40501.
 

@@ -96,6 +96,7 @@ CMD_MALL_BUY = 32001
 CMD_BUYBACK_SELL = 32002
 CMD_BUYBACK_HUIGOU = 32003
 CMD_BUYBACK_LIST = 32004
+CMD_BAGDUMMY_DUIHUAN = 93002
 CMD_BUYBACK_EVICT = 32005
 CMD_GONGHUI_MALL_COUNT = 32006
 # GoodsBuyBackError codes are Strings on the wire (unlike the int General
@@ -115,6 +116,8 @@ CMD_SETTING_PANEL = 13002
 CMD_SETTING_UI = 13003
 CMD_SETTING_GUAJI = 13004
 CMD_ROLE_ATTRS = 12000
+CMD_ROLE_EXP_PUSH = 12001
+CMD_ROLE_ZHENQI_CAP = 12050
 CMD_ZUOQI_INFO = 12102
 CMD_EQUIP_INFO = 31000
 CMD_EQUIP_QIANGHUA = 34000
@@ -478,6 +481,7 @@ class Session:
                  delete_role_skillbook_slot=None,
                  get_role_buyback_all=None,
                  get_role_buyback=None,
+                 get_role_bag_dummy=None,
                  insert_role_buyback=None,
                  delete_role_buyback=None,
                  get_role_prop=None,
@@ -540,6 +544,8 @@ class Session:
                                      or (lambda role_id: []))
         self.get_role_buyback = (get_role_buyback
                                  or (lambda r, b: None))
+        self.get_role_bag_dummy = (get_role_bag_dummy
+                                   or (lambda role_id: []))
         self.insert_role_buyback = (insert_role_buyback
                                     or (lambda r, row: False))
         self.delete_role_buyback = (delete_role_buyback
@@ -880,6 +886,8 @@ class Session:
             return self.buyback_huigou(msg)
         if cmd_num == CMD_BUYBACK_LIST:
             return self.buyback_list()
+        if cmd_num == CMD_BAGDUMMY_DUIHUAN:
+            return self.bagdummy_info()
         if cmd_num == CMD_GONGHUI_MALL_COUNT:
             return self.gonghui_mall_count()
         if cmd_num == CMD_JUQING_AWARD:
@@ -2323,7 +2331,7 @@ class Session:
                if self.config is not None else None)
         if row is not None:
             frames.append(frame(amf3_encode(
-                ['12050', [int(role.get('zhenqi') or 0),
+                [str(CMD_ROLE_ZHENQI_CAP), [int(role.get('zhenqi') or 0),
                            int(row.get('zhenqi') or 0)]])))
             # Java writes the map as an AMF3 object (marker 0x0A), not an
             # ECMA array; Obj produces the same shape on the wire.
@@ -7876,6 +7884,22 @@ class Session:
             rows = []
         records = [self.buyback_record(role, row) for row in rows]
         return frame(amf3_encode([str(CMD_BUYBACK_LIST), records or None]))
+
+    def bagdummy_info(self):
+        """Command 93002: bagdummyService.getInfo -> [[goodsId, count], ...] or [].
+
+        Java answers an empty Object[] when the role has no dummy rows, never null.
+        """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        try:
+            rows = self.get_role_bag_dummy(role.get('id')) or []
+        except Exception:
+            rows = []
+        pairs = [[r['goods_id'], int(r['goods_count'] or 0)] for r in rows]
+        return frame(amf3_encode([str(CMD_BAGDUMMY_DUIHUAN), pairs]))
 
     def gonghui_mall_count(self):
         """Command 32006: getGongHuiMallBuyCount, always null here.

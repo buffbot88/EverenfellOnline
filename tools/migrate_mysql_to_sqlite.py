@@ -126,6 +126,7 @@ def plan_counts(mysql, users):
              'role_shenjiang': ' ' + role_filter(role_ids),
              'role_bag_slot': ' ' + role_filter(role_ids),
              'role_bag_buyback': ' ' + role_filter(role_ids),
+             'role_bag_dummy': ' ' + role_filter(role_ids),
              'role_prop': ' ' + role_filter(role_ids),
              'role_skillbook_slot': ' ' + role_filter(role_ids),
              'role_bag_state': ' ' + role_filter(role_ids),
@@ -143,6 +144,7 @@ def plan_counts(mysql, users):
               'role_skill': ('dntg', 'role_skill'),
               'role_shenjiang': ('dntg', 'role_shenjiang'),               'role_bag_slot': ('dntg', 'role_bag_slot'),
                'role_bag_buyback': ('dntg', 'role_bag_buyback'),
+               'role_bag_dummy': ('dntg', 'role_bag_dummy'),
                'role_prop': ('dntg', 'role_prop'),
                'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
               'role_bag_state': ('dntg', 'role_bag_state'),
@@ -216,6 +218,9 @@ def migrate(mysql, db_path, users, dry_run=False):
                                   'attributes,createTime from role_bag_buyback '
                                   + role_where
                                   + ' order by user_role_id')
+    bag_dummy = mysql.query('dntg', 'select id,user_role_id,goods_id,goods_count'
+                                    ' from role_bag_dummy ' + role_where
+                                    + ' order by id')
     role_props = mysql.query('dntg', 'select user_role_id,goods_id,'
                                      'use_start_time,use_stop_time,'
                                      'surplus_value,surplus_time,use_count'
@@ -471,6 +476,20 @@ def migrate(mysql, db_path, users, dry_run=False):
                  as_int(rare_level) or 0, as_int(item_level) or 0, attributes,
                  as_int(createtime) or 0))
             report['buyback_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_bag_dummy(id TEXT PRIMARY KEY,'
+                     ' role_id INTEGER NOT NULL, goods_id TEXT NOT NULL,'
+                     ' goods_count INTEGER DEFAULT 0)')
+        for row in bag_dummy:
+            dummy_id, user_role_id, goods_id, goods_count = (row + [None] * 4)[:4]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not dummy_id or not goods_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_bag_dummy(id, role_id, goods_id, goods_count)'
+                ' VALUES(?,?,?,?)'
+                ' ON CONFLICT(id) DO UPDATE SET role_id=excluded.role_id,'
+                ' goods_id=excluded.goods_id, goods_count=excluded.goods_count',
+                (dummy_id, local_id, goods_id, as_int(goods_count) or 0))
         conn.execute('CREATE TABLE IF NOT EXISTS role_prop(role_id INTEGER NOT NULL,'
                      ' goods_id TEXT NOT NULL, use_start_time INTEGER,'
                      ' use_stop_time INTEGER, surplus_value INTEGER,'

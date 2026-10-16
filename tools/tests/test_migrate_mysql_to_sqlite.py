@@ -80,6 +80,7 @@ class ScopeTest(unittest.TestCase):
                                   'role_zuoqi': 1, 'role_skill': 1,
                                   'role_shenjiang': 1, 'role_bag_slot': 1,
                                   'role_bag_buyback': 1,
+                                  'role_bag_dummy': 1,
                                   'role_prop': 1,
                                   'role_skillbook_slot': 1,
                                   'role_bag_state': 1, 'task_main': 1})
@@ -146,6 +147,8 @@ class FakeDataMySql:
         if 'from role_bag_slot' in sql:
             return [['fu0RBS1-0-1-77', '36', '7', 'silver50', '1', '1',
                      '0', '3', '1', None]]
+        if 'from role_bag_dummy' in sql:
+            return [['fu0RBD1-0-1-1', '7', 'silver50', '3']]
         if 'from role_prop' in sql:
             return [['7', 'teshu_fire', '1394468076000', None, None,
                      None, '3']]
@@ -245,6 +248,11 @@ class MigrateCharactersTest(unittest.TestCase):
         self.assertEqual(skill['category'], 'niumowang1')
         self.assertEqual(skill['level'], 1)
         self.assertEqual(report['skills_written'], 1)
+        dummy = conn.execute('SELECT * FROM role_bag_dummy').fetchone()
+        self.assertEqual(dummy['id'], 'fu0RBD1-0-1-1')
+        self.assertEqual(dummy['role_id'], row['id'])   # legacy 7 -> local id
+        self.assertEqual(dummy['goods_id'], 'silver50')
+        self.assertEqual(dummy['goods_count'], 3)
         conn.close()
 
 

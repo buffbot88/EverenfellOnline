@@ -37,6 +37,17 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(aa.ledger_status('42002', set(), {'x.py'}),
                          'not started')
 
+    def test_push_ids_need_emission_and_a_test_for_golden(self):
+        self.assertEqual(aa.ledger_status('12001', set(), {'x.py'}, True),
+                         'push-golden-tested')
+        self.assertEqual(aa.ledger_status('12001', set(), set(), True),
+                         'emitted')
+
+    def test_emitted_ids_come_from_outbound_frames(self):
+        emitted = aa.load_python_emitted()
+        self.assertIn('12001', emitted)   # literal list head in combat.py
+        self.assertIn('12050', emitted)   # str(CMD_ROLE_ZHENQI_CAP)
+
     def test_test_refs_match_whole_ids_only(self):
         refs = aa.find_test_refs({'1000', '10001'})
         # '10001' contains '1000' only as a substring; it must not count for '1000'.

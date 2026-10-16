@@ -75,6 +75,25 @@ def load_python_commands():
     return {str(values[name]) for name in used if name in values}
 
 
+def load_python_emitted():
+    """Command IDs the server code sends as outbound frames (pushes and replies)."""
+    values = {}
+    for path in glob.glob(os.path.join(ROOT, 'Server-v1', 'game', '*.py')):
+        with open(path, encoding='utf-8') as f:
+            src = f.read()
+        values.update({m.group(1): int(m.group(2))
+                       for m in re.finditer(r'^(CMD_\w+)\s*=\s*(\d+)', src, re.M)})
+    emitted = set()
+    for path in glob.glob(os.path.join(ROOT, 'Server-v1', 'game', '*.py')):
+        with open(path, encoding='utf-8') as f:
+            src = f.read()
+        for name in re.findall(r'str\(\s*(CMD_\w+)\s*\)', src):
+            if name in values:
+                emitted.add(str(values[name]))
+        emitted.update(re.findall(r"\[\s*['\"](\d{4,6})['\"]\s*,", src))
+    return emitted
+
+
 def load_mysql_tables():
     dumps = sorted(glob.glob(os.path.join(ROOT, 'output', 'orig-stack',
                                           'mysql-backup-*.sql')))
@@ -232,16 +251,24 @@ def find_test_refs(cmd_ids):
     return refs
 
 
-def ledger_status(cmd, py_ids, test_refs):
-    """not started < dispatched < golden-tested. Dispatch alone is not parity."""
+def ledger_status(cmd, py_ids, test_refs, emitted=False):
+    """not started < dispatched < golden-tested. Dispatch alone is not parity.
+
+    Server pushes have no inbound route; they are 'emitted', or
+    'push-golden-tested' when a test mentions them.
+    """
     if cmd in py_ids and test_refs:
         return 'golden-tested'
     if cmd in py_ids:
         return 'dispatched'
+    if emitted and test_refs:
+        return 'push-golden-tested'
+    if emitted:
+        return 'emitted'
     return 'not started'
 
 
-def render_ledger(commands, families, py_ids):
+def render_ledger(commands, families, py_ids, emitted=frozenset()):
     """One row per Java command ID: family, status and the tests that mention it."""
     test_refs = find_test_refs(set(commands))
     id_family = {}
@@ -257,14 +284,18 @@ def render_ledger(commands, families, py_ids):
              '- `dispatched`: routed, but no test mentions the ID.',
              '- `golden-tested`: routed and a test file mentions the ID. The test '
              'mention is a weak signal; read the test before trusting it.',
+             '- `emitted`: the server sends the ID as a push or reply, but no '
+             '`CMD_*` route exists. No test mentions it.',
+             '- `push-golden-tested`: emitted, and a test file mentions the ID.',
              '',
              'Status counts are computed from the artifacts; regenerate instead of '
              'editing by hand.',
              '']
-    counts = {'not started': 0, 'dispatched': 0, 'golden-tested': 0}
+    counts = {'not started': 0, 'dispatched': 0, 'golden-tested': 0,
+              'emitted': 0, 'push-golden-tested': 0}
     rows = []
     for cmd in sorted(commands, key=lambda c: (len(c), c)):
-        status = ledger_status(cmd, py_ids, test_refs[cmd])
+        status = ledger_status(cmd, py_ids, test_refs[cmd], cmd in emitted)
         counts[status] += 1
         tests = ', '.join(sorted(test_refs[cmd])) or '-'
         rows.append(f'| `{cmd}` | {id_family.get(cmd, "-")} | {status} | {tests} |')
@@ -290,7 +321,8 @@ def main():
     commands, families = load_java()
     py_ids = load_python_commands()
     if args.ledger:
-        text, counts = render_ledger(commands, families, py_ids)
+        text, counts = render_ledger(commands, families, py_ids,
+                                     load_python_emitted())
         with open(args.ledger_out, 'w', encoding='utf-8') as f:
             f.write(text)
         print(f'wrote {args.ledger_out}: {counts}')

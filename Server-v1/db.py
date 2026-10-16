@@ -230,6 +230,15 @@ CREATE TABLE IF NOT EXISTS task_main (
   create_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
+-- lists back to the client; the id is the legacy row guid).
+CREATE TABLE IF NOT EXISTS role_bag_dummy (
+  id TEXT PRIMARY KEY,
+  role_id INTEGER NOT NULL,
+  goods_id TEXT NOT NULL,
+  goods_count INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Bag unlock state per role (legacy role_bag_state subset: capacities gate
 -- the 30000 lock VOs; *_slot_time feeds the unlock countdown).
 CREATE TABLE IF NOT EXISTS role_bag_state (
@@ -917,6 +926,15 @@ class Store:
                 (str(role_id), buyback_id))
             self.db.commit()
             return cur.rowcount == 1
+
+    def get_role_bag_dummy(self, role_id):
+        """Bag dummy goods for a role as dicts of goods_id and goods_count."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT goods_id, goods_count FROM role_bag_dummy'
+                ' WHERE role_id=? ORDER BY id',
+                (str(role_id),)).fetchall()
+            return [dict(r) for r in rows]
 
     def get_role_prop(self, role_id, goods_id):
         """One role_prop row by role and goods id, or None."""

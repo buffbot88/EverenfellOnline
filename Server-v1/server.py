@@ -73,6 +73,7 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_role_stage=self.server.save_role_stage,
             get_role_bag_slots=self.server.get_role_bag_slots,
             get_role_bag_state=self.server.get_role_bag_state,
+            get_role_bag_dummy=self.server.get_role_bag_dummy,
             get_role_bag_slot=self.server.get_role_bag_slot,
             get_role_bag_slot_by_bag_id=self.server.get_role_bag_slot_by_bag_id,
             update_role_bag_slot=self.server.update_role_bag_slot,
@@ -203,6 +204,7 @@ def main():
     tcpd.delete_role_skillbook_slot = store.delete_role_skillbook_slot
     tcpd.get_role_buyback_all = store.get_role_buyback_all
     tcpd.get_role_buyback = store.get_role_buyback
+    tcpd.get_role_bag_dummy = store.get_role_bag_dummy
     tcpd.insert_role_buyback = store.insert_role_buyback
     tcpd.delete_role_buyback = store.delete_role_buyback
     tcpd.get_role_prop = store.get_role_prop

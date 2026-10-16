@@ -1376,5 +1376,56 @@ class GiftCodeStubTest(unittest.TestCase):
         self.assertEqual(sess.feed(frame(sess.cipher.encode(amf3.encode(req)))), [])
 
 
+class BagDummyTest(unittest.TestCase):
+    """Command 93002 bagdummyService.getInfo: [[goodsId, count], ...] or []."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(os.path.join(self.tmp.name, 't.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56)
+        self.sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0,
+            get_role_bag_dummy=self.store.get_role_bag_dummy,
+            config=GameConfig(str(REAL_CONFIG)))
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+
+    def seed(self, row_id, goods, count):
+        with self.store.lock:
+            self.store.db.execute(
+                'INSERT INTO role_bag_dummy(id, role_id, goods_id, goods_count)'
+                ' VALUES (?, ?, ?, ?)', (row_id, self.role_id, goods, count))
+            self.store.db.commit()
+
+    def info(self):
+        out = self.sess.bagdummy_info()
+        return decode(out[4:])
+
+    def test_empty_role_gets_empty_array(self):
+        self.assertEqual(self.info(), ['93002', []])
+
+    def test_rows_listed_in_insert_order_as_pairs(self):
+        self.seed('d1', 'silver50', 3)
+        self.seed('d2', 'zj0013', 1)
+        self.assertEqual(self.info(),
+                         ['93002', [['silver50', 3], ['zj0013', 1]]])
+
+    def test_other_roles_rows_are_not_listed(self):
+        other = self.store.create_character(
+            'hero', 'fu1305', 'Bajie', job='C', level=10)
+        with self.store.lock:
+            self.store.db.execute(
+                'INSERT INTO role_bag_dummy(id, role_id, goods_id, goods_count)'
+                ' VALUES (?, ?, ?, ?)', ('x1', other, 'silver50', 9))
+            self.store.db.commit()
+        self.assertEqual(self.info(), ['93002', []])
+
+
 if __name__ == '__main__':
     unittest.main()

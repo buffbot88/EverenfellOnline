@@ -19,10 +19,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from auth import hash_password  # noqa: E402
 from db import Store  # noqa: E402
-from game.amf3 import decode  # noqa: E402
+from game.amf3 import decode, encode as amf3_encode  # noqa: E402
+from game.cipher import SimpleEncrypt  # noqa: E402
 from game.config import (GameConfig, parse_task_goods,  # noqa: E402
                          parse_task_monsters)
-from game.protocol import Session  # noqa: E402
+from game.protocol import Session, frame  # noqa: E402
 
 REAL_CONFIG = (Path(__file__).resolve().parents[2]
                / 'reference' / 'TonNgoKhong' / 'server' / 'config' / 'game')
@@ -152,6 +153,91 @@ class MainTaskFrameTest(unittest.TestCase):
             self.role_id, task_uid='t1', task_id='c001004', state=0,
             condition='D010006;x', recevie_time=1, create_time=1)
         self.assertIsNone(self.sess.main_task())
+
+
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class TaskDispatchTest(MainTaskFrameTest):
+    """Commands 50001/50002/50003/50005/50008 against the real tables.
+
+    Evidence: TaskMainAction (getChapters/getSubChapterInfo/getSelectTaskInfo/
+    completeMainTask/getChapterTipsAttribute) plus TaskCommands constants.
+    50001's 3-arg getChapterList overload unconditionally returns null.
+    """
+
+    def test_chapters_returns_null(self):
+        # Full dispatch path: client [50001, ...] -> ['50001', None].
+        self.sess.cipher = SimpleEncrypt('testkey')
+        payload = self.sess.cipher.encode(amf3_encode([50001, None]))
+        (out,) = self.frames(self.sess.handle(payload))
+        self.assertEqual(out, ['50001', None])
+
+    def test_subchapter_unknown_is_null(self):
+        (out,) = self.frames(self.sess.subchapter_info('nope'))
+        self.assertEqual(out, ['50002', None])
+
+    def test_subchapter_detail_and_vos(self):
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c001001', state=0,
+            condition='', recevie_time=7, create_time=1)
+        (out,) = self.frames(self.sess.subchapter_info('a000001'))
+        self.assertEqual(out[0], '50002')
+        detail, vos = out[1]
+        self.assertEqual(detail[0], 'a000001')
+        self.assertEqual(detail[3], 0)   # running arc
+        self.assertEqual(detail[6], 56)
+        self.assertEqual(len(vos), 56)
+        # Running quest reads live (0); later quests are locked (3).
+        self.assertEqual(vos[0][0], 'c001001')
+        self.assertEqual(vos[0][2], 0)
+        self.assertEqual(vos[1][0], 'c001002')
+        self.assertEqual(vos[1][2], 3)
+
+    def test_task_select_unknown_is_null(self):
+        (out,) = self.frames(self.sess.task_select_info('nope'))
+        self.assertEqual(out, ['50003', None])
+
+    def test_task_select_running_quest(self):
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c001001', state=0,
+            condition='', recevie_time=7, create_time=1)
+        (out,) = self.frames(self.sess.task_select_info('c001001'))
+        self.assertEqual(out,
+                         ['50003', ['c001001', 7.0, [None, None], 0]])
+
+    def test_submit_pays_and_receives_next(self):
+        # c001001 (no reqs) pays: 50005 reward push, 50004 for c001002.
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c001001', state=1,
+            condition='', recevie_time=1, create_time=1)
+        got = self.frames(self.sess.submit_task('c001001'))
+        self.assertEqual([f[0] for f in got], ['50005', '50004'])
+        self.assertEqual(
+            got[0][1],
+            [1, ['c001001',
+                  [['zj0011', 1], ['zj0013', 1],
+                   ['zj0015', 1], ['zj0017', 1]],
+                  100, 5000, 0, 0, 0]])
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual(row['task_id'], 'c001002')
+        self.assertEqual(row['state'], 1)
+
+    def test_submit_unfinished_is_silent(self):
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c001004', state=0,
+            condition='', recevie_time=1, create_time=1)
+        self.assertIsNone(self.sess.submit_task('c001004'))
+
+    def test_chapter_tips_kinds(self):
+        (out,) = self.frames(self.sess.chapter_tips([2, 'a000001']))
+        sub = self.cfg.task_subchapter('a000001')
+        converted = self.cfg.task_attr_index_convert(sub['reward'])
+        self.assertEqual(
+            self.sess.chapter_tips([2, 'a000001']),
+            frame(amf3_encode(['50008', [2, 'a000001', converted]])))
+        self.assertEqual(out[0], '50008')
+        self.assertEqual(out[1][:2], [2, 'a000001'])
+        (plain,) = self.frames(self.sess.chapter_tips([0, 'x']))
+        self.assertEqual(plain, ['50008', [0, 'x', None]])
 
 
 if __name__ == '__main__':

@@ -83,7 +83,9 @@ class ScopeTest(unittest.TestCase):
                                   'role_bag_dummy': 1,
                                   'role_prop': 1,
                                   'role_skillbook_slot': 1,
-                                  'role_bag_state': 1, 'task_main': 1})
+                                  'role_bag_state': 1,
+                                  'role_qq_list': 1, 'vip_qq': 1,
+                                  'task_main': 1})
 
     def test_stage_and_currency_counts_follow_the_selected_roles(self):
         fake = FakeMySql(['7', '9'])
@@ -127,6 +129,10 @@ class FakeDataMySql:
             return [['7', 'sm_001', '3']]
         if 'from role_vip' in sql:
             return [['7', '10', '3', '1', '{"a": 2}', '7', '9']]
+        if 'from role_qq_list' in sql:
+            return [['7', '12345', '0', 'gm']]
+        if 'from vip_qq' in sql:
+            return [['100', 'pic1', '80000']]
         if 'from role_xianjiechenhao' in sql:
             return [['7', '["1"]', '["2"]']]
         if 'from role_meiren' in sql:
@@ -253,6 +259,15 @@ class MigrateCharactersTest(unittest.TestCase):
         self.assertEqual(dummy['role_id'], row['id'])   # legacy 7 -> local id
         self.assertEqual(dummy['goods_id'], 'silver50')
         self.assertEqual(dummy['goods_count'], 3)
+        qq = conn.execute('SELECT * FROM role_qq_list').fetchone()
+        self.assertEqual(qq['role_id'], row['id'])
+        self.assertEqual(qq['qq'], '12345')
+        self.assertEqual(qq['user_name'], 'gm')
+        self.assertEqual(report['qq_lists_written'], 1)
+        vqq = conn.execute('SELECT * FROM vip_qq').fetchone()
+        self.assertEqual(vqq['min_recharge'], 100)
+        self.assertEqual(vqq['qq'], '80000')
+        self.assertEqual(report['vip_qq_written'], 1)
         conn.close()
 
 

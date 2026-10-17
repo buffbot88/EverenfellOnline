@@ -9,6 +9,7 @@ edits the tables; it only reports what the legacy server would load.
 import json
 import logging
 import os
+import random
 import re
 import struct
 
@@ -48,6 +49,20 @@ def load_task_main_table(path):
     if not isinstance(rows, list):
         raise ValueError(f'{path}: expected a list of quest rows')
     return rows
+
+
+def load_taofa_table(path):
+    """Return {taofaid: row} from sys_config/taskTaoFaRenWu.jat (the taofa quest list)."""
+    rows = _load(path)
+    if isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], list):
+        rows = rows[0]
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of taofa rows')
+    table = {}
+    for row in rows:
+        if isinstance(row, dict) and row.get('taofaid'):
+            table[str(row['taofaid'])] = row
+    return table
 
 
 def config_int(value):
@@ -156,6 +171,121 @@ def parse_task_item_order(cell):
         items.append({'goods_id': goods_id, 'count': count,
                       'bind': bind, 'expire': expire if expire > 0 else 0})
     return items
+
+
+def parse_taofa_monster(cell):
+    """Single kill VO from a taofa monster cell, or None when empty.
+
+    Port of getConfigMonsterVo: only the first ';' segment counts, split
+    on ':' into (id, count); a 'name_' prefix sets the display name and a
+    '#' marks auto-attack (isShowName/isAutoType in TaskConfigUtil).
+    """
+    if not cell:
+        return None
+    segment = str(cell).split(';')[0]
+    parts = segment.split(':')
+    try:
+        raw_id, count = parts[0], int(parts[1])
+    except (IndexError, TypeError, ValueError):
+        return None
+    show_name = None
+    if '_' in raw_id:
+        show_name, _, raw_id = raw_id.partition('_')
+    auto = '#' in raw_id
+    return {'monster_id': raw_id.replace('#', ''), 'count': count,
+            'auto_attack': auto, 'show_name': show_name}
+
+
+def parse_taofa_items(cell, bind):
+    """(goods list, zubao list) from a taofa itemOrder cell.
+
+    Port of the createTaskTaofaConfig itemOrder loop: ';' segments
+    starting with '@' land in the zubao ids; the rest become
+    (goods id, count, bind) with bind forced from the row's bound cell.
+    """
+    goods, zubao = [], []
+    if not cell:
+        return goods, zubao
+    for segment in str(cell).split(';'):
+        if segment.startswith('@'):
+            zubao.append(segment)
+            continue
+        parts = segment.split(':')
+        try:
+            goods_id, count = parts[0], int(parts[1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if not goods_id:
+            continue
+        goods.append({'goods_id': goods_id, 'count': count,
+                      'bind': config_int(bind), 'expire': 0})
+    return goods, zubao
+
+
+def config_float(value):
+    """ConvertObjectUtil.object2Float: null/''/garbage -> 0.0."""
+    if value is None or isinstance(value, bool):
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def lottery_roll(count):
+    """Lottery.roll: uniform int in [0, count), like Random.nextInt."""
+    return random.randrange(count)
+
+
+# TaskTaoFaConstants / TaskConfigConstants (jar clinit).
+TAOFA_MAX_TUNSHI = 5
+TAOFA_MAX_USE = 10
+TAOFA_MAX_FINISH = 10
+TAOFA_RECEIVE_MAX = 20
+# TaskRiChangConstants + TaskRCConditionConfigExportServiceImpl costs.
+RICHANG_MIN_LEVEL = 40
+RICHANG_MAX_LOOP = 20
+RICHANG_DIFFICULTY_MAX = 10
+RICHANG_THICK_MAX = 10
+RICHANG_COST_ONEKEY = 50
+RICHANG_COST_ONEKEY_BEST = 100
+RICHANG_COST_JIANGDI = 50000
+RICHANG_COST_TISHENG = 50000
+RICHANG_COST_DIRECT = 10
+
+
+def richang_condition_interval(buckets, level):
+    """TaskConfigUtil.getRichangeConditionLevelInterval: 'min_max' or None.
+
+    The bucket holding the level wins; a miss recurses with level - 10
+    (levels at or below 0 give None).
+    """
+    if level <= 0:
+        return None
+    for low, high in sorted(buckets.items()):
+        if low <= level <= high:
+            return f'{low}_{high}'
+    return richang_condition_interval(buckets, level - 10)
+
+
+def richang_reward_interval(buckets, cond_buckets, level):
+    """TaskConfigUtil.getRichangeLevelInterval (misses fall into the condition map)."""
+    if level <= 0:
+        return None
+    for low, high in sorted(buckets.items()):
+        if low <= level <= high:
+            return f'{low}_{high}'
+    return richang_condition_interval(cond_buckets, level - 10)
+
+
+def richang_loop_interval(buckets, cond_buckets, level):
+    """TaskConfigUtil.getRichangeLoopLevelInterval (same condition-map fallback)."""
+    if level <= 0:
+        return None
+    for low, high in sorted(buckets.items()):
+        if low <= level <= high:
+            return f'{low}_{high}'
+    return richang_condition_interval(cond_buckets, level - 10)
 
 
 def parse_task_attr_map(cell):
@@ -575,6 +705,17 @@ def load_vip_table(path):
             if isinstance(r, dict) and r.get('lv') is not None}
 
 
+def load_vipqq_rewards(path):
+    """Parcels of sys_config/chaojihuiyuan.jat row 1 (jiangpin1 cell)."""
+    rows = _load(path)
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(f'{path}: expected a non-empty rewards list')
+    first = rows[0]
+    if not isinstance(first, dict) or not first.get('jiangpin1'):
+        raise ValueError(f'{path}: expected a jiangpin1 cell')
+    return first['jiangpin1']
+
+
 def load_shuxingdan_table(path):
     """Rows of sys_config/shuxingdan.jat (permanent attribute pills) by id."""
     rows = _load(path)
@@ -700,6 +841,7 @@ class GameConfig:
         self._xishu = None
         self._dazuo = None
         self._vip = None
+        self._vipqq = None
         self._xianjie = None
         self._chenghao = None
         self._meiren = None
@@ -726,6 +868,12 @@ class GameConfig:
         self._task_main = None
         self._task_sub = None
         self._task_main_first = None
+        self._taofa = None
+        self._taofa_cfg = None
+        self._taofa_interval = None
+        self._rc_cond = None
+        self._rc_rew = None
+        self._rc_loop = None
         self._birth = None
 
     @property
@@ -1696,6 +1844,261 @@ class GameConfig:
         """Main-quest configs by id2; empty when the table is absent."""
         return self._task_assembly()
 
+    def taofa_table(self):
+        """{taofaid: row} from taskTaoFaRenWu.jat, loaded once; a bad or missing file gives {}."""
+        if self._taofa is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'taskTaoFaRenWu.jat')
+            try:
+                self._taofa = load_taofa_table(path) if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad taofa table: %s', e)
+                self._taofa = {}
+        return self._taofa
+
+    def _taofa_assembly(self):
+        """(parsed taofa configs by task id, level_color interval lists)."""
+        if self._taofa_cfg is None:
+            table, intervals = {}, {}
+            for task_id, row in self.taofa_table().items():
+                cfg = self._parse_taofa(task_id, row)
+                table[task_id] = cfg
+                for level in range(cfg['min'], cfg['max'] + 1):
+                    key = f"{level}_{cfg['color']}"
+                    intervals.setdefault(key, []).append(cfg)
+            self._taofa_cfg = table
+            self._taofa_interval = intervals
+        return self._taofa_cfg
+
+    @staticmethod
+    def _parse_taofa(task_id, row):
+        """Parsed TaskTaoFaConfig dict for one taskTaoFaRenWu row."""
+        row = row or {}
+        target = str(row.get('target') or '')
+        show = str(row.get('showitem') or '')
+        desc = row.get('desc')
+        goods, zubao = parse_taofa_items(row.get('itemOrder') or '',
+                                         row.get('bound'))
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        color = config_int(row.get('color'))
+        return {'id': task_id,
+                'min': low, 'max': high, 'color': color,
+                'query_id': f'{low}_{high}_{color}',
+                'res': str(row.get('res') or ''),
+                'map_name': str(row.get('mapName') or ''),
+                'monster_level': config_int(row.get('monsterLv')),
+                'monster_name': str(row.get('monsterName') or ''),
+                'monster_type': config_int(row.get('monsterType')),
+                'bind': config_int(row.get('bound')),
+                'target': target.split('_') if target else None,
+                'duologue': str(row.get('duologue') or ''),
+                'swallow': config_int(row.get('swallow')) != 0,
+                'merge': config_float(row.get('merge')),
+                'kill_monster': parse_taofa_monster(row.get('monster') or ''),
+                'exp': config_int(row.get('exp')),
+                'jb': config_int(row.get('gold')),
+                'bind_yb': config_int(row.get('boundOb')),
+                'prestige': config_int(row.get('prestige')),
+                'zhenqi': config_int(row.get('zhenqi')),
+                'goods': goods,
+                'zubao': zubao,
+                'show_items': parse_task_item_order(show),
+                'desc': config_int(desc) if desc not in ('', None) else None,
+                'qianghua': str(row.get('intensify') or ''),
+                'xilian': str(row.get('addition') or ''),
+                'call_permit': config_int(row.get('callingallow')) != 0,
+                'call_goods': str(row.get('callinggold') or '') or None,
+                'call_lifetime': config_int(row.get('losttime'))}
+
+    def taofa_config(self, task_id):
+        """Parsed TaskTaoFaConfig for a taofaid, or None when unknown."""
+        return self._taofa_assembly().get(str(task_id))
+
+    def taofa_interval(self, level, color):
+        """Taofa configs for a role level and goods rare level (level_color key)."""
+        self._taofa_assembly()
+        return list(self._taofa_interval.get(f'{level}_{color}', []))
+
+    def _richang_rows(self, name):
+        """Raw row list from a taskRiChangRenWu* table; [] when absent."""
+        path = os.path.join(self.config_dir, 'sys_config', f'{name}.jat')
+        try:
+            rows = _load(path) if os.path.isfile(path) else []
+        except ValueError as e:
+            log.error('bad %s table: %s', name, e)
+            return []
+        if isinstance(rows, list) and len(rows) == 1 \
+                and isinstance(rows[0], list):
+            rows = rows[0]
+        return [r for r in rows] if isinstance(rows, list) else []
+
+    def _richang_condition_assembly(self):
+        """(conditions by id, full min_max_diff lists, sub min_max lists, buckets)."""
+        if self._rc_cond is None:
+            table, full, sub, buckets = {}, {}, {}, {}
+            for row in self._richang_rows('taskRiChangRenWu'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_richang_condition(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                sub.setdefault(cfg['query_sub'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._rc_cond = (table, full, sub, buckets)
+        return self._rc_cond
+
+    @staticmethod
+    def _parse_richang_condition(row):
+        """Parsed TaskRCConditionConfig: completeMonster/Item via the monster map."""
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        diff = config_int(row.get('difficultyLv'))
+        return {'id': str(row.get('id')),
+                'difficulty': diff, 'min': low, 'max': high,
+                'query_sub': f'{low}_{high}',
+                'query_id': f'{low}_{high}_{diff}',
+                'kill_monsters': parse_task_monsters(
+                    str(row.get('completeMonster') or '')),
+                'complete_items': parse_task_monsters(
+                    str(row.get('completeItem') or ''))}
+
+    def richang_condition(self, cond_id):
+        """Parsed TaskRCConditionConfig for an id, or None when unknown."""
+        return self._richang_condition_assembly()[0].get(str(cond_id))
+
+    def richang_condition_interval(self, sub_key, difficulty):
+        """Condition configs for 'min_max' + difficulty (full key lookup)."""
+        return list(self._richang_condition_assembly()[1].get(
+            f'{sub_key}_{difficulty}', []))
+
+    def richang_condition_subinterval(self, sub_key):
+        """Condition configs for one 'min_max' bucket."""
+        return list(self._richang_condition_assembly()[2].get(sub_key, []))
+
+    def richang_condition_buckets(self):
+        """{min: max} level buckets for the condition interval lookup."""
+        return dict(self._richang_condition_assembly()[3])
+
+    def _richang_reward_assembly(self):
+        """(rewards by id, full min_max_thick lists, sub min_max lists, buckets)."""
+        if self._rc_rew is None:
+            table, full, sub, buckets = {}, {}, {}, {}
+            for row in self._richang_rows('taskRiChangRenWuJiangLi'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_richang_reward(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                sub.setdefault(cfg['query_sub'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._rc_rew = (table, full, sub, buckets)
+        return self._rc_rew
+
+    @staticmethod
+    def _parse_richang_reward(row):
+        """Parsed TaskRCRewardConfig for one JiangLi row."""
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        thick = config_int(row.get('thickLv'))
+        items = parse_task_item_order(str(row.get('itemOrder') or ''))
+        return {'id': str(row.get('id')),
+                'min': low, 'max': high, 'thick': thick,
+                'query_sub': f'{low}_{high}',
+                'query_id': f'{low}_{high}_{thick}',
+                'exp': config_int(row.get('exp')),
+                'jb': config_int(row.get('gold')),
+                'bind_yb': config_int(row.get('boundOb')),
+                'zhenqi': config_int(row.get('zhenqi')),
+                'prestige': config_int(row.get('prestige')),
+                'reward_items': items,
+                'reward_bind': config_int(row.get('bound'))}
+
+    def richang_reward(self, reward_id):
+        """Parsed TaskRCRewardConfig for an id, or None when unknown."""
+        return self._richang_reward_assembly()[0].get(str(reward_id))
+
+    def richang_reward_interval(self, sub_key, thick):
+        """Reward configs for 'min_max' + thick level."""
+        return list(self._richang_reward_assembly()[1].get(
+            f'{sub_key}_{thick}', []))
+
+    def richang_reward_subinterval(self, sub_key):
+        """Reward configs for one 'min_max' bucket."""
+        return list(self._richang_reward_assembly()[2].get(sub_key, []))
+
+    def richang_reward_buckets(self):
+        """{min: max} level buckets for the reward interval lookup."""
+        return dict(self._richang_reward_assembly()[3])
+
+    def _richang_loop_assembly(self):
+        """(loop rewards by id, min_max lists, buckets) from EWaiJiangLi."""
+        if self._rc_loop is None:
+            table, full, buckets = {}, {}, {}
+            for row in self._richang_rows('taskRiChangRenWuEWaiJiangLi'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_richang_loop(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._rc_loop = (table, full, buckets)
+        return self._rc_loop
+
+    @staticmethod
+    def _parse_richang_loop(row):
+        """Parsed TaskRCLoopRewardConfig; jb reads the thickLv cell.
+
+        The loop table has no thickLv column, so object2int gives 0 and
+        every loop reward pays no YXB, exactly like the jar.
+        """
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        items = parse_task_item_order(str(row.get('itemOrder') or ''))
+        return {'id': str(row.get('id')),
+                'min': low, 'max': high,
+                'query_id': f'{low}_{high}',
+                'exp': config_int(row.get('exp')),
+                'jb': config_int(row.get('thickLv')),
+                'bind_yb': config_int(row.get('boundOb')),
+                'zhenqi': config_int(row.get('zhenqi')),
+                'prestige': config_int(row.get('prestige')),
+                'reward_items': items,
+                'reward_bind': config_int(row.get('bound'))}
+
+    def richang_loop_reward(self, reward_id):
+        """Parsed TaskRCLoopRewardConfig for an id, or None when unknown."""
+        return self._richang_loop_assembly()[0].get(str(reward_id))
+
+    def richang_loop_interval(self, sub_key):
+        """Loop reward configs for one 'min_max' bucket."""
+        return list(self._richang_loop_assembly()[1].get(sub_key, []))
+
+    def richang_loop_buckets(self):
+        """{min: max} level buckets for the loop interval lookup."""
+        return dict(self._richang_loop_assembly()[2])
+
+    def vip_tunshi_times(self, vip_level):
+        """VipConfig.getTunshitimes bonus for a level; 0 when absent."""
+        return self._vip_cell(vip_level, 'tunshitimes')
+
+    def vip_taofa_times(self, vip_level):
+        """VipConfig.getTaofatimes bonus for a level; 0 when absent."""
+        return self._vip_cell(vip_level, 'taofatimes')
+
+    def vip_onekeytask(self, vip_level):
+        """VipConfig.isOnekeytask for a level; False when absent."""
+        return self._vip_cell(vip_level, 'onekeytask') != 0
+
+    def _vip_cell(self, vip_level, cell):
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+        except (TypeError, ValueError):
+            return 0
+        return config_int((row or {}).get(cell))
+
+    def goods_rarelevel(self, goods_id):
+        """Rare level (rarelevel cell) for a goods id; 0 when unknown."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return 0
+        return config_int(row.get('rarelevel'))
+
     def task_subchapter(self, sub_id):
         """Assembled subchapter (tasks, rewards, last task), or None."""
         self._task_assembly()
@@ -1975,6 +2378,41 @@ class GameConfig:
                 log.error('bad vip table: %s', e)
                 self._vip = {}
         return self._vip
+
+    def vip_need_gold(self, vip_level):
+        """VipInfoConfig.getVipConfigByLevel needGold for a level; 0 when absent."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+            return int(row.get('needgold') or 0) if row else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def vip_level_for_gold(self, total):
+        """Highest vip level whose needGold is at most total; 0 below the first row."""
+        try:
+            gold = int(total or 0)
+        except (TypeError, ValueError):
+            return 0
+        best_level, best_need = 0, -1
+        for level in self.vip_table():
+            need = self.vip_need_gold(level)
+            if best_need < need <= gold:
+                best_level, best_need = level, need
+        return best_level
+
+    def vipqq_rewards(self):
+        """Super-member reward parcels (chaojihuiyuan cell); empty if absent."""
+        if self._vipqq is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'chaojihuiyuan.jat')
+            try:
+                cell = load_vipqq_rewards(path) \
+                    if os.path.isfile(path) else ''
+                self._vipqq = self._vip_parcels(cell)
+            except ValueError as e:
+                log.error('bad vipqq rewards: %s', e)
+                self._vipqq = []
+        return self._vipqq
 
     def vip_hecheng(self, vip_level):
         """VipConfig.getHecheng for a level (vipbiao's hechengci cell)."""

@@ -1,7 +1,9 @@
 """Auth: PHP-compatible sign algorithm + salted passwords + sessions.
 
-Sign (LoginHelper.checkSign/generateSign, mirrored by gamesession.php):
-  sign = md5(userId + 'xianlingkey' + timestamp)
+Sign: HMAC-SHA256 over userId|timestamp with a server secret (MKO_SIGN_SECRET,
+or a per-process random key). The legacy md5(userId+'xianlingkey'+ts) was public
+and forgeable, so it is no longer accepted. The sign is minted only by
+gamesession.php and checked only within SIGN_WINDOW_S seconds of its timestamp.
 Passwords: PHP stored plaintext; we store PBKDF2 (local-only improvement).
 Sessions live in SQLite so a server restart does not log everyone out
 (the browser keeps its mko_session cookie but the session must still exist).
@@ -13,15 +15,31 @@ import secrets
 import threading
 import time
 
-SIGN_KEY = 'xianlingkey'
+SIGN_WINDOW_S = 300
+_sign_secret = None
+
+
+def _key():
+    global _sign_secret
+    if _sign_secret is None:
+        env = os.environ.get('MKO_SIGN_SECRET', '')
+        _sign_secret = env.encode() if env else secrets.token_bytes(32)
+    return _sign_secret
 
 
 def generate_sign(user_id, timestamp):
-    return hashlib.md5(f'{user_id}{SIGN_KEY}{timestamp}'.encode()).hexdigest()
+    return hmac.new(_key(), f'{user_id}|{timestamp}'.encode(), hashlib.sha256).hexdigest()
 
 
-def check_sign(user_id, timestamp, verify):
+def check_sign(user_id, timestamp, verify, now=None):
     if not user_id or not timestamp or not verify:
+        return False
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return False
+    now = int(time.time()) if now is None else now
+    if abs(now - ts) > SIGN_WINDOW_S:
         return False
     return hmac.compare_digest(generate_sign(user_id, timestamp), verify)
 

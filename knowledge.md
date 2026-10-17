@@ -32,10 +32,10 @@ A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "Ton
 ```sh
 python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080
 python3 server.py --db data/mko.db --add-char ACCOUNT:NAME   # seed a character, then exit
-python3 -m unittest discover -s tests                        # server tests (101, all pass)
+python3 -m unittest discover -s tests                        # server tests (619, all pass)
 ```
 
-**Tools tests** (from `tools/`): `python3 -m unittest discover -s tests` (26 tests).
+**Tools tests** (from `tools/`): `python3 -m unittest discover -s tests` (43 tests).
 
 **Legacy data migration** (from the repo root; MySQL must be running, it is only read):
 ```sh

@@ -51,10 +51,21 @@ def family_of(classes):
     return 'unknown'
 
 
+# Jar-scan IDs that are not wire commands (verified with tools/javap.py:
+# no ModuleInit.getInCmd routes them; only ServiceImpl refs remain).
+# 2000 is MallServiceImpl.getGoodsCountPrice; 1003/1006 are GeneralErrorCode
+# JB/NOSLOT (protocol.py GENERAL_JB/GENERAL_NOSLOT); 430405 is the 32002
+# unknown-goods error payload; 794000/794001/794002 are VipQqErrorCode
+# NOTIN_LIST/LINGQU_AGAIN/NOT_CONFIG. 88005 stays: vipQqOK pushes it.
+NON_COMMAND_IDS = frozenset({'2000', '1003', '1006', '430405',
+                              '794000', '794001', '794002'})
+
+
 def load_java():
     with open(INVENTORY, encoding='utf-8') as f:
         data = json.load(f)
-    commands = data['commands']
+    commands = {k: v for k, v in data['commands'].items()
+                if k not in NON_COMMAND_IDS}
     families = defaultdict(lambda: {'ids': set(), 'classes': 0})
     for cmd_id, classes in commands.items():
         fam = family_of(classes)
@@ -116,7 +127,7 @@ LAYERS = [
     ('Game socket', 'Java game server (`com.xianling.bus.client`, `com.xianling.io`); transport class not verified from bytecode',
      '`Server-v1/server.py` `ThreadingTCPServer`, one thread per connection', 'Framing and key exchange match captures'),
     ('Persistence', 'MySQL 5.1.37 through iBATIS accessors (`com.kernel.data`, `IIBatisDatabaseAccessor`)',
-     'SQLite via `sqlite3` in `Server-v1/db.py`, one lock per Store', 'Only 13 tables; see table section'),
+     'SQLite via `sqlite3` in `Server-v1/db.py`, one lock per Store', 'Only 23 SQLite tables (13 mapped from MySQL); see table section'),
     ('Config data', 'AMF3 `.jat`/`.mm` read through BlazeDS `Amf3Input` (`game-data-inventory.md`)',
      'Own AMF3 codec `game/amf3.py` + loaders in `game/config.py`', 'Decodes all 218 `.jat`; see game-data inventory'),
     ('Scheduling', 'Quartz scheduled jobs (`com.xianling.global`)',
@@ -251,14 +262,36 @@ def find_test_refs(cmd_ids):
     return refs
 
 
-def ledger_status(cmd, py_ids, test_refs, emitted=False):
-    """not started < dispatched < golden-tested. Dispatch alone is not parity.
+# A test file reads state back when it queries the store after the action.
+STORE_READBACK = re.compile(r'\.store\.(get_|list_)\w*\s*\(')
 
+
+def find_store_readback_files():
+    """Relative paths of test files that read state back through the store."""
+    files = set()
+    for test_dir in TEST_DIRS:
+        if not os.path.isdir(test_dir):
+            continue
+        for name in os.listdir(test_dir):
+            if not name.endswith('.py'):
+                continue
+            with open(os.path.join(test_dir, name), encoding='utf-8') as f:
+                if STORE_READBACK.search(f.read()):
+                    rel = os.path.relpath(os.path.join(test_dir, name), ROOT)
+                    files.add(rel.replace(os.sep, '/'))
+    return files
+
+
+def ledger_status(cmd, py_ids, test_refs, emitted=False, readback_files=frozenset()):
+    """not started < dispatched < golden-tested < persisted.
+
+    Dispatch alone is not parity. 'persisted' means a test that mentions the
+    ID also reads state back through the store (a file-level heuristic).
     Server pushes have no inbound route; they are 'emitted', or
     'push-golden-tested' when a test mentions them.
     """
     if cmd in py_ids and test_refs:
-        return 'golden-tested'
+        return 'persisted' if test_refs & readback_files else 'golden-tested'
     if cmd in py_ids:
         return 'dispatched'
     if emitted and test_refs:
@@ -271,6 +304,7 @@ def ledger_status(cmd, py_ids, test_refs, emitted=False):
 def render_ledger(commands, families, py_ids, emitted=frozenset()):
     """One row per Java command ID: family, status and the tests that mention it."""
     test_refs = find_test_refs(set(commands))
+    readback_files = find_store_readback_files()
     id_family = {}
     for fam, data in families.items():
         for cmd in data['ids']:
@@ -284,6 +318,9 @@ def render_ledger(commands, families, py_ids, emitted=frozenset()):
              '- `dispatched`: routed, but no test mentions the ID.',
              '- `golden-tested`: routed and a test file mentions the ID. The test '
              'mention is a weak signal; read the test before trusting it.',
+             '- `persisted`: golden-tested, and a test file mentioning the ID also '
+             'reads state back through `store.get_*`/`store.list_*`. This is a '
+             'file-level heuristic, not proof that the write was checked.',
              '- `emitted`: the server sends the ID as a push or reply, but no '
              '`CMD_*` route exists. No test mentions it.',
              '- `push-golden-tested`: emitted, and a test file mentions the ID.',
@@ -292,10 +329,11 @@ def render_ledger(commands, families, py_ids, emitted=frozenset()):
              'editing by hand.',
              '']
     counts = {'not started': 0, 'dispatched': 0, 'golden-tested': 0,
-              'emitted': 0, 'push-golden-tested': 0}
+              'persisted': 0, 'emitted': 0, 'push-golden-tested': 0}
     rows = []
     for cmd in sorted(commands, key=lambda c: (len(c), c)):
-        status = ledger_status(cmd, py_ids, test_refs[cmd], cmd in emitted)
+        status = ledger_status(cmd, py_ids, test_refs[cmd], cmd in emitted,
+                               readback_files)
         counts[status] += 1
         tests = ', '.join(sorted(test_refs[cmd])) or '-'
         rows.append(f'| `{cmd}` | {id_family.get(cmd, "-")} | {status} | {tests} |')

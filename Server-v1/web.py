@@ -6,13 +6,14 @@
       -> text containing '注册成功' ("registration succeeded"; captcha-checked when enabled)
   GET  /configuration/VerifyCode.php -> 4-char captcha PNG (Pillow)
   GET  /gamesession.php -> {ok,uid,t,sign,seid,sport,ip,pid} (401 logged out)
-      sign = md5(uid.'xianlingkey'.t), same as LoginHelper/PHP.
+      sign = HMAC-SHA256(server secret, uid|t); see auth.generate_sign.
 """
 import io
 import json
 import logging
 import random
 import string
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +23,61 @@ from auth import Sessions, generate_sign, hash_password, verify_password
 log = logging.getLogger('web')
 
 SEID, SPORT, IP, PID = 'fu1304', 8008, '127.0.0.1', 'gmthai'
+
+LOGIN_FAIL_LIMIT = 5      # failed logins/registers per client IP ...
+LOGIN_FAIL_WINDOW_S = 300  # ... within this window before we refuse
+
+
+def session_cookie(tok):
+    """mko_session with HttpOnly and SameSite=Strict (no Secure: plain HTTP on loopback)."""
+    return f'mko_session={tok}; Path=/; HttpOnly; SameSite=Strict'
+
+
+def cross_origin(headers):
+    """True when browser metadata says the POST came from another site or origin.
+
+    Requests without Origin or Sec-Fetch-Site (the Flash projector, scripts) pass.
+    """
+    fetch_site = headers.get('Sec-Fetch-Site')
+    if fetch_site and fetch_site not in ('same-origin', 'none'):
+        return True
+    origin = headers.get('Origin')
+    if origin is None:
+        return False
+    host = (headers.get('Host') or '').lower()
+    return origin.lower() not in (f'http://{host}', f'https://{host}')
+
+
+class FailLimiter:
+    """Sliding-window count of failed auth attempts per client IP."""
+
+    def __init__(self, limit=LOGIN_FAIL_LIMIT, window=LOGIN_FAIL_WINDOW_S):
+        self.limit, self.window = limit, window
+        self._hits = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, ip, now):
+        cutoff = now - self.window
+        recent = [t for t in self._hits.get(ip, []) if t > cutoff]
+        if recent:
+            self._hits[ip] = recent
+        else:
+            self._hits.pop(ip, None)
+        return recent
+
+    def blocked(self, ip, now=None):
+        now = time.time() if now is None else now
+        with self._lock:
+            return len(self._recent(ip, now)) >= self.limit
+
+    def failed(self, ip, now=None):
+        now = time.time() if now is None else now
+        with self._lock:
+            self._hits[ip] = self._recent(ip, now) + [now]
+
+    def reset(self, ip):
+        with self._lock:
+            self._hits.pop(ip, None)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -70,13 +126,15 @@ class Handler(BaseHTTPRequestHandler):
                 tok = self.server.sessions.create('')  # pre-login captcha session
             self.server.sessions.set_captcha(tok, code)
             return self._send(200, render_captcha(code), 'image/png',
-                              {'Set-Cookie': f'mko_session={tok}; Path=/'})
+                              {'Set-Cookie': session_cookie(tok)})
         return self._send(404, 'not found', 'text/plain')
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         if not path.endswith('AccountHandler.php'):
             return self._send(404, 'not found', 'text/plain')
+        if cross_origin(self.headers):
+            return self._send(403, 'forbidden', 'text/plain')
         ln = int(self.headers.get('Content-Length', 0))
         form = urllib.parse.parse_qs(self.rfile.read(ln).decode('utf-8', 'replace'))
         f = {k: v[0] for k, v in form.items()}
@@ -85,22 +143,31 @@ class Handler(BaseHTTPRequestHandler):
         return self.login(f)
 
     def login(self, f):
+        ip = self.client_address[0]
+        if self.server.limiter.blocked(ip):
+            return self._send(429, '登录失败次数过多，请稍后再试 Too many failed attempts')
         acc = self.server.store.get_account(f.get('uName', ''))
         if acc and verify_password(f.get('uPas', ''), acc['pass_hash']):
             tok = self.server.sessions.create(acc['username'])
+            self.server.limiter.reset(ip)
             log.info('web login ok: %s', acc['username'])
             return self._send(200, '登陆成功 Login successful',
-                              headers={'Set-Cookie': f'mko_session={tok}; Path=/'})
+                              headers={'Set-Cookie': session_cookie(tok)})
+        self.server.limiter.failed(ip)
         log.info('web login failed: %s', f.get('uName', ''))
         return self._send(200, '用户名或者密码错误 Invalid username or password')
 
     def register(self, f):
         u, p, code = f.get('uName', ''), f.get('uPas', ''), f.get('sCode', '')
+        ip = self.client_address[0]
+        if self.server.limiter.blocked(ip):
+            return self._send(429, '登录失败次数过多，请稍后再试 Too many failed attempts')
         if len(u) < 3 or len(p) < 3:
             return self._send(200, '用户名或密码太短 (min 3 chars)')
         if self.server.require_captcha:
             sess = self.server.sessions.get(self._cookies().get('mko_session', ''))
             if not sess or sess.get('captcha', '').lower() != code.lower():
+                self.server.limiter.failed(ip)
                 return self._send(200, '验证码错误 Invalid captcha')
 
         if self.server.store.create_account(u, hash_password(p)):
@@ -109,7 +176,8 @@ class Handler(BaseHTTPRequestHandler):
             tok = self.server.sessions.create(u)
             log.info('web register ok: %s', u)
             return self._send(200, '注册成功 Registered',
-                              headers={'Set-Cookie': f'mko_session={tok}; Path=/'})
+                              headers={'Set-Cookie': session_cookie(tok)})
+        self.server.limiter.failed(ip)
         return self._send(200, '用户名已存在 Username taken')
 
 
@@ -131,6 +199,7 @@ def serve(store, sessions, host, port, require_captcha):
     httpd.store = store
     httpd.sessions = sessions
     httpd.require_captcha = require_captcha
+    httpd.limiter = FailLimiter()
     log.info('web up: http://%s:%d (captcha %s)',
              host, port, 'on' if require_captcha else 'off')
     httpd.serve_forever()

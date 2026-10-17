@@ -130,6 +130,8 @@ def plan_counts(mysql, users):
              'role_prop': ' ' + role_filter(role_ids),
              'role_skillbook_slot': ' ' + role_filter(role_ids),
              'role_bag_state': ' ' + role_filter(role_ids),
+             'role_qq_list': ' ' + role_filter(role_ids),
+             'vip_qq': '',
              'task_main': ' ' + role_filter(role_ids)}
     tables = {'account': ('caonima', 'account'),
               'user_role': ('dntg', 'user_role'),
@@ -148,6 +150,8 @@ def plan_counts(mysql, users):
                'role_prop': ('dntg', 'role_prop'),
                'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
               'role_bag_state': ('dntg', 'role_bag_state'),
+              'role_qq_list': ('dntg', 'role_qq_list'),
+              'vip_qq': ('dntg', 'vip_qq'),
               'task_main': ('dntg', 'task_main')}
     counts = {}
     for label, (db, table) in tables.items():
@@ -169,7 +173,8 @@ def migrate(mysql, db_path, users, dry_run=False):
               'skillbook_slots_written': 0,
               'bag_state_written': 0,
               'task_main_written': 0,
-              'roles_missing_account': [], 'notes': []}
+              'roles_missing_account': [], 'notes': [],
+              'qq_lists_written': 0, 'vip_qq_written': 0}
     accounts = mysql.query('caonima',
                            'select ' + ','.join(ACCOUNT_COLS) + ' from account'
                            f' where name in ({quote_list(users)}) order by id')
@@ -195,6 +200,10 @@ def migrate(mysql, db_path, users, dry_run=False):
     vips = mysql.query('dntg', 'select user_role_id,vip_level,state_day,'
                                'state_week,state_tejia,prop_value,tody_prop_value'
                                ' from role_vip ' + role_where)
+    qq_lists = mysql.query('dntg', 'select user_role_id,qq,is_get_rewards,'
+                                   'user_name from role_qq_list ' + role_where)
+    vip_qq = mysql.query('dntg', 'select min_recharge,pic,qq from vip_qq'
+                                ' order by id')
     xianjiechenhao = mysql.query('dntg', 'select user_role_id,xianjie_id,chenhao_id'
                                          ' from role_xianjiechenhao ' + role_where)
     meiren = mysql.query('dntg', 'select user_role_id,meiren_id,meiren_level,'
@@ -249,6 +258,8 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['equip_written'] = len(equips)
         report['attr_buffs_written'] = len(attr_buffs)
         report['vip_written'] = len(vips)
+        report['qq_lists_written'] = len(qq_lists)
+        report['vip_qq_written'] = len(vip_qq)
         report['xianjiechenhao_written'] = len(xianjiechenhao)
         report['meiren_written'] = len(meiren)
         report['zuoqi_written'] = len(zuoqi)
@@ -609,6 +620,31 @@ def migrate(mysql, db_path, users, dry_run=False):
                  as_int(state_week) or 0, state_tejia, as_int(prop_value) or 0,
                  as_int(tody_prop_value) or 0))
             report['vip_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_qq_list(role_id INTEGER PRIMARY KEY,'
+                     ' qq TEXT, user_name TEXT, is_get_rewards INTEGER DEFAULT 0)')
+        for row in qq_lists:
+            user_role_id, qq, is_get_rewards, user_name = (row + [None] * 4)[:4]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_qq_list(role_id, qq, user_name, is_get_rewards)'
+                ' VALUES(?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' qq=excluded.qq, user_name=excluded.user_name,'
+                ' is_get_rewards=excluded.is_get_rewards',
+                (local_id, qq, user_name, as_int(is_get_rewards) or 0))
+            report['qq_lists_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS vip_qq(id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                     ' min_recharge INTEGER DEFAULT 0, pic TEXT, qq TEXT)')
+        for row in vip_qq:
+            min_recharge, pic, qq = (row + [None] * 3)[:3]
+            conn.execute(
+                'INSERT INTO vip_qq(min_recharge, pic, qq) VALUES(?,?,?)',
+                (as_int(min_recharge) or 0, pic, qq))
+            report['vip_qq_written'] += 1
 
         conn.execute('CREATE TABLE IF NOT EXISTS role_xianjiechenhao(role_id INTEGER PRIMARY KEY,'
                      ' xianjie_id TEXT, chenhao_id TEXT)')

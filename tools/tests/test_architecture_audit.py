@@ -48,12 +48,38 @@ class LedgerTest(unittest.TestCase):
         self.assertIn('12001', emitted)   # literal list head in combat.py
         self.assertIn('12050', emitted)   # str(CMD_ROLE_ZHENQI_CAP)
 
+    def test_golden_becomes_persisted_when_the_test_reads_back_the_store(self):
+        refs = {'x.py'}
+        self.assertEqual(aa.ledger_status('42002', {'42002'}, refs,
+                                          readback_files={'x.py'}), 'persisted')
+        self.assertEqual(aa.ledger_status('42002', {'42002'}, refs,
+                                          readback_files={'y.py'}),
+                         'golden-tested')
+
+    def test_readback_regex_needs_a_store_getter_or_lister(self):
+        self.assertIsNotNone(aa.STORE_READBACK.search(
+            'row = self.store.get_role_bag_slot(1, 36)'))
+        self.assertIsNotNone(aa.STORE_READBACK.search(
+            'rows = self.store.list_roles("u", "s")'))
+        self.assertIsNone(aa.STORE_READBACK.search(
+            'self.store.create_character("hero")'))
+
     def test_test_refs_match_whole_ids_only(self):
         refs = aa.find_test_refs({'1000', '10001'})
         # '10001' contains '1000' only as a substring; it must not count for '1000'.
         for path in refs['1000']:
             self.assertTrue(path.startswith(('Server-v1/', 'tools/')))
         self.assertIn('Server-v1/tests/test_protocol.py', refs['10001'])
+
+    def test_non_command_ids_are_excluded_from_the_jar_scan(self):
+        self.assertEqual(aa.NON_COMMAND_IDS,
+                         frozenset({'2000', '1003', '1006', '430405',
+                                    '794000', '794001', '794002'}))
+        commands, _ = aa.load_java()
+        for cmd in aa.NON_COMMAND_IDS:
+            self.assertNotIn(cmd, commands)
+        # 88005 stays: vipQqOK pushes it (service-internal like 62003).
+        self.assertIn('88005', commands)
 
     def test_ledger_covers_every_java_id(self):
         commands = {'10001': [], '99999': []}

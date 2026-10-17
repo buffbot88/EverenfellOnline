@@ -48,8 +48,9 @@ from . import ai as ai_lib
 from . import combat as combat_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
+from .ratelimit import TokenBucket
 from .amf3 import decode as amf3_decode
-from .config import MALL_PRICE_COLUMNS, equip_vo, fujia_client_map, qh_xingxings_client, xingxing_lv
+from .config import MALL_PRICE_COLUMNS, equip_vo, fujia_client_map, qh_xingxings_client, richang_condition_interval, richang_loop_interval, richang_reward_interval, xingxing_lv
 from .amf3 import encode as amf3_encode
 from .cipher import SimpleEncrypt, new_key
 
@@ -137,6 +138,20 @@ CMD_VIP_LINGJIANG = 62022
 CMD_VIP_HUODONG = 88000
 CMD_VIP_HUODONG_GUDING = 88001
 CMD_VIP_HUODONG_CHOUJIANG = 88002
+# Service-internal pushes (no inbound route): vip level change and prop value.
+CMD_VIP_LEVEL_UP = 62003
+CMD_VIP_PROP_VALUE = 62006
+CMD_VIPQQ_INFO = 88003
+CMD_VIPQQ_REWARDS = 88004
+# CAN_REWARDS push (no inbound route): vipQqOK after QQ binding.
+CMD_VIPQQ_BIND_PUSH = 88005
+# VipQqErrorCode (String fields; values equal names).
+VIPQQ_ERR_NOBIND = '794000'
+VIPQQ_ERR_CLAIMED = '794001'
+VIPQQ_ERR_NOCONFIG = '794002'
+# BagErroeCodes.BAG_SLOT_LESS (clinit value).
+BAG_ERR_SLOT_LESS = 430212
+DAY_MS = 86400000
 VIP_ERR_HUODONG_TIME = 621007
 VIP_ERR_HUODONG_CLAIMED = 621008
 VIP_ERR_HUODONG_DRAWN = 621009
@@ -217,6 +232,49 @@ CMD_SUBCHAPTER = 50002
 CMD_TASK_INFO = 50003
 CMD_SUBMIT_TASK = 50005
 CMD_CHAPTER_TIPS = 50008
+CMD_TAOFA_LIST = 50101
+CMD_TAOFA_TUNSHI = 50103
+CMD_RICHANG_INFO = 50201
+CMD_RICHANG_DECREASE = 50202
+CMD_RICHANG_INCREASE = 50203
+CMD_RICHANG_ZHIJIE = 50204
+CMD_RICHANG_COMPLETE_ALL = 50205
+CMD_RICHANG_COMPLETE_BEST = 50206
+CMD_RICHANG_NOTIFY_LOOP = 50209
+# Server pushes with no inbound route (TaskTaoFaAction only serves
+# 50101/50103; TaskRiChangAction only 50201-50206/50209).
+CMD_TAOFA_RECEIVE = 50102
+CMD_TAOFA_CHANGE = 50104
+CMD_TAOFA_PAY = 50105
+CMD_RICHANG_PAY = 50207
+CMD_RICHANG_CHANGE = 50208
+CMD_RICHANG_RECEIVE = 50210
+CMD_RICHANG_STOP = 50211
+# TaskErrorCode (task/output/TaskErrorCode clinit) for taofa/richang.
+TASK_ERR_TAOFA_NO_GOODS = 480040
+TASK_ERR_TAOFA_USE_MAX = 480041
+TASK_ERR_TAOFA_RECEIVE_MAX = 480042
+TASK_ERR_TAOFA_NO_EXIST = 480044
+TASK_ERR_TAOFA_TUNSHI_MAX = 480045
+TASK_ERR_TAOFA_NO_TUNSHI = 480046
+TASK_ERR_TAOFA_CONFIG = 480048
+TASK_ERR_RICHANG_MAX_LOOP = 480060
+TASK_ERR_RICHANG_DIFF_MIN = 480061
+TASK_ERR_RICHANG_THICK_MAX = 480062
+TASK_ERR_NOT_RICHANG = 480073
+# TaskTaoFaConstants/TaskConfigConstants + richang costs (game/config.py
+# carries the same values beside the tables they govern).
+TAOFA_MAX_TUNSHI = 5
+TAOFA_MAX_USE = 10
+TAOFA_RECEIVE_MAX = 20
+RICHANG_MIN_LEVEL = 40
+RICHANG_MAX_LOOP = 20
+RICHANG_THICK_MAX = 10
+RICHANG_COST_ONEKEY = 50
+RICHANG_COST_ONEKEY_BEST = 100
+RICHANG_COST_JIANGDI = 50000
+RICHANG_COST_TISHENG = 50000
+RICHANG_COST_DIRECT = 10
 # TaskErrorCode (task/output/TaskErrorCode clinit) + GeneralErrorCode.
 TASK_ERR_NOT_COMPLETE = 480000
 TASK_ERR_NOT_NOW_MAIN = 480005
@@ -298,7 +356,7 @@ CMD_LIHE_PREVIEW = 30304
 BAG_ERR_BIND_NO_DISCARD = 430218
 # PropStageAction.consumeGoods reply id; the 30104/30105 ids below are
 # server pushes emitted by splitGoods (no inbound route exists for them).
-PROP_SKILL_USE = frozenset([1, 2, 5, 11, 14, 36, 37])
+PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 36, 37])
 PROP_CONSUME_CATEGORIES = frozenset(
     ['14', '40', '11', '13', '16', '15', '17', '80'])
 PROP_HP_CD_MS = 1500
@@ -380,6 +438,7 @@ CMD_TILE = 40000
 CMD_JUMP = 40001
 CMD_TELEPORT = 40100
 CMD_FACE = 40201
+CMD_INNER_FLY = 40101
 CMD_TOWN_REVIVE = 43001
 CMD_SKILL_MOVE = 42001
 CMD_MOVE = 42001
@@ -460,6 +519,12 @@ def _fujia_wire(fujia):
     return None if fujia is None else Obj(fujia)
 
 
+# Per-connection frame budget: sustained frames/s and burst size. A client that
+# exceeds it is disconnected (the handler closes on ValueError).
+FRAME_RATE_PER_S = 50
+FRAME_BURST = 300
+
+
 class Session:
     def __init__(self, conn_id, check_sign, get_roles, server_start_ms,
                  gm_open=False, tz_raw_offset=-18000000,
@@ -492,10 +557,17 @@ class Session:
                  get_role_vip_huodong_all=None,
                  get_role_vip_huodong=None,
                  save_role_vip_huodong=None,
+                 get_role_qq_list=None, save_role_qq_list=None,
+                 get_vip_qq=None, save_vip_qq=None,
                  update_role_bag_slot=None, delete_role_bag_slot=None,
                  move_role_bag_slot=None, insert_role_bag_slot=None,
                  rewrite_role_bag_slots=None, save_role_bag_state=None,
                  get_task_main=None, save_task_main=None,
+                 get_task_taofa=None, get_task_taofas=None,
+                 insert_task_taofa=None, update_task_taofa=None,
+                 delete_task_taofa=None, get_task_taofa_state=None,
+                 save_task_taofa_state=None, get_task_richang=None,
+                 save_task_richang=None, delete_task_richang=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
         self.config = config
@@ -519,6 +591,11 @@ class Session:
             (lambda role_id, vip: None)
         self.save_role_vip_huodong = save_role_vip_huodong or \
             (lambda *a, **k: False)
+        self.get_role_qq_list = get_role_qq_list or (lambda role_id: None)
+        self.save_role_qq_list = save_role_qq_list or \
+            (lambda *a, **k: False)
+        self.get_vip_qq = get_vip_qq or (lambda: None)
+        self.save_vip_qq = save_vip_qq or (lambda *a, **k: False)
         self.get_role_meiren = get_role_meiren or (lambda role_id: [])
         self.save_role_skill = save_role_skill or (lambda *a, **k: False)
         self.get_role_zuoqi = get_role_zuoqi or (lambda role_id: None)
@@ -560,7 +637,21 @@ class Session:
         self.save_role_bag_state = save_role_bag_state or (lambda *a, **k: False)
         self.get_task_main = get_task_main or (lambda r: None)
         self.save_task_main = save_task_main or (lambda *a, **k: False)
+        self.get_task_taofa = get_task_taofa or (lambda r, u: None)
+        self.get_task_taofas = get_task_taofas or (lambda r: [])
+        self.insert_task_taofa = insert_task_taofa or (lambda *a: False)
+        self.update_task_taofa = update_task_taofa or (lambda *a, **k: False)
+        self.delete_task_taofa = delete_task_taofa or (lambda *a: False)
+        self.get_task_taofa_state = get_task_taofa_state or \
+            (lambda r: None)
+        self.save_task_taofa_state = save_task_taofa_state or \
+            (lambda *a, **k: False)
+        self.get_task_richang = get_task_richang or (lambda r: None)
+        self.save_task_richang = save_task_richang or \
+            (lambda *a, **k: False)
+        self.delete_task_richang = delete_task_richang or (lambda r: False)
         self.buf = bytearray()
+        self.frame_bucket = TokenBucket(FRAME_RATE_PER_S, FRAME_BURST)
         self.cipher = None
         self.key = None
         self.authed_user = None
@@ -653,6 +744,8 @@ class Session:
                 break  # fragment: wait for more (remain_buf)
             payload = bytes(self.buf[4:4 + ln])
             del self.buf[:4 + ln]
+            if not self.frame_bucket.allow():
+                raise ValueError(f'conn {self.conn_id}: frame rate limit exceeded')
             reply = self.handle(payload)
             if isinstance(reply, tuple):
                 out.extend(reply)
@@ -723,6 +816,8 @@ class Session:
             return self.teleport(msg)
         if cmd_num == CMD_FACE:
             return self.change_face(msg)
+        if cmd_num == CMD_INNER_FLY:
+            return self.inner_fly(msg)
         if cmd_num == CMD_TOWN_REVIVE:
             return self.town_revive(msg)
         if cmd_num == CMD_SKILL_MOVE:
@@ -812,6 +907,10 @@ class Session:
             return self.vip_huodong_guding(msg)
         if cmd_num == CMD_VIP_HUODONG_CHOUJIANG:
             return self.vip_huodong_choujiang(msg)
+        if cmd_num == CMD_VIPQQ_INFO:
+            return self.vipqq_info(msg)
+        if cmd_num == CMD_VIPQQ_REWARDS:
+            return self.vipqq_rewards(msg)
         if cmd_num == CMD_SKILL_INFO:
             return self.skill_info()
         if cmd_num == CMD_SKILL_UPGRADE:
@@ -860,6 +959,24 @@ class Session:
             return self.submit_task(msg)
         if cmd_num == CMD_CHAPTER_TIPS:
             return self.chapter_tips(msg)
+        if cmd_num == CMD_TAOFA_LIST:
+            return self.taofa_list()
+        if cmd_num == CMD_TAOFA_TUNSHI:
+            return self.taofa_tunshi(msg)
+        if cmd_num == CMD_RICHANG_INFO:
+            return self.richang_info()
+        if cmd_num == CMD_RICHANG_DECREASE:
+            return self.richang_decrease()
+        if cmd_num == CMD_RICHANG_INCREASE:
+            return self.richang_increase()
+        if cmd_num == CMD_RICHANG_ZHIJIE:
+            return self.richang_zhijie()
+        if cmd_num == CMD_RICHANG_COMPLETE_ALL:
+            return self.richang_complete_all()
+        if cmd_num == CMD_RICHANG_COMPLETE_BEST:
+            return self.richang_complete_best()
+        if cmd_num == CMD_RICHANG_NOTIFY_LOOP:
+            return self.richang_notify_loop()
         if cmd_num == CMD_BAG_MOVE:
             return self.bag_move(msg)
         if cmd_num == CMD_BAG_SPLIT:
@@ -1375,6 +1492,35 @@ class Session:
         own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
         return tuple(own)
 
+    def inner_fly(self, msg):
+        """Command 40101 C> [_, mapId, x, y, stageId]: same-map moves teleport and echo [x, y, 0, roleId]; other maps change map in one step (RoleBehaviourServiceImpl.innerFly).
+
+        stageId is validated but not looked up: the registry keys placed roles by map.
+        """
+        args = self.safe(msg, 1, None)
+        if not isinstance(args, list) or len(args) < 5:
+            log.info('conn %d: innerFly without [_, mapId, x, y, stageId] (ignored)', self.conn_id)
+            return None
+        map_id, x, y, stage_id = args[1], args[2], args[3], args[4]
+        if (not isinstance(map_id, str) or not map_id or not _is_int(x) or not _is_int(y)
+                or not isinstance(stage_id, str) or not stage_id):
+            log.info('conn %d: innerFly with bad fields (ignored)', self.conn_id)
+            return None
+        sender, _ = self._chat_sender()
+        if sender is None or self.stage_registry is None:
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, sender)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        if map_id != str(role.get('map_id') or ''):
+            return self.change_map(rid, map_id, x, y)
+        self.stage_registry.set_position(rid, x, y)
+        self.save_role_state(rid, map_x=x, map_y=y)
+        out = self._dazuo_broadcast(rid, CMD_INNER_FLY, [x, y, 0, rid])
+        return tuple(out) if out else None
+
     def change_face(self, msg):
         """Command 40201: echo the client's facing payload to the 3x3 surround of the sender's role."""
         sender, _ = self._chat_sender()
@@ -1557,7 +1703,13 @@ class Session:
             return []
         role = owner['role']
         tpl = dead_fighter['template']
+        # TaskPublicServiceImpl.changeTaskMonster fan-out: main, taofa,
+        # richang (the isOnline gate holds: the killer is online).
         task_frames = self.task_kill_progress(role, tpl.get('id'))
+        task_frames = task_frames + self.taofa_kill_progress(
+            role, tpl.get('id'))
+        task_frames = task_frames + self.richang_kill_progress(
+            role, tpl.get('id'))
         lv_diff = max(int(role.get('level') or 0) - int(tpl.get('level') or 0), 0)
         revise = (self.config.exp_revise(100, solo=True)
                   if self.config is not None else None)
@@ -4163,6 +4315,75 @@ class Session:
         return frame(amf3_encode(
             [str(CMD_VIP_KAIFU), [1, used, pairs]]))
 
+    def _vip_push(self, role, frames):
+        """Queue VIP pushes on the role's session; no-op when unwired."""
+        if frames and self.stage_registry is not None:
+            self.stage_registry.push(_wire_id(role), frames)
+        return frames
+
+    def _vip_upgrade(self, rid, charge_total):
+        """VipServiceImpl.upgradeVipLevel: map charge + prop value to a level.
+
+        Prop value above the level's needGold is moved back into the
+        charge side. Returns the 62003 frame when the level changed.
+        """
+        total = int(charge_total or 0)
+        row = self.get_role_vip(rid)
+        if row is None:
+            now = int(time.time() * 1000)
+            self.save_role_vip(
+                rid, vip_level=0, state_day=0, state_week=0,
+                state_tejia=json.dumps({'0': 0}), prop_value=0,
+                tody_prop_value=0, day_time=now - DAY_MS,
+                week_time=now - 8 * DAY_MS)
+            row = self.get_role_vip(rid) or {}
+        prop = int(row.get('prop_value') or 0)
+        tody = int(row.get('tody_prop_value') or 0)
+        level = self.config.vip_level_for_gold(total + prop + tody)
+        if level == int(row.get('vip_level') or 0):
+            return []
+        fields = {'vip_level': level}
+        need = self.config.vip_need_gold(level)
+        if need > total:
+            moved = need - total - prop
+            fields['tody_prop_value'] = tody - moved
+            fields['prop_value'] = prop + moved
+        self.save_role_vip(rid, **fields)
+        return [frame(amf3_encode([str(CMD_VIP_LEVEL_UP), level]))]
+
+    def vip_upgrade_level(self, role, charge_total):
+        """VipServiceImpl.upgradeVipLevel (extra 0): push 62003 on a level change.
+
+        Needs the recharge total, which the recharge slice supplies. Returns
+        the pushed frames.
+        """
+        if self.config is None:
+            return []
+        return self._vip_push(role, self._vip_upgrade(role['id'], charge_total))
+
+    def vip_add_prop_value(self, role, value, charge_total):
+        """VipServiceImpl.addPropValue: add to today's prop value, push 62006, re-level.
+
+        Without a vip row the Java raises, so nothing is pushed. Returns the
+        pushed frames.
+        """
+        if self.config is None:
+            return []
+        rid = role['id']
+        row = self.get_role_vip(rid)
+        if row is None:
+            return []
+        try:
+            add = int(value or 0)
+        except (TypeError, ValueError):
+            add = 0
+        tody = int(row.get('tody_prop_value') or 0)
+        self.save_role_vip(rid, tody_prop_value=tody + add,
+                           prop_use_time=int(time.time() * 1000))
+        frames = [frame(amf3_encode([str(CMD_VIP_PROP_VALUE), None]))]
+        frames += self._vip_upgrade(rid, charge_total)
+        return self._vip_push(role, frames)
+
     def vip_lottery(self, msg):
         """Command 62021: VipAction.kaiFuLotter -> vipService.lotterReward.
 
@@ -4488,6 +4709,147 @@ class Session:
             pass
         return frame(amf3_encode(
             [str(CMD_VIP_HUODONG_CHOUJIANG), [1, tier, key]]))
+
+    def _vipqq_config(self):
+        """Active vip_qq row, or None when the table is unseeded."""
+        try:
+            return self.get_vip_qq()
+        except Exception:
+            return None
+
+    def _vipqq_flag(self, cfg, charge_total, claimed):
+        """getVipQQInfo state: 2 claimed, 1 recharge reached, else 0."""
+        if claimed:
+            return 2
+        try:
+            total = int(charge_total or 0)
+        except (TypeError, ValueError):
+            total = 0
+        try:
+            need = int(cfg.get('min_recharge') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        return 1 if total // 10 >= need else 0
+
+    def _vipqq_payload(self, cfg, flag):
+        """[1, minRecharge, flag, pic, qq] like getVipQQInfo/recharge."""
+        try:
+            need = int(cfg.get('min_recharge') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        return [1, need, flag, cfg.get('pic'), cfg.get('qq')]
+
+    def vipqq_info(self, msg, charge_total=0):
+        """Command 88003: VipQqAction.vipqqInfo -> getVipQQInfo.
+
+        No arguments. Without a vip_qq row answers [0, 794002]. The
+        lifetime-recharge source has no local table, so the caller
+        supplies the total like vip_upgrade_level takes charge_total.
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        cfg = self._vipqq_config()
+        if cfg is None:
+            return frame(amf3_encode(
+                [str(CMD_VIPQQ_INFO), [0, VIPQQ_ERR_NOCONFIG]]))
+        try:
+            row = self.get_role_qq_list(role.get('id'))
+        except Exception:
+            row = None
+        try:
+            claimed = int((row or {}).get('is_get_rewards') or 0) == 1
+        except (TypeError, ValueError):
+            claimed = False
+        return frame(amf3_encode(
+            [str(CMD_VIPQQ_INFO),
+             self._vipqq_payload(
+                 cfg, self._vipqq_flag(cfg, charge_total, claimed))]))
+
+    def vipqq_rewards(self, msg):
+        """Command 88004: VipQqAction.vipqqRewards -> getRewards.
+
+        No arguments. Unbound answers [0, 794000], claimed [0, 794001],
+        full bag [0, 430212]; success grants chaojihuiyuan parcels and
+        marks the row claimed. The reward event has no bus (logged).
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            row = self.get_role_qq_list(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(
+                [str(CMD_VIPQQ_REWARDS), [0, VIPQQ_ERR_NOBIND]]))
+        try:
+            claimed = int(row.get('is_get_rewards') or 0) == 1
+        except (TypeError, ValueError):
+            claimed = False
+        if claimed:
+            return frame(amf3_encode(
+                [str(CMD_VIPQQ_REWARDS), [0, VIPQQ_ERR_CLAIMED]]))
+        parcels = self.config.vipqq_rewards()
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode(
+                [str(CMD_VIPQQ_REWARDS), [0, BAG_ERR_SLOT_LESS]]))
+        self._task_grant(rid, self._vip_parcel_items(parcels))
+        try:
+            self.save_role_qq_list(rid, is_get_rewards=1)
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_VIPQQ_REWARDS), [1]]))
+
+    def vipqq_bind(self, role, qq, user_name):
+        """VipQqServiceImpl.vipQqOK: store the QQ binding, push 88005.
+
+        The QQ platform callback has no local equivalent, so callers
+        invoke this directly. Returns the pushed frames.
+        """
+        if role is None:
+            return []
+        try:
+            self.save_role_qq_list(role.get('id'), qq=qq,
+                                   user_name=user_name, is_get_rewards=0)
+        except Exception:
+            pass
+        return self._vip_push(
+            role, [frame(amf3_encode([str(CMD_VIPQQ_BIND_PUSH), None]))])
+
+    def vipqq_recharge(self, role, yb):
+        """VipQqServiceImpl.recharge: refresh the 88003 push on recharge.
+
+        Claimed rows and non-positive amounts stay silent. Returns the
+        pushed frames.
+        """
+        if role is None:
+            return []
+        try:
+            row = self.get_role_qq_list(role.get('id'))
+        except Exception:
+            row = None
+        try:
+            claimed = int((row or {}).get('is_get_rewards') or 0) == 1
+        except (TypeError, ValueError):
+            claimed = False
+        if claimed:
+            return []
+        try:
+            amount = int(yb or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return []
+        cfg = self._vipqq_config()
+        if cfg is None:
+            return []
+        return self._vip_push(
+            role, [frame(amf3_encode(
+                [str(CMD_VIPQQ_INFO),
+                 self._vipqq_payload(
+                     cfg, self._vipqq_flag(cfg, amount, False))]))])
 
     def equip_qianghua_clear(self, msg):
         """Command 34003: EquipAction.qiangHuaClear -> qiangHuaClear.
@@ -5667,8 +6029,9 @@ class Session:
         C> is the bag-row guid string (empty is silent). Unknown rows,
         goods, or skills are silent like Java's null paths; dead roles
         are silent (isDead gate); check failures reply [0, code]. Only
-        skills 1/2/5/14/36/37 have portable effects so far; other known
-        skills stay open and silent pending their systems (documented).
+        skills 1/2/3/5/14/36/37 have portable effects so far (3 is the
+        taofa scroll hook); other known skills stay open and silent
+        pending their systems (documented).
         """
         guid = msg if isinstance(msg, str) else self.safe(msg, 1, None)
         if not guid or self.config is None:
@@ -5702,9 +6065,9 @@ class Session:
         err = self._prop_use_check(role, grow, skill)
         if err is not None:
             return frame(amf3_encode([str(CMD_PROP_USE), [0, err]]))
-        # consumePrior default true; HpMp/skillBook/LiHe null (their
+        # consumePrior default true; HpMp/skillBook/LiHe/TaoFa null (their
         # services consume internally, so the pipeline never does).
-        prior = skill not in (1, 37, 11)
+        prior = skill not in (1, 37, 11, 3)
         if prior and not self._prop_decr(rid, row):
             return None
         frames = self._prop_effect(role, rid, row, grow, skill)
@@ -5767,6 +6130,8 @@ class Session:
             return self._prop_skillbook(role, rid, row, grow), False
         if skill == 11:
             return self._prop_lihe(role, rid, row, grow), False
+        if skill == 3:
+            return self._prop_taofa(role, rid, row, grow)
         if skill == 36:
             return self._prop_dan(role, rid, row, grow)
         if skill == 2:
@@ -7429,10 +7794,1137 @@ class Session:
         return frames
 
     @staticmethod
+    def _same_day_ms(first_ms, second_ms):
+        """DateUtils.isSameDay over two ms stamps (server-local day)."""
+        try:
+            first = time.localtime(int(first_ms or 0) / 1000)[:3]
+            second = time.localtime(int(second_ms or 0) / 1000)[:3]
+        except (TypeError, ValueError):
+            return False
+        return first == second
+
+    def _taofa_vip_level(self, rid):
+        """Role vip level int for the taofa/richang bonus lookups."""
+        try:
+            vip = self.get_role_vip(rid) or {}
+        except Exception:
+            return 0
+        try:
+            return int(vip.get('vip_level') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _taofa_state_or_init(self, rid):
+        """resetOrCheckTaofaUpdateTime: materialize then re-arm a stale day."""
+        try:
+            state = self.get_task_taofa_state(rid)
+        except Exception:
+            state = None
+        now = int(time.time() * 1000)
+        if state is None:
+            state = {'tunshi_count': 0, 'hebing_count': 0,
+                     'finish_count': 0, 'total_count': 0,
+                     'create_time': now}
+            try:
+                self.save_task_taofa_state(rid, **state)
+            except Exception:
+                pass
+            return dict(state)
+        state = dict(state)
+        if not self._same_day_ms(now, state.get('create_time')):
+            state.update(tunshi_count=0, hebing_count=0, finish_count=0,
+                         create_time=now)
+            try:
+                self.save_task_taofa_state(rid, **state)
+            except Exception:
+                pass
+        return state
+
+    def _taofa_max_value(self, vip_level):
+        """getTaofaMaxValue: [5, 10, 10] plus the vip bonuses."""
+        tunshi = self.config.vip_tunshi_times(vip_level) \
+            if self.config is not None else 0
+        taofa = self.config.vip_taofa_times(vip_level) \
+            if self.config is not None else 0
+        return [5 + tunshi, 10 + taofa, 10 + taofa]
+
+    def taofa_list(self):
+        """Command 50101: [quest infos or null, [tunshi, finish, use], max]."""
+        if self.config is None:
+            return None
+        _role, rid = self._task_role()
+        if rid is None:
+            return None
+        state = self._taofa_state_or_init(rid)
+        try:
+            rows = self.get_task_taofas(rid) or []
+        except Exception:
+            rows = []
+        counts = [state.get('tunshi_count') or 0,
+                  state.get('finish_count') or 0,
+                  state.get('hebing_count') or 0]
+        infos = [self._taofa_out_info(dict(row)) for row in rows] or None
+        reply = [infos, counts,
+                 self._taofa_max_value(self._taofa_vip_level(rid))]
+        return frame(amf3_encode(['50101', reply]))
+
+    def _taofa_out_info(self, row):
+        """CreateTaskOutputWrapper.getTaofaOutPutInfo: the 18-field quest VO."""
+        cfg = self.config.taofa_config(row.get('task_id'))
+        if cfg is None:
+            return None
+        try:
+            created = float(row.get('create_time') or 0)
+        except (TypeError, ValueError):
+            created = 0.0
+        vo = cfg.get('kill_monster')
+        if vo is None:
+            monster = [None, None]
+        else:
+            try:
+                master = int(row.get('master_count') or 0)
+            except (TypeError, ValueError):
+                master = 0
+            monster = [None, [vo['monster_id'], vo['count'], master,
+                              vo['auto_attack'], vo['show_name']]]
+        try:
+            exp_base = int(cfg.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp_base = 0
+        try:
+            exp_ts = int(row.get('ts_reward_exp') or 0)
+        except (TypeError, ValueError):
+            exp_ts = 0
+        try:
+            ratio = 1.0 + exp_ts / exp_base if exp_base else \
+                (float('inf') if exp_ts else float('nan'))
+        except (TypeError, ValueError):
+            ratio = 1.0
+        call_goods = cfg.get('call_goods')
+        return [row.get('id'), cfg['id'], created,
+                row.get('task_state') or 0, monster,
+                self._taofa_reward_part(row, cfg), 2, cfg.get('target'),
+                cfg.get('monster_type') or 0,
+                cfg.get('monster_name') or '',
+                cfg.get('monster_level') or 0, ratio,
+                cfg.get('color') or 0, bool(cfg.get('swallow')),
+                float(cfg.get('merge') or 0.0), cfg.get('res') or '',
+                cfg.get('desc'),
+                [call_goods, 1] if call_goods else None]
+
+    def _taofa_reward_part(self, row, cfg):
+        """The 8-field reward array (config plus merged swallow rewards)."""
+        def total(base, key):
+            try:
+                return int(cfg.get(base) or 0) + int(row.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0
+        return [total('jb', 'ts_reward_jb'), total('exp', 'ts_reward_exp'),
+                total('bind_yb', 'ts_reward_bing_yb'),
+                total('zhenqi', 'ts_reward_zhenqi'),
+                total('prestige', 'ts_reward_prestige'),
+                None, 0, self._taofa_show_pairs(cfg.get('show_items'))]
+
+    @staticmethod
+    def _taofa_show_pairs(items):
+        """CreateTaskOutputWrapper.getRewardOutPut: pairs or null."""
+        if not items:
+            return None
+        return [[item['goods_id'], item['count']] for item in items]
+
+    def _prop_taofa(self, role, rid, row, grow):
+        """TaoFaPropType.useDaoJu: xtf scrolls receive a quest (skill 3).
+
+        consumePrior is false, so errors never burn the scroll; success
+        burns it like the published UsePropEvent and replies terminal.
+        """
+        err, info = self._taofa_receive(role, rid, row)
+        if err is not None:
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, err]]))], False)
+        self._prop_decr(rid, row)
+        return ([frame(amf3_encode([str(CMD_TAOFA_RECEIVE), [1, info]]))],
+                True)
+
+    def _taofa_receive(self, role, rid, row):
+        """recevieTaskTaofa -> (error or None, quest info or None)."""
+        goods_id = str(row.get('goods_id') or '')
+        if self.config is None or \
+                self.config._goods_table().get(goods_id) is None:
+            return TASK_ERR_TAOFA_NO_GOODS, None
+        level = self._task_role_level(role)
+        vip_level = self._taofa_vip_level(rid)
+        state = self._taofa_state_or_init(rid)
+        try:
+            used = int(state.get('hebing_count') or 0)
+        except (TypeError, ValueError):
+            used = 0
+        bonus = self.config.vip_taofa_times(vip_level)
+        if used + 1 > TAOFA_MAX_USE + bonus:
+            return TASK_ERR_TAOFA_USE_MAX, None
+        try:
+            rows = self.get_task_taofas(rid) or []
+        except Exception:
+            rows = []
+        if len(rows) >= TAOFA_RECEIVE_MAX:
+            return TASK_ERR_TAOFA_RECEIVE_MAX, None
+        interval = self.config.taofa_interval(
+            level, self.config.goods_rarelevel(goods_id))
+        if not interval:
+            return TASK_ERR_TAOFA_CONFIG, None
+        # Lottery.roll(size): uniform pick like Random.nextInt.
+        cfg = interval[random.randrange(len(interval))]
+        try:
+            self.save_task_taofa_state(
+                rid, tunshi_count=state.get('tunshi_count') or 0,
+                hebing_count=used + 1,
+                finish_count=state.get('finish_count') or 0,
+                total_count=state.get('total_count') or 0,
+                create_time=int(time.time() * 1000))
+        except Exception:
+            pass
+        now = int(time.time() * 1000)
+        quest = {'id': f'task{uuid.uuid4().hex[:16]}',
+                 'task_id': cfg['id'], 'master_count': 0, 'task_state': 0,
+                 'ts_state': 0, 'ts_reward_jb': 0, 'ts_reward_exp': 0,
+                 'ts_reward_zhenqi': 0, 'ts_reward_bing_yb': 0,
+                 'ts_reward_prestige': 0, 'update_time': now,
+                 'create_time': now}
+        try:
+            self.insert_task_taofa(rid, quest)
+        except Exception:
+            return TASK_ERR_TAOFA_CONFIG, None
+        return None, self._taofa_out_info(quest)
+
+    def taofa_tunshi(self, msg):
+        """Command 50103: devour one quest into another, replying the survivor."""
+        if self.config is None:
+            return None
+        keeper_guid, eaten_guid = None, None
+        if isinstance(msg, (list, tuple)) and len(msg) >= 2:
+            keeper_guid, eaten_guid = msg[0], msg[1]
+        if not keeper_guid or not eaten_guid:
+            return None
+        _role, rid = self._task_role()
+        if rid is None:
+            return None
+        try:
+            keeper = self.get_task_taofa(rid, str(keeper_guid))
+        except Exception:
+            keeper = None
+        try:
+            eaten = self.get_task_taofa(rid, str(eaten_guid))
+        except Exception:
+            eaten = None
+        if keeper is None or eaten is None:
+            return frame(amf3_encode(
+                ['50103', [0, TASK_ERR_TAOFA_NO_EXIST]]))
+        state = self._taofa_state_or_init(rid)
+        try:
+            tunshi = int(state.get('tunshi_count') or 0)
+        except (TypeError, ValueError):
+            tunshi = 0
+        bonus = self.config.vip_tunshi_times(self._taofa_vip_level(rid))
+        if tunshi >= TAOFA_MAX_TUNSHI + bonus:
+            return frame(amf3_encode(
+                ['50103', [0, TASK_ERR_TAOFA_TUNSHI_MAX]]))
+        keeper = dict(keeper)
+        eaten = dict(eaten)
+        cfg = self.config.taofa_config(keeper.get('task_id'))
+        if cfg is None or not cfg.get('swallow'):
+            return frame(amf3_encode(
+                ['50103', [0, TASK_ERR_TAOFA_NO_TUNSHI]]))
+        try:
+            self.save_task_taofa_state(
+                rid, tunshi_count=tunshi + 1,
+                hebing_count=state.get('hebing_count') or 0,
+                finish_count=state.get('finish_count') or 0,
+                total_count=state.get('total_count') or 0,
+                create_time=int(time.time() * 1000))
+        except Exception:
+            pass
+        try:
+            self.delete_task_taofa(rid, str(eaten_guid))
+        except Exception:
+            pass
+        merge = cfg.get('merge') or 0.0
+        updates = {'ts_state': 1}
+        for base, key in (('jb', 'ts_reward_jb'), ('exp', 'ts_reward_exp'),
+                          ('prestige', 'ts_reward_prestige'),
+                          ('zhenqi', 'ts_reward_zhenqi'),
+                          ('bind_yb', 'ts_reward_bing_yb')):
+            try:
+                have = int(eaten.get(key) or 0) + int(cfg.get(base) or 0)
+            except (TypeError, ValueError):
+                have = 0
+            try:
+                updates[key] = int(keeper.get(key) or 0) + int(have * merge)
+            except (TypeError, ValueError):
+                updates[key] = int(keeper.get(key) or 0)
+        try:
+            self.update_task_taofa(rid, str(keeper_guid), **updates)
+        except Exception:
+            pass
+        keeper.update(updates)
+        info = self._taofa_out_info(keeper)
+        return frame(amf3_encode(['50103', [1, [info, str(eaten_guid)]]]))
+
+    def taofa_kill_progress(self, role, monster_id):
+        """Kill hook: 50104 progress, 50105 pay push on completion."""
+        if self.config is None or role is None:
+            return []
+        rid = role.get('id')
+        try:
+            rows = self.get_task_taofas(rid) or []
+        except Exception:
+            return []
+        matching = []
+        for row in rows:
+            cfg = self.config.taofa_config(row.get('task_id'))
+            vo = (cfg or {}).get('kill_monster')
+            if vo is not None and vo['monster_id'] == monster_id:
+                matching.append((dict(row), cfg))
+        if not matching:
+            return []
+        if len(matching) > 1:
+            # TaofaTaskComparator: task ids sort descending, first wins.
+            matching.sort(key=lambda pair: str(pair[0].get('task_id') or ''),
+                          reverse=True)
+        row, cfg = matching[0]
+        try:
+            need = int(cfg['kill_monster']['count'] or 0)
+        except (TypeError, ValueError):
+            need = 0
+        try:
+            done = int(row.get('master_count') or 0) + 1
+        except (TypeError, ValueError):
+            done = 1
+        try:
+            self.update_task_taofa(rid, row['id'], master_count=done)
+        except Exception:
+            pass
+        row['master_count'] = done
+        frames = [frame(amf3_encode(
+            [str(CMD_TAOFA_CHANGE), [row['id'], monster_id, done]]))]
+        if done >= need:
+            try:
+                self.update_task_taofa(rid, row['id'], master_count=need,
+                                       task_state=1)
+            except Exception:
+                pass
+            row.update(master_count=need, task_state=1)
+            result = self._taofa_pay(role, rid, row)
+            if result is not None:
+                frames.append(frame(amf3_encode(
+                    [str(CMD_TAOFA_PAY), result])))
+        return frames
+
+    def _taofa_pay(self, role, rid, row):
+        """payTaskTaofa: finish count, delete, grant; None unless payable."""
+        try:
+            saved = self.get_task_taofa(rid, row['id'])
+        except Exception:
+            saved = None
+        if saved is None:
+            return None
+        try:
+            if int(saved.get('task_state') or 0) != 1:
+                return None
+        except (TypeError, ValueError):
+            return None
+        cfg = self.config.taofa_config(saved.get('task_id'))
+        if cfg is None:
+            return None
+        state = self._taofa_state_or_init(rid)
+        try:
+            finish = int(state.get('finish_count') or 0)
+        except (TypeError, ValueError):
+            finish = 0
+        try:
+            self.save_task_taofa_state(
+                rid, tunshi_count=state.get('tunshi_count') or 0,
+                hebing_count=state.get('hebing_count') or 0,
+                finish_count=finish + 1,
+                total_count=state.get('total_count') or 0,
+                create_time=int(time.time() * 1000))
+        except Exception:
+            pass
+        try:
+            self.delete_task_taofa(rid, row['id'])
+        except Exception:
+            pass
+        return self._taofa_grant(role, rid, dict(saved), cfg)
+
+    def _taofa_grant(self, role, rid, row, cfg):
+        """reward(): currencies, exp, zhenqi, goods; the 50105 result array."""
+        tunshi = int(row.get('ts_state') or 0) == 1
+        totals = {}
+        for base, key in (('jb', 'ts_reward_jb'), ('exp', 'ts_reward_exp'),
+                          ('zhenqi', 'ts_reward_zhenqi'),
+                          ('bind_yb', 'ts_reward_bing_yb')):
+            try:
+                amount = int(cfg.get(base) or 0)
+            except (TypeError, ValueError):
+                amount = 0
+            if tunshi:
+                try:
+                    amount += int(row.get(key) or 0)
+                except (TypeError, ValueError):
+                    pass
+            totals[base] = amount
+        if totals['exp'] > 0:
+            try:
+                total = int(role.get('exp') or 0) + totals['exp']
+            except (TypeError, ValueError):
+                total = totals['exp']
+            try:
+                self.save_role_state(rid, exp=total)
+            except Exception:
+                pass
+        for key, column in (('bind_yb', 'bind_lingshi'),
+                            ('jb', 'tongqian')):
+            if totals[key] <= 0:
+                continue
+            try:
+                total = int(role.get(column) or 0) + totals[key]
+            except (TypeError, ValueError):
+                total = totals[key]
+            try:
+                self.save_role_state(rid, **{column: total})
+            except Exception:
+                pass
+        if totals['zhenqi'] > 0:
+            try:
+                total = int(role.get('zhenqi') or 0) + totals['zhenqi']
+            except (TypeError, ValueError):
+                total = totals['zhenqi']
+            try:
+                self.save_role_state(rid, zhenqi=total)
+            except Exception:
+                pass
+        if cfg.get('goods'):
+            self._task_grant(rid, cfg['goods'])
+        if cfg.get('zubao'):
+            # rollZubaoId needs the zubao module (read-only here).
+            log.info('conn %d: taofa %r zubao rewards %r (not ported)',
+                     self.conn_id, cfg.get('id'), cfg.get('zubao'))
+        try:
+            prestige = int(cfg.get('prestige') or 0)
+        except (TypeError, ValueError):
+            prestige = 0
+        return [cfg['id'],
+                self._taofa_show_pairs(cfg.get('show_items')),
+                int(cfg.get('exp') or 0), int(cfg.get('jb') or 0),
+                int(cfg.get('bind_yb') or 0), prestige,
+                int(cfg.get('zhenqi') or 0)]
+
+    @staticmethod
     def _task_kills_str(kills):
         """TaskDataUtil.killMap2String: 'mid;n,..' with the trailing comma cut."""
         text = ''.join(f'{mid};{count},' for mid, count in kills.items())
         return text[:-1] if text.endswith(',') else text
+
+    def richang_info(self):
+        """Command 50201: [quest VO, cost data, loop reward VO]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        if self._task_role_level(role) < RICHANG_MIN_LEVEL:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        frames = []
+        if row is None:
+            row = self._richang_init(role, rid)
+            if row is None:
+                return None
+            # initRiChang queues its own 50201 before the reply is built.
+            frames.append(frame(amf3_encode(
+                [str(CMD_RICHANG_INFO),
+                 self._richang_output_data(dict(row))])))
+        else:
+            row = dict(row)
+        row = self._richang_reset(rid, self._task_role_level(role), row)
+        reply = self._richang_output_data(row)
+        frames.append(frame(amf3_encode([str(CMD_RICHANG_INFO), reply])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def _richang_init(self, role, rid):
+        """initRiChang: roll all three configs, insert, or None."""
+        level = self._task_role_level(role)
+        cond = self._richang_random_condition(level, None)
+        reward = self._richang_random_reward(level, None)
+        loop = self._richang_random_loop(level)
+        if cond is None or reward is None or loop is None:
+            return None
+        now = int(time.time() * 1000)
+        row = {'id': f'task{uuid.uuid4().hex[:16]}',
+               'condition_config_id': cond['id'],
+               'reward_config_id': reward['id'],
+               'reward_loop_config_id': loop['id'],
+               'task_condition': '', 'current_loop': 1, 'task_state': 0,
+               'fufei_state': 0, 'recevie_time': now, 'create_time': now}
+        try:
+            self.save_task_richang(rid, **row)
+        except Exception:
+            return None
+        return row
+
+    def _richang_reset(self, rid, level, row):
+        """resetTaskRichang: a stale recevie day re-rolls the quest."""
+        now = int(time.time() * 1000)
+        if self._same_day_ms(now, row.get('recevie_time')):
+            return row
+        cond = self._richang_random_condition(level, None)
+        reward = self._richang_random_reward(level, None)
+        loop = self._richang_random_loop(level)
+        if cond is None or reward is None or loop is None:
+            return row
+        row.update(condition_config_id=cond['id'],
+                   reward_config_id=reward['id'],
+                   reward_loop_config_id=loop['id'], task_state=0,
+                   fufei_state=0, task_condition='', current_loop=1,
+                   recevie_time=now)
+        self._richang_save(rid, row)
+        return row
+
+    def _richang_save(self, rid, row):
+        """Persist a richang row dict under its role id."""
+        fields = {key: row.get(key) for key in (
+            'id', 'condition_config_id', 'reward_config_id',
+            'reward_loop_config_id', 'task_condition', 'current_loop',
+            'task_state', 'fufei_state', 'recevie_time', 'create_time')}
+        try:
+            self.save_task_richang(rid, **fields)
+        except Exception:
+            pass
+
+    def _richang_out(self, row):
+        """getTaskRichangOutPut: the 11-field quest VO, or None."""
+        if row is None:
+            return None
+        cond = self.config.richang_condition(row.get('condition_config_id'))
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        if cond is None or reward is None:
+            return None
+        try:
+            recevied = float(row.get('recevie_time') or 0)
+        except (TypeError, ValueError):
+            recevied = 0.0
+        return [row.get('id'), recevied, row.get('task_state') or 0,
+                [self._richang_monster_part(row, cond.get('complete_items')),
+                 self._richang_monster_part(row, cond.get('kill_monsters'))],
+                self._richang_reward_part(
+                    reward.get('reward_items'), reward.get('jb') or 0,
+                    reward.get('exp') or 0, reward.get('bind_yb') or 0,
+                    reward.get('zhenqi') or 0, reward.get('prestige') or 0),
+                reward.get('thick') or 0, cond.get('difficulty') or 0,
+                row.get('current_loop') or 0, row.get('fufei_state') or 0,
+                3, RICHANG_MAX_LOOP]
+
+    def _richang_monster_part(self, row, mmap):
+        """getMonsterOutPut: [id, need, done, auto, name]; last entry wins."""
+        if not mmap:
+            return None
+        try:
+            state = int(row.get('task_state') or 0)
+        except (TypeError, ValueError):
+            state = 0
+        kills = self._task_kills(row.get('task_condition')) or {}
+        part = None
+        for monster_id, vo in mmap.items():
+            if state in (1, 2):
+                done = vo['count']
+            else:
+                done = kills.get(monster_id, 0)
+            part = [monster_id, vo['count'], done, vo['auto_attack'],
+                    vo['show_name']]
+        return part
+
+    def _richang_reward_part(self, items, jb, exp, bind_yb, zhenqi,
+                             prestige):
+        """getRewardOutPut(items, jb, exp, bindYb, zhenqi, prestige)."""
+        pairs = self._taofa_show_pairs(items)
+        return [jb, exp, bind_yb, zhenqi, prestige, None, 0, pairs]
+
+    @staticmethod
+    def _richang_state_data():
+        """getTaskRiChangStateData: [jiangDi, tiSheng, direct, 1key, best]."""
+        return [RICHANG_COST_JIANGDI, RICHANG_COST_TISHENG,
+                RICHANG_COST_DIRECT, RICHANG_COST_ONEKEY,
+                RICHANG_COST_ONEKEY_BEST]
+
+    def _richang_output_data(self, row):
+        """getTaskRiChangeOutputData: [quest VO, costs, loop reward VO]."""
+        loop = self.config.richang_loop_reward(
+            row.get('reward_loop_config_id'))
+        if loop is None:
+            loop = {'reward_items': None, 'jb': 0, 'exp': 0, 'bind_yb': 0,
+                    'zhenqi': 0, 'prestige': 0}
+        return [self._richang_out(row), self._richang_state_data(),
+                self._richang_reward_part(
+                    loop.get('reward_items'), loop.get('jb') or 0,
+                    loop.get('exp') or 0, loop.get('bind_yb') or 0,
+                    loop.get('zhenqi') or 0, loop.get('prestige') or 0)]
+
+    def _richang_random_condition(self, level, difficulty):
+        """randomCondition: Lottery.roll over the interval (or subinterval)."""
+        sub = richang_condition_interval(
+            self.config.richang_condition_buckets(), level)
+        if not sub:
+            return None
+        if difficulty is None:
+            pool = self.config.richang_condition_subinterval(sub)
+        else:
+            pool = self.config.richang_condition_interval(sub, difficulty)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    def _richang_random_reward(self, level, thick):
+        """randomReward: Lottery.roll over the interval (or subinterval)."""
+        sub = richang_reward_interval(
+            self.config.richang_reward_buckets(),
+            self.config.richang_condition_buckets(), level)
+        if not sub:
+            return None
+        if thick is None:
+            pool = self.config.richang_reward_subinterval(sub)
+        else:
+            pool = self.config.richang_reward_interval(sub, thick)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    def _richang_random_loop(self, level):
+        """randomRewardLoop: Lottery.roll over the loop interval."""
+        sub = richang_loop_interval(
+            self.config.richang_loop_buckets(),
+            self.config.richang_condition_buckets(), level)
+        if not sub:
+            return None
+        pool = self.config.richang_loop_interval(sub)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    def richang_decrease(self):
+        """Command 50202: re-roll an easier condition for 50000 YXB."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        cond = self.config.richang_condition(row.get('condition_config_id'))
+        if cond is None:
+            return None
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['50202', [0, TASK_ERR_RICHANG_MAX_LOOP]]))
+        if cond.get('difficulty') == 1:
+            return frame(amf3_encode(
+                ['50202', [0, TASK_ERR_RICHANG_DIFF_MIN]]))
+        if not self._bag_money_check(role, 'YXB', RICHANG_COST_JIANGDI):
+            return frame(amf3_encode(['50202', [0, MALL_ERR_YB_NO_ENOUGHT]]))
+        easier = self._richang_random_condition(
+            self._task_role_level(role), 1)
+        if easier is None:
+            return None
+        self._bag_money_decr(rid, 'YXB', RICHANG_COST_JIANGDI)
+        row.update(condition_config_id=easier['id'], task_condition='',
+                   task_state=0,
+                   recevie_time=int(time.time() * 1000))
+        self._richang_save(rid, row)
+        part = [self._richang_monster_part(row, easier.get('complete_items')),
+                self._richang_monster_part(row, easier.get('kill_monsters'))]
+        return frame(amf3_encode(['50202', [1, 1, part]]))
+
+    def richang_increase(self):
+        """Command 50203: re-roll a best reward for 50000 YXB."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['50203', self._richang_done_reply()]))
+        if reward.get('thick') == RICHANG_THICK_MAX:
+            return frame(amf3_encode(
+                ['50203', [0, TASK_ERR_RICHANG_THICK_MAX]]))
+        if not self._bag_money_check(role, 'YXB', RICHANG_COST_TISHENG):
+            return frame(amf3_encode(
+                ['50203', self._richang_yb_short()]))
+        best = self._richang_random_reward(self._task_role_level(role),
+                                           RICHANG_THICK_MAX)
+        if best is None:
+            return None
+        self._bag_money_decr(rid, 'YXB', RICHANG_COST_TISHENG)
+        row.update(reward_config_id=best['id'], task_state=0,
+                   recevie_time=int(time.time() * 1000))
+        self._richang_save(rid, row)
+        return frame(amf3_encode(
+            ['50203', [1, RICHANG_THICK_MAX,
+                       self._richang_reward_part(
+                           best.get('reward_items'), best.get('jb') or 0,
+                           best.get('exp') or 0, best.get('bind_yb') or 0,
+                           best.get('zhenqi') or 0,
+                           best.get('prestige') or 0)]]))
+
+    @staticmethod
+    def _richang_done_reply():
+        """GetTaskOutPut.riChaungTsak: [0, 480060]."""
+        return [0, TASK_ERR_RICHANG_MAX_LOOP]
+
+    @staticmethod
+    def _richang_yb_short():
+        """GetTaskOutPut.isYbNotEnough: [0, 430403]."""
+        return [0, MALL_ERR_YB_NO_ENOUGHT]
+
+    def richang_zhijie(self):
+        """Command 50204: finish the loop now for 10 YB, then advance."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['50204', self._richang_done_reply()]))
+        if not self._bag_money_check(role, 'YB', RICHANG_COST_DIRECT):
+            return frame(amf3_encode(
+                ['50204', self._richang_yb_short()]))
+        self._bag_money_decr(rid, 'YB', RICHANG_COST_DIRECT)
+        frames = []
+        result = self._richang_pay(role, rid, False)
+        if result is not None:
+            frames.append(frame(amf3_encode(
+                [str(CMD_RICHANG_PAY), result])))
+            if self._richang_stop(rid, frames) is False:
+                nxt = self._richang_receive(role, rid, False)
+                if nxt is not None:
+                    frames.append(nxt)
+        # The finish event has no bus here; the reply is the wire half.
+        frames.append(frame(amf3_encode(['50204', [1]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def richang_complete_all(self):
+        """Command 50205: one-key the rest for 50 YB (vip-gated)."""
+        if self.config is None:
+            return None
+        _role, rid = self._task_role()
+        if rid is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if not self.config.vip_onekeytask(self._taofa_vip_level(rid)):
+            return frame(amf3_encode(
+                ['50205', [0, TASK_ERR_NOT_RICHANG]]))
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['50205', self._richang_done_reply()]))
+        role = (_role or {})
+        if not self._bag_money_check(role, 'YB', RICHANG_COST_ONEKEY):
+            return frame(amf3_encode(
+                ['50205', self._richang_yb_short()]))
+        self._bag_money_decr(rid, 'YB', RICHANG_COST_ONEKEY)
+        row['fufei_state'] = 1
+        self._richang_save(rid, row)
+        # TaskRiChangCompleteEvent has no bus here.
+        return frame(amf3_encode(['50205', [1, row['fufei_state']]]))
+
+    def richang_complete_best(self):
+        """Command 50206: best one-key for 100 YB (vip-gated)."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if not self.config.vip_onekeytask(self._taofa_vip_level(rid)):
+            return frame(amf3_encode(
+                ['50206', [0, TASK_ERR_NOT_RICHANG]]))
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['50206', [0, TASK_ERR_RICHANG_MAX_LOOP]]))
+        if not self._bag_money_check(role, 'YB', RICHANG_COST_ONEKEY_BEST):
+            return frame(amf3_encode(
+                ['50206', [0, MALL_ERR_YB_NO_ENOUGHT]]))
+        self._bag_money_decr(rid, 'YB', RICHANG_COST_ONEKEY_BEST)
+        row['fufei_state'] = 2
+        self._richang_save(rid, row)
+        frames = []
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        if reward is not None and reward.get('thick') != RICHANG_THICK_MAX:
+            best = self._richang_best_receive(rid, row)
+            if best is not None:
+                frames.append(best)
+            try:
+                row = dict(self.get_task_richang(rid) or row)
+            except Exception:
+                row = dict(row)
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        cond = self.config.richang_condition(
+            row.get('condition_config_id'))
+        part = self._richang_reward_part(
+            (reward or {}).get('reward_items'),
+            (reward or {}).get('jb') or 0, (reward or {}).get('exp') or 0,
+            (reward or {}).get('bind_yb') or 0,
+            (reward or {}).get('zhenqi') or 0,
+            (reward or {}).get('prestige') or 0)
+        # TaskRiChangCompleteBestEvent has no bus here.
+        frames.append(frame(amf3_encode(
+            ['50206', [1, row.get('fufei_state') or 0, part,
+                       (reward or {}).get('thick') or 0,
+                       (cond or {}).get('difficulty') or 0]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def richang_notify_loop(self):
+        """Command 50209: pay out a fufei loop, then advance or stop."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if (row.get('fufei_state') or 0) == 0:
+            return None
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return None
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        frames = []
+        best = (row.get('fufei_state') or 0) == 2
+        result = self._richang_pay(role, rid, False)
+        if result is not None:
+            frames.append(frame(amf3_encode(
+                [str(CMD_RICHANG_PAY), result])))
+            if self._richang_stop(rid, frames) is False:
+                nxt = self._richang_receive(role, rid, best)
+                if nxt is not None:
+                    frames.append(nxt)
+        if not frames:
+            return None
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def _richang_receive(self, role, rid, is_best):
+        """receiveTaskRiChange: create or advance the quest, pushing 50210."""
+        if self._task_role_level(role) < RICHANG_MIN_LEVEL:
+            return None
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is not None and \
+                (row.get('current_loop') or 0) >= RICHANG_MAX_LOOP:
+            return None
+        level = self._task_role_level(role)
+        thick = RICHANG_THICK_MAX if is_best else None
+        cond = self._richang_random_condition(level, thick)
+        reward = self._richang_random_reward(level, thick)
+        if cond is None or reward is None:
+            return None
+        if row is None:
+            loop = self._richang_random_loop(level)
+            if loop is None:
+                return None
+            now = int(time.time() * 1000)
+            row = {'id': f'task{uuid.uuid4().hex[:16]}',
+                   'condition_config_id': cond['id'],
+                   'reward_config_id': reward['id'],
+                   'reward_loop_config_id': loop['id'],
+                   'task_condition': '', 'current_loop': 1, 'task_state': 0,
+                   'fufei_state': 0, 'recevie_time': now, 'create_time': now}
+        else:
+            row = dict(row)
+            row.update(condition_config_id=cond['id'],
+                       reward_config_id=reward['id'], task_state=0,
+                       task_condition='',
+                       current_loop=(row.get('current_loop') or 0) + 1,
+                       recevie_time=int(time.time() * 1000))
+        self._richang_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_RICHANG_RECEIVE), self._richang_out(dict(row))]))
+
+    def _richang_best_receive(self, rid, row):
+        """bestReceiveTaskRichange: best re-roll in place, pushing 50210."""
+        if row is None:
+            # Java would NPE on the missing quest; staying silent instead.
+            return None
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            role = roles[0] if roles else None
+        except Exception:
+            role = None
+        if role is None:
+            return None
+        level = self._task_role_level(role)
+        cond = self._richang_random_condition(level, RICHANG_THICK_MAX)
+        reward = self._richang_random_reward(level, RICHANG_THICK_MAX)
+        if cond is None or reward is None:
+            return None
+        row = dict(row)
+        row.update(condition_config_id=cond['id'],
+                   reward_config_id=reward['id'], task_state=0,
+                   task_condition='',
+                   recevie_time=int(time.time() * 1000))
+        self._richang_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_RICHANG_RECEIVE), self._richang_out(dict(row))]))
+
+    def _richang_pay(self, role, rid, is_best):
+        """payTaskRichange: settle a finished loop; None unless payable."""
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if is_best and row.get('task_state') != 1:
+            return None
+        if row.get('current_loop') == RICHANG_MAX_LOOP and \
+                row.get('task_state') != 2:
+            return None
+        reward = self.config.richang_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        loop = None
+        if row.get('current_loop') == RICHANG_MAX_LOOP:
+            loop = self.config.richang_loop_reward(
+                row.get('reward_loop_config_id'))
+            row['fufei_state'] = 0
+        row['task_state'] = 2
+        self._richang_save(rid, row)
+        return self._richang_grant(role, rid, row.get('id'), reward, loop)
+
+    def _richang_grant(self, role, rid, task_uid, reward, loop):
+        """reward(): currencies, exp, zhenqi, goods; the 50207 result array."""
+        try:
+            bind_yb = int(reward.get('bind_yb') or 0)
+        except (TypeError, ValueError):
+            bind_yb = 0
+        try:
+            jb = int(reward.get('jb') or 0)
+        except (TypeError, ValueError):
+            jb = 0
+        try:
+            exp = int(reward.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        try:
+            zhenqi = int(reward.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        loop_items = None
+        if loop is not None:
+            try:
+                bind_yb += int(loop.get('bind_yb') or 0)
+                jb += int(loop.get('jb') or 0)
+                exp += int(loop.get('exp') or 0)
+                zhenqi += int(loop.get('zhenqi') or 0)
+            except (TypeError, ValueError):
+                pass
+            loop_items = loop.get('reward_items')
+        if exp > 0:
+            try:
+                total = int(role.get('exp') or 0) + exp
+            except (TypeError, ValueError):
+                total = exp
+            try:
+                self.save_role_state(rid, exp=total)
+            except Exception:
+                pass
+        if bind_yb > 0:
+            try:
+                total = int(role.get('bind_lingshi') or 0) + bind_yb
+            except (TypeError, ValueError):
+                total = bind_yb
+            try:
+                self.save_role_state(rid, bind_lingshi=total)
+            except Exception:
+                pass
+        if jb > 0:
+            try:
+                total = int(role.get('tongqian') or 0) + jb
+            except (TypeError, ValueError):
+                total = jb
+            try:
+                self.save_role_state(rid, tongqian=total)
+            except Exception:
+                pass
+        if zhenqi > 0:
+            try:
+                total = int(role.get('zhenqi') or 0) + zhenqi
+            except (TypeError, ValueError):
+                total = zhenqi
+            try:
+                self.save_role_state(rid, zhenqi=total)
+            except Exception:
+                pass
+        merged = list(reward.get('reward_items') or [])
+        if loop_items:
+            merged.extend(loop_items)
+        if merged:
+            self._task_grant(rid, merged)
+        if reward.get('reward_items'):
+            pairs = [[item['goods_id'], item['count']] for item in merged]
+        else:
+            # Loop-only drops grant but never show, like the jar.
+            pairs = []
+        return [task_uid, pairs, int(reward.get('exp') or 0),
+                int(reward.get('jb') or 0), int(reward.get('bind_yb') or 0),
+                0, int(reward.get('zhenqi') or 0)]
+
+    def _richang_stop(self, rid, frames):
+        """stopRefreshRichang: 50211 + True on the finished final loop."""
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return False
+        row = dict(row)
+        if row.get('current_loop') != RICHANG_MAX_LOOP or \
+                row.get('task_state') != 2:
+            return False
+        loop = self.config.richang_loop_reward(
+            row.get('reward_loop_config_id'))
+        if loop is None:
+            loop = {'reward_items': None, 'jb': 0, 'exp': 0, 'bind_yb': 0,
+                    'zhenqi': 0, 'prestige': 0}
+        frames.append(frame(amf3_encode(
+            [str(CMD_RICHANG_STOP),
+             [self._richang_out(row),
+              self._richang_reward_part(
+                  loop.get('reward_items'), loop.get('jb') or 0,
+                  loop.get('exp') or 0, loop.get('bind_yb') or 0,
+                  loop.get('zhenqi') or 0,
+                  loop.get('prestige') or 0)]])))
+        return True
+
+    def richang_kill_progress(self, role, monster_id):
+        """Kill hook: 50208 progress, 50207 pay, 50210/50211 advance."""
+        if self.config is None or role is None:
+            return []
+        rid = role.get('id')
+        try:
+            row = self.get_task_richang(rid)
+        except Exception:
+            return []
+        if row is None:
+            return []
+        row = dict(row)
+        if row.get('task_state') in (1, 2):
+            return []
+        if (row.get('fufei_state') or 0) != 0:
+            return []
+        cond = self.config.richang_condition(row.get('condition_config_id'))
+        if cond is None:
+            return []
+        killmap = cond.get('kill_monsters')
+        if not killmap or monster_id not in killmap:
+            return []
+        try:
+            need = int(killmap[monster_id]['count'] or 0)
+        except (TypeError, ValueError):
+            need = 0
+        kills = self._task_kills(row.get('task_condition'))
+        if kills is None:
+            return []
+        if not row.get('task_condition'):
+            done = 1
+            kills[monster_id] = 1
+        else:
+            current = kills.get(monster_id, 0)
+            done = 0
+            if need > current:
+                done = (kills.get(monster_id) or 0) + 1
+                kills[monster_id] = done
+        row['task_condition'] = self._task_kills_str(kills)
+        frames = [frame(amf3_encode(
+            [str(CMD_RICHANG_CHANGE), [row['id'], monster_id, done]]))]
+        complete = True
+        for entry_id in killmap:
+            progress = kills.get(entry_id)
+            # The jar compares every entry against the killed monster's
+            # need, which matches single-monster conditions exactly.
+            if progress is None or need > progress:
+                complete = False
+                break
+        if complete:
+            row['task_state'] = 1
+            result = self._richang_pay(role, rid, True)
+            if result is not None:
+                frames.append(frame(amf3_encode(
+                    [str(CMD_RICHANG_PAY), result])))
+                if self._richang_stop(rid, frames) is False:
+                    nxt = self._richang_receive(role, rid, False)
+                    if nxt is not None:
+                        frames.append(nxt)
+        self._richang_save(rid, row)
+        return frames
+
+    def _bag_money_check(self, role, money, amount):
+        """AccountServiceImpl decrCheck for one MoneyType: balance covers it."""
+        column = BAG_MONEY_COLUMNS[money]
+        try:
+            return int((role or {}).get(column) or 0) >= amount
+        except (TypeError, ValueError):
+            return False
 
     def bag_lock_vo(self, state, kind, max_slot):
         """Next-slot unlock VO for 30000, or None at max capacity.

@@ -74,7 +74,7 @@ Legacy game server 127.0.0.1:8008 (MINA NioSocketAcceptor, TcpNoDelay)
 - Message routing is by AMF3 object content, not numeric opcodes: `NetIoHandler`
   dispatches deserialized objects with session attrs `ip_key/account_key/
   role_key`; no opcode table found in jar strings.
-- `sign = md5(uid.'xianlingkey'.t)` (PHP) authenticates the web session; the
+- `sign` (now `HMAC-SHA256(server secret, uid|t)`, was legacy `md5(uid.'xianlingkey'.t)`) authenticates the web session; the
   socket `ticket` is likely issued after the socket login — exact link unknown.
 
 ## Unknown (Ruffle-era; partly superseded)

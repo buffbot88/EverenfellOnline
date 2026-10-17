@@ -5,34 +5,34 @@ Oracle: the live Java server + `reference/TonNgoKhong` configs; captures in
 from bytecode, never invent numbers, golden-test everything, update this file
 and the parity audit per phase. No servers start/stop without the user asking.
 
-## Completion tracker (primary denominator: 886 command IDs in docs/command-ledger.md; module count secondary)
+## Completion tracker (primary denominator: 885 command IDs in docs/command-ledger.md; module count secondary)
 
-ID track: 86 of 886 dispatched (9.7%) — 78 golden-tested, 8 dispatched-only, 800 not started. Module track: 41 of 71 `*Commands` modules touched (~58%). Tables: 19 SQLite vs 176 MySQL (162 unmapped). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track (ledger, regenerated 2026-10-16): 100 of 879 routed (11.4%) — 92 golden-tested (83 persisted, 9 golden-only), 8 dispatched-only; 31 server-push IDs emitted (28 with a test mention); 748 not started. Module track: 42 of 71 `*Commands` modules touched (~59%). Tables: 25 SQLite vs 176 MySQL (161 unmapped; 15 mapped). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
-| 1 core loop (69) | bag 21, equip 13, vip 12, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 54 | 0 | 12: equip 3; bag 5 (incl. 30301 prop-use); role 3; account 1 |
-| 2 scene (210) | stage | 9 | 0 | 193; scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); 193 open |
-| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 | 5 | 109 not started + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
-| 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | ~127 |
+| 1 core loop (72) | bag 21, equip 13, vip 12, vipqq 3, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 60 persisted (+9 push-golden) | 0 | 0 (closed: vip 62003/62006 push-golden-tested; mall 2000 excluded as a non-command; vipqq 88003/88004 persisted, 88005 push-golden-tested; 1003/1006/430405/794000-794002 excluded as error codes) |
+| 2 scene (210) | stage | 9 persisted, 8 golden-only | 0 | 180 not started (+13 push-golden); scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); inner fly 40101 landed (`tests/test_inner_fly.py`, 6: same-map teleport echoes `[x, y, 0, roleId]` to the surround, other maps change map one-step, bad args silent); 179 open |
+| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 persisted (+2 push-golden) | 5 | 104 not started (+3 emitted) + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
+| 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | 92 not started |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
-| triage | public_ 183, gamerule 13, vipqq 6, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase |
+| triage | public_ 183, gamerule 13, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase (vipqq done: 3 routed, 3 error codes excluded) |
 
-Module history (how the 38 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
-32002/32003/32004/32006 (+4), prop gift-box selection 30305/30306/30307
+Module history (how the 39 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
+32002/32003/32004/32006 (+4), vipqq info/rewards/bind 88003/88004/88005 (+3), prop gift-box selection 30305/30306/30307
 (+3). Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)
 
-- Phase 0: ledger generator is the only source of counts (never hand-edit); still missing the `persisted` and `client-verified` statuses the definition of done requires — that is a code change to tools/architecture_audit.py plus its tests. Replay generalizes only world entry; recapture and per-phase live projector runs are blocked until a run is explicitly asked for.
-- Phase 1: bag is closest (15/21; 30301 needs the Phase 2 stage runtime, 30104/30105 are push-only IDs covered by test mentions). Vip inbound is done (all 10 routable IDs; 62003/62006 service-internal push-only, 62005 a stage push). Setting is done (13000-13004). The equip 3 (30106/31015/31016) have no inbound route jar-wide and are already emitted plus golden-asserted as pushes, so they need no slice. Next largest wins: bag 5, role 3. Mall is done (32000 list; 32001
+- Phase 0: ledger generator is the only source of counts (never hand-edit); the `persisted` status has landed (golden-tested rows whose test file reads back through `store.get_*`/`store.list_*`; a file-level heuristic). `client-verified` is still missing and stays blocked by the no-live-runs rule. Replay generalizes only world entry; recapture and per-phase live projector runs are blocked until a run is explicitly asked for.
+- Phase 1: closed. Mall and VIP are done: 62003/62006 are service-internal pushes (push-golden-tested; the prop push stamps `role_vip.prop_use_time`), and mall 2000 is excluded from the ledger as a non-command (`NON_COMMAND_IDS` in `tools/architecture_audit.py`). Bag and role rows are persisted or push-golden-tested. Vip inbound is done (all 10 routable IDs; 62003/62006 service-internal push-only, 62005 a stage push). Setting is done (13000-13004). The equip 3 (30106/31015/31016) have no inbound route jar-wide and are already emitted plus golden-asserted as pushes, so they need no slice. Next work is Phase 2 and the Phase 3 progression families. Mall is done (32000 list; 32001
 buyGoods portable: no guild/coupon-discount; buyback cluster
 32002/32003/32004/32006 with the 32005 eviction push and a null 32006
-without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
+without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migrated vip_qq/role_qq_list; 88004 rewards granting chaojihuiyuan.jat parcels; 88005 null push on QQ bind; the QQ platform callback behind vipQqOK/recharge has no local equivalent, so vipqq_bind/vipqq_recharge are the emission sites). Skill+skillbook inbound is done (42000/42003/99000/99001/99002); 42004 stays push-only like 30104/30105.
 - Phase 2: the scheduler mirror landed (Phase 2a: HeartBeatRateUtil, StageScheduleManager, Quartz cron/one-shot, token runnables in `game/scheduler.py`, drained per-session via `Session.tick()` on a 1s server loop, `--tick-interval 0` disables); the in-process event bus has landed (`game/eventbus.py`, Phase 2b), chat/presence (10050/10051/11000) is the first scene slice, in-stage coordinate teleport + face change (40100/40201) is the second, and town revive 43001 is the third (role death was already tracked in `_dead`). Cross-map change is one-step: SC:APPLY_CHANG_MAP's client-ready handshake is collapsed, and the old map gets no leave notice nor the new map an enter record. 193 stage IDs sit behind them (30305/30306/30307 landed in Phase 8m; 30303 is a dead route with no handler jar-wide).
 - Definition-of-done gap (structural): per-command client verification cannot happen under the no-live-runs rule, so no row can reach `client-verified` until the endgame; the phase plan's "live run once per phase, only when asked" is the agreed valve. Do not mark rows verified without a run.
-- Security before cutover (from the parity audit): forgeable MD5 game sign, cookie flags, ownership checks on mutating commands, rate limits.
+- Security before cutover (from the parity audit): done in code: HMAC game sign with freshness window, HttpOnly/SameSite cookie, web login rate limit, role ownership scoping verified by tests. Still open: game-socket rate limit, session expiry, TLS (Secure cookie), CSRF/origin check on web POSTs.
 - Data rule unchanged: migrate a table only when a command module needs it, via tools/migrate_mysql_to_sqlite.py; update the audit mapping table.
 
 ## Phase 1 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
@@ -54,6 +54,8 @@ without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/9900
 - 19000: `PingVo.genInterval` = 5000 + `Random.nextInt(5000)`.
 
 ## Phase 2 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
+
+- 40101 innerFly: `RoleBehaviourAction.innerFly` reads `data[1]` mapId, `data[2]`/`data[3]` Integer x/y, `data[4]` stageId, with the role from `Message.roleId`. `RoleBehaviourServiceImpl.innerFly` compares `stage.getMapId()`: equal -> `teleportTo` then `40101 [x, y, 0, roleId]` to the surround; different -> queue `SC:APPLY_CHANG_MAP [mapId, x, y]`.
 
 - 42100: `FightOutputWrapper.buffChange` sends
   `[fighterId, addBuffInfos, removeBuffIds]`; `BuffStatistics` returns null
@@ -131,6 +133,36 @@ without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/9900
   (sources unmigrated); heal calculators, DiKang/skill-resist/fixed-harm
   paths, MP costs, level-up thresholds, pet-HP persist, combat 42005
   refresh triggers, entry-12004 int-vs-Float question.
+
+## Taofa (50101-50105) evidence log (in progress)
+
+- Config: `sys_config/taskTaoFaRenWu.jat` is AMF3, 90 rows keyed by `taofaid`
+  (TF02001...). Loaded by `load_taofa_table` / `GameConfig.taofa_table()`,
+  covered by `tests/test_taofa_config.py`.
+- Java: 50101 -> `TaskTaoFaServiceImpl.getRoleTaskTaofas` (resets or checks
+  the update time, lists the role's taofa tasks, then state and max values).
+  50102 -> `recevieTaskTaofa`; 50103 -> `tunshiTaoFaTask` (absorb); 50104 ->
+  `changeTaskTaofaMonster`; 50105 -> not yet decoded. Helpers still to read:
+  `getTaofaState`, `getTaofaMaxValue`, `randomIntervalTaofaConfig`,
+  `payTaskTaofa`, `reward`, `createTaskTaofa`, `resetOrCheckTaofaUpdateTime`.
+- Decoded so far: `getTaoFaNum` returns [tunshiCount, finishCount, hebingCount]
+  from the per-role `TaskTaofaState`; `getTaofaMaxValue` reads VIP levels via
+  `getTunshitimes` / `getTaofatimes`; `createTaskTaofa` writes a `TaskTaofa`
+  row (id from module `task`, masterCount, tsState, tsRewardExp/Jb/BingYb/
+  Zhenqi/Prestige); `resetOrCheckTaofaUpdateTime` inserts a `TaskTaofaState`
+  (finish/tunshi/hebing/total counts, createTime) via `taskTaofaStateDao`.
+- Implemented: `task_taofa` and `task_taofa_state` tables in `db.py`; the
+  50101 list, 50102 receive, 50103 absorb, 50104 monster change and 50105 push
+  routes in `game/protocol.py`. `tests/test_taofa.py` (25 tests) covers them
+  against the real config tree. Ledger status: 50101/50103 persisted,
+  50102/50104/50105 push-golden-tested.
+- Not verified: all taofa shapes are checked by unit tests only; no live
+  client capture has confirmed them yet.
+- Richang (50201) route creates one `task_richang` row per role and reuses it;
+  level gate is 40. `tests/test_richang.py` (10 tests) covers creation, reuse,
+  the gate, and the money/VIP/state branches of 50202, 50204, 50205, 50206 and
+  50209. Handlers 50203, 50207 and 50208 are implemented but untested. Ledger
+  still lists 50201-50209 as dispatched.
 
 ## Phase 4 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
 
@@ -760,6 +792,32 @@ without the guild mall). Skill+skillbook inbound is done (42000/42003/99000/9900
   take-error, youhui triple plus take-error, teshu missing/today/
   stale). Server-v1 511/511, tools 39/39. Ledger: three
   golden-tested (78 total), 800 open.
+
+## Phase 8n evidence log (vipqq 88003/88004/88005)
+
+- `VipQQModuleInit.getInCmd` routes exactly 88003/88004
+  (`tools/javap.py`); `VipQqAction.vipqqInfo/vipqqRewards` take no
+  args and reply `getVipQQInfo`/`getRewards` via send2One. `88005`
+  (CAN_REWARDS) is push-only: `vipQqOK` inserts the RoleQqList row
+  and sends 88005 null. `recharge` (VIPQQRechargeYbEventHandler)
+  stays silent on claimed rows and non-positive yb, else pushes the
+  88003 info refresh.
+- `getVipQQInfo`: empty vip_qq table -> [0, '794002']; flag starts
+  1, drops to 0 when lifetime charge // 10 < minRecharge, reads 2
+  once isGetRewards is 1; reply [1, minRecharge, flag, pic, qq]. The
+  charge source (`getChargeMaxInTime`) has no local table, so the
+  handler takes charge_total like `vip_upgrade_level` does.
+- `getRewards`: no row -> [0, '794000']; claimed -> [0,
+  '794001']; short room -> [0, 430212] (BAG_SLOT_LESS); success
+  grants the chaojihuiyuan.jat jiangpin1 parcels through the bag
+  pipeline, sets isGetRewards, replies [1]. New role_qq_list +
+  vip_qq tables (Store get/save + migrator global vip_qq /
+  --users-scoped role_qq_list over the sqlmap columns). Nine goldens
+  in `tests/test_vip.py` (wire ids, info no-config/flags, rewards
+  unbound/claimed/success, bind push, recharge push/silence).
+  Ledger: 88003/88004 persisted, 88005 push-golden-tested; 794000-
+  794002, 1003/1006, 430405 and mall 2000 excluded as non-commands.
+  Mall + VIP now fully closed: Phase 2 may start.
 
 ## Phase 2a evidence log (scheduler mirror, all from `dntg_start.jar`)
 

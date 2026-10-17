@@ -1,5 +1,5 @@
-"""Goldens for the vip gift + kaifu + huodong slice
-(62001/62002/62004/62020/62021/62022/88000/88001/88002).
+"""Goldens for the vip gift + kaifu + huodong + vipqq slice
+(62001/62002/62004/62020/62021/62022/88000/88001/88002/88003/88004/88005).
 
 Oracle: VipServiceImpl.getVipDay/getVipWeek/getVipTeJia/getKaiFuInfo/
 lotterReward/lingQuReward/getVipHuoDongState/getVipHuoDongJiangLi/
@@ -17,6 +17,7 @@ and success paths use a synthetic table.
 """
 import json
 import os
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -354,6 +355,197 @@ class VipGiftTest(unittest.TestCase):
              GENERAL_VIP_LEVEL),
             (621001, 621002, 621003, 621004, 621005, 621010, 621011,
              621012, 621013, 621007, 621008, 621009, 1011))
+
+
+class FakeRegistry:
+    """Records role pushes the way StageRegistry.push receives them."""
+
+    def __init__(self):
+        self.pushed = []
+
+    def push(self, role_id, frames):
+        self.pushed.append((role_id, frames))
+        return True
+
+
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class VipPushTest(VipGiftTest):
+    """62003 level change and 62006 prop push, golden against upgradeVipLevel
+    and addPropValue bytecode (prop use time is not persisted yet)."""
+
+    def setUp(self):
+        super().setUp()
+        self.reg = FakeRegistry()
+        self.sess.stage_registry = self.reg
+        self.role = {'id': self.role_id}
+
+    def _levels(self):
+        return {lv: self.cfg.vip_need_gold(lv) for lv in self.cfg.vip_table()}
+
+    def test_level_for_gold_matches_real_thresholds(self):
+        for lv, need in self._levels().items():
+            if need <= 0:
+                continue
+            self.assertEqual(self.cfg.vip_level_for_gold(need), lv)
+            self.assertLess(self.cfg.vip_level_for_gold(need - 1), lv)
+        top = max(self._levels().values())
+        self.assertEqual(self.cfg.vip_level_for_gold(top * 10 + 1),
+                         max(self.cfg.vip_table()))
+        self.assertEqual(self.cfg.vip_level_for_gold(0), 0)
+        self.assertEqual(self.cfg.vip_level_for_gold(None), 0)
+
+    def test_upgrade_creates_row_silently_at_level_zero(self):
+        self.assertEqual(self.sess.vip_upgrade_level(self.role, 0), [])
+        row = self.store.get_role_vip(self.role_id)
+        self.assertEqual(row['vip_level'], 0)
+        self.assertEqual(json.loads(row['state_tejia']), {'0': 0})
+        self.assertEqual(self.reg.pushed, [])
+
+    def test_upgrade_pushes_62003_with_new_level(self):
+        lv1 = min((n, lv) for lv, n in self._levels().items() if n > 0)[1]
+        need = self.cfg.vip_need_gold(lv1)
+        out = self.sess.vip_upgrade_level(self.role, need)
+        self.assertEqual(decode(out[0][4:]), ['62003', lv1])
+        self.assertEqual(self.reg.pushed, [(str(self.role_id), out)])
+        self.assertEqual(self.store.get_role_vip(self.role_id)['vip_level'], lv1)
+
+    def test_upgrade_moves_prop_value_into_charge_side(self):
+        self.store.save_role_vip(self.role_id, tody_prop_value=500)
+        target = self.cfg.vip_level_for_gold(600)
+        need = self.cfg.vip_need_gold(target)
+        self.assertTrue(100 < need <= 600, 'real table shape changed')
+        out = self.sess.vip_upgrade_level(self.role, 100)
+        self.assertEqual(decode(out[0][4:]), ['62003', target])
+        row = self.store.get_role_vip(self.role_id)
+        self.assertEqual(row['prop_value'], need - 100)
+        self.assertEqual(row['tody_prop_value'], 500 - (need - 100))
+        self.assertEqual(row['vip_level'], target)
+
+    def test_add_prop_value_pushes_62006_then_level(self):
+        self.store.save_role_vip(self.role_id, tody_prop_value=0)
+        before = int(time.time() * 1000)
+        out = self.sess.vip_add_prop_value(self.role, 500, 0)
+        after = int(time.time() * 1000)
+        self.assertEqual([decode(f[4:]) for f in out],
+                         [['62006', None], ['62003', 1]])
+        row = self.store.get_role_vip(self.role_id)
+        self.assertEqual((row['prop_value'], row['tody_prop_value']), (500, 0))
+        self.assertEqual(row['vip_level'], 1)
+        # Java stamps propUseTime = System.currentTimeMillis() on each add.
+        self.assertTrue(before <= row['prop_use_time'] <= after)
+
+    def test_store_adds_prop_use_time_to_legacy_role_vip(self):
+        path = os.path.join(self.tmp.name, 'legacy.db')
+        legacy = sqlite3.connect(path)
+        legacy.execute(
+            'CREATE TABLE role_vip (role_id INTEGER PRIMARY KEY,'
+            ' vip_level INTEGER DEFAULT 0, state_day INTEGER DEFAULT 0,'
+            ' state_week INTEGER DEFAULT 0, state_tejia TEXT,'
+            ' prop_value INTEGER DEFAULT 0, tody_prop_value INTEGER DEFAULT 0,'
+            ' day_time INTEGER DEFAULT 0, week_time INTEGER DEFAULT 0)')
+        legacy.commit()
+        legacy.close()
+        store = Store(path)
+        self.addCleanup(store.db.close)
+        cols = {r['name'] for r in store.db.execute('PRAGMA table_info(role_vip)')}
+        self.assertIn('prop_use_time', cols)
+        store.save_role_vip(1, vip_level=1, prop_use_time=42)
+        self.assertEqual(store.get_role_vip(1)['prop_use_time'], 42)
+
+    def test_add_prop_value_without_row_pushes_nothing(self):
+        self.assertEqual(self.sess.vip_add_prop_value(self.role, 50, 0), [])
+        self.assertIsNone(self.store.get_role_vip(self.role_id))
+        self.assertEqual(self.reg.pushed, [])
+
+
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class VipQqTest(VipPushTest):
+    """88003 info, 88004 rewards and the 88005 bind push, golden against
+    VipQqAction/VipQqServiceImpl bytecode (ModuleInit routes only the
+    first two; 794000-794002 are error codes; the QQ platform callback
+    behind vipQqOK has no local equivalent)."""
+
+    def setUp(self):
+        super().setUp()
+        self.sess.get_role_qq_list = self.store.get_role_qq_list
+        self.sess.save_role_qq_list = self.store.save_role_qq_list
+        self.sess.get_vip_qq = self.store.get_vip_qq
+        self.sess.save_vip_qq = self.store.save_vip_qq
+        self.store.save_vip_qq(min_recharge=100, pic='p', qq='q')
+
+    def info(self, charge=0):
+        return self.frames(self.sess.vipqq_info([88003, []],
+                                                charge_total=charge))
+
+    def rewards(self):
+        return self.frames(self.sess.vipqq_rewards([88004, []]))
+
+    def test_wire_ids_match_java(self):
+        from game.protocol import (BAG_ERR_SLOT_LESS, CMD_VIPQQ_BIND_PUSH,
+                                   CMD_VIPQQ_INFO, CMD_VIPQQ_REWARDS,
+                                   VIPQQ_ERR_CLAIMED, VIPQQ_ERR_NOBIND,
+                                   VIPQQ_ERR_NOCONFIG)
+        self.assertEqual((CMD_VIPQQ_INFO, CMD_VIPQQ_REWARDS,
+                          CMD_VIPQQ_BIND_PUSH),
+                         (88003, 88004, 88005))
+        self.assertEqual((VIPQQ_ERR_NOBIND, VIPQQ_ERR_CLAIMED,
+                          VIPQQ_ERR_NOCONFIG),
+                         ('794000', '794001', '794002'))
+        self.assertEqual(BAG_ERR_SLOT_LESS, 430212)
+
+    def test_info_without_config_answers_794002(self):
+        self.store.db.execute('DELETE FROM vip_qq')
+        self.store.db.commit()
+        self.assertEqual(self.info(), [['88003', [0, '794002']]])
+
+    def test_info_flags_recharge_and_claim(self):
+        self.assertEqual(self.info(),
+                         [['88003', [1, 100, 0, 'p', 'q']]])
+        self.assertEqual(self.info(charge=1000),
+                         [['88003', [1, 100, 1, 'p', 'q']]])
+        self.store.save_role_qq_list(self.role_id, qq='1', user_name='u',
+                                     is_get_rewards=1)
+        self.assertEqual(self.info(charge=1000),
+                         [['88003', [1, 100, 2, 'p', 'q']]])
+
+    def test_rewards_without_binding_answers_794000(self):
+        self.assertEqual(self.rewards(), [['88004', [0, '794000']]])
+
+    def test_rewards_claimed_answers_794001(self):
+        self.store.save_role_qq_list(self.role_id, qq='1', user_name='u',
+                                     is_get_rewards=1)
+        self.assertEqual(self.rewards(), [['88004', [0, '794001']]])
+
+    def test_rewards_success_grants_and_claims(self):
+        self.store.save_role_qq_list(self.role_id, qq='1', user_name='u',
+                                     is_get_rewards=0)
+        self.assertEqual(self.rewards(), [['88004', [1]]])
+        row = self.store.get_role_qq_list(self.role_id)
+        self.assertEqual(row['is_get_rewards'], 1)
+        goods = {s['goods_id']
+                 for s in self.store.get_role_bag_slots(self.role_id, 1,
+                                                         150)}
+        for gid, _count, _bind in self.cfg.vipqq_rewards():
+            self.assertIn(gid, goods)
+
+    def test_bind_pushes_88005_with_null(self):
+        out = self.sess.vipqq_bind(self.role, '1', 'u')
+        self.assertEqual([decode(f[4:]) for f in out], [['88005', None]])
+        self.assertEqual(self.reg.pushed, [(str(self.role_id), out)])
+        row = self.store.get_role_qq_list(self.role_id)
+        self.assertEqual((row['qq'], row['user_name'],
+                          row['is_get_rewards']),
+                         ('1', 'u', 0))
+
+    def test_recharge_pushes_88003_refresh(self):
+        self.store.save_role_qq_list(self.role_id, qq='1', user_name='u',
+                                     is_get_rewards=0)
+        self.assertEqual(self.sess.vipqq_recharge(self.role, 0), [])
+        out = self.sess.vipqq_recharge(self.role, 1000)
+        self.assertEqual([decode(f[4:]) for f in out],
+                         [['88003', [1, 100, 1, 'p', 'q']]])
+        self.store.save_role_qq_list(self.role_id, is_get_rewards=1)
+        self.assertEqual(self.sess.vipqq_recharge(self.role, 1000), [])
 
 
 if __name__ == '__main__':

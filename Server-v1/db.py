@@ -94,14 +94,31 @@ CREATE TABLE IF NOT EXISTS role_vip (
   state_tejia TEXT,
   prop_value INTEGER DEFAULT 0,
   tody_prop_value INTEGER DEFAULT 0,
+  prop_use_time INTEGER DEFAULT 0,
   day_time INTEGER DEFAULT 0,
   week_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Kaifu lottery state per role (legacy RoleVipKaifu subset: the claimed
 -- id map plus the used lottery count; the row is ensured on first read
--- like RoleVipKaifuDao use in roleLogin).
-CREATE TABLE IF NOT EXISTS role_vip_kaifu (
+-- like RoleVipKaifuDao use in roleLogin). -- QQ-member binding per role (legacy role_qq_list subset: qq, author and
+ -- the reward-claimed mark written by VipQqServiceImpl.vipQqOK/getRewards).
+ CREATE TABLE IF NOT EXISTS role_qq_list (
+   role_id INTEGER PRIMARY KEY,
+   qq TEXT,
+   user_name TEXT,
+   is_get_rewards INTEGER DEFAULT 0,
+   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+ );
+ -- QQ-member config (legacy vip_qq: admin-set threshold, image and
+ -- service QQ; the first row is the active config like DataContainer's).
+ CREATE TABLE IF NOT EXISTS vip_qq (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   min_recharge INTEGER DEFAULT 0,
+   pic TEXT,
+   qq TEXT
+ );
+ CREATE TABLE IF NOT EXISTS role_vip_kaifu (
   role_id INTEGER PRIMARY KEY,
   lingqu_reward TEXT DEFAULT '{}',
   lotter_reward INTEGER DEFAULT 0,
@@ -230,6 +247,52 @@ CREATE TABLE IF NOT EXISTS task_main (
   create_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Taofa quests per role (legacy TaskTaofa: one row per received quest; the
+-- id is the legacy row guid, ts_* carry the merged swallow rewards).
+CREATE TABLE IF NOT EXISTS task_taofa (
+  id TEXT PRIMARY KEY,
+  role_id INTEGER NOT NULL,
+  task_id TEXT,
+  master_count INTEGER DEFAULT 0,
+  task_state INTEGER DEFAULT 0,
+  ts_state INTEGER DEFAULT 0,
+  ts_reward_jb INTEGER DEFAULT 0,
+  ts_reward_exp INTEGER DEFAULT 0,
+  ts_reward_zhenqi INTEGER DEFAULT 0,
+  ts_reward_bing_yb INTEGER DEFAULT 0,
+  ts_reward_prestige INTEGER DEFAULT 0,
+  update_time INTEGER,
+  create_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Daily taofa counters per role (legacy TaskTaofaState: tunshi, use
+-- (hebing), finish and total counts plus the day-stamp create_time).
+CREATE TABLE IF NOT EXISTS task_taofa_state (
+  role_id INTEGER PRIMARY KEY,
+  tunshi_count INTEGER DEFAULT 0,
+  hebing_count INTEGER DEFAULT 0,
+  finish_count INTEGER DEFAULT 0,
+  total_count INTEGER DEFAULT 0,
+  create_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Daily richang quest per role (legacy TaskRichang: condition/reward/loop
+-- config ids, kill-condition string, loop, state, fufei and receive times;
+-- one quest per role, so role_id is the key and id is the quest guid).
+CREATE TABLE IF NOT EXISTS task_richang (
+  role_id INTEGER PRIMARY KEY,
+  id TEXT,
+  condition_config_id TEXT,
+  reward_config_id TEXT,
+  reward_loop_config_id TEXT,
+  task_condition TEXT,
+  current_loop INTEGER DEFAULT 1,
+  task_state INTEGER DEFAULT 0,
+  fufei_state INTEGER DEFAULT 0,
+  recevie_time INTEGER,
+  create_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
 -- lists back to the client; the id is the legacy row guid).
 CREATE TABLE IF NOT EXISTS role_bag_dummy (
@@ -341,6 +404,42 @@ class Store:
                 if name not in present:
                     self.db.execute(
                         f'ALTER TABLE characters ADD COLUMN {name} {declaration}')
+            vip_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_vip)')}
+            if 'prop_use_time' not in vip_cols:
+                self.db.execute(
+                    'ALTER TABLE role_vip ADD COLUMN prop_use_time INTEGER DEFAULT 0')
+            rc_pk = [row['name'] for row in self.db.execute(
+                'PRAGMA table_info(task_richang)') if row['pk']]
+            if rc_pk != ['role_id']:
+                # Legacy schema keyed the quest guid; the port keeps one
+                # quest per role, so rebuild keyed on role_id, keeping the
+                # latest quest when a role somehow holds several.
+                self.db.execute(
+                    'CREATE TABLE task_richang_new (\n'
+                    '  role_id INTEGER PRIMARY KEY,\n'
+                    '  id TEXT,\n'
+                    '  condition_config_id TEXT,\n'
+                    '  reward_config_id TEXT,\n'
+                    '  reward_loop_config_id TEXT,\n'
+                    '  task_condition TEXT,\n'
+                    '  current_loop INTEGER DEFAULT 1,\n'
+                    '  task_state INTEGER DEFAULT 0,\n'
+                    '  fufei_state INTEGER DEFAULT 0,\n'
+                    '  recevie_time INTEGER,\n'
+                    '  create_time INTEGER,\n'
+                    '  FOREIGN KEY(role_id) REFERENCES characters(id)'
+                    ' ON DELETE CASCADE\n)')
+                self.db.execute(
+                    'INSERT INTO task_richang_new SELECT role_id, id,'
+                    ' condition_config_id, reward_config_id,'
+                    ' reward_loop_config_id, task_condition, current_loop,'
+                    ' task_state, fufei_state, recevie_time, create_time'
+                    ' FROM task_richang WHERE rowid IN (SELECT MAX(rowid)'
+                    ' FROM task_richang GROUP BY role_id)')
+                self.db.execute('DROP TABLE task_richang')
+                self.db.execute(
+                    'ALTER TABLE task_richang_new RENAME TO task_richang')
             self.db.commit()
 
     def create_account(self, username, pass_hash):
@@ -515,7 +614,7 @@ class Store:
         with self.lock:
             row = self.db.execute(
                 'SELECT vip_level, state_day, state_week, state_tejia,'
-                ' prop_value, tody_prop_value, day_time, week_time'
+                ' prop_value, tody_prop_value, prop_use_time, day_time, week_time'
                 ' FROM role_vip WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
@@ -550,7 +649,8 @@ class Store:
     def save_role_vip(self, role_id, **fields):
         """Upsert a role's VIP row; only known role_vip columns."""
         allowed = {'vip_level', 'state_day', 'state_week', 'state_tejia',
-                   'prop_value', 'tody_prop_value', 'day_time', 'week_time'}
+                   'prop_value', 'tody_prop_value', 'prop_use_time',
+                   'day_time', 'week_time'}
         if not fields or set(fields) - allowed:
             raise ValueError(f'unknown vip fields: {sorted(set(fields) - allowed)}')
         names = ', '.join(fields)
@@ -561,6 +661,51 @@ class Store:
                 f'INSERT INTO role_vip(role_id,{names}) VALUES(?,{placeholders}) '
                 f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_qq_list(self, role_id):
+        """QQ-member binding row for a role, or None when never bound."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT qq, user_name, is_get_rewards FROM role_qq_list'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_qq_list(self, role_id, **fields):
+        """Upsert a role's QQ-member row; only known role_qq_list columns."""
+        allowed = {'qq', 'user_name', 'is_get_rewards'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown qq list fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_qq_list(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_vip_qq(self):
+        """Active QQ-member config (first vip_qq row), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, min_recharge, pic, qq FROM vip_qq'
+                ' ORDER BY id LIMIT 1').fetchone()
+            return dict(row) if row else None
+
+    def save_vip_qq(self, min_recharge=0, pic=None, qq=None):
+        """Insert a vip_qq config row; first row wins like DataContainer."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO vip_qq(min_recharge, pic, qq)'
+                ' VALUES(?,?,?)',
+                (min_recharge, pic, qq))
             self.db.commit()
             return True
 
@@ -814,6 +959,139 @@ class Store:
                 f'INSERT INTO task_main(role_id,{names}) VALUES(?,{placeholders}) '
                 f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_task_taofa(self, role_id, task_uid):
+        """One taofa quest row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, task_id, master_count, task_state, ts_state,'
+                ' ts_reward_jb, ts_reward_exp, ts_reward_zhenqi,'
+                ' ts_reward_bing_yb, ts_reward_prestige, update_time,'
+                ' create_time FROM task_taofa WHERE role_id=? AND id=?',
+                (str(role_id), str(task_uid))).fetchone()
+            return dict(row) if row else None
+
+    def get_task_taofas(self, role_id):
+        """All taofa quest rows for a role, id order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, task_id, master_count, task_state, ts_state,'
+                ' ts_reward_jb, ts_reward_exp, ts_reward_zhenqi,'
+                ' ts_reward_bing_yb, ts_reward_prestige, update_time,'
+                ' create_time FROM task_taofa WHERE role_id=? ORDER BY id',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def insert_task_taofa(self, role_id, row):
+        """Insert one taofa quest row."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO task_taofa(id, role_id, task_id, master_count,'
+                ' task_state, ts_state, ts_reward_jb, ts_reward_exp,'
+                ' ts_reward_zhenqi, ts_reward_bing_yb, ts_reward_prestige,'
+                ' update_time, create_time)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (row.get('id'), str(role_id), row.get('task_id'),
+                 row.get('master_count') or 0, row.get('task_state') or 0,
+                 row.get('ts_state') or 0, row.get('ts_reward_jb') or 0,
+                 row.get('ts_reward_exp') or 0,
+                 row.get('ts_reward_zhenqi') or 0,
+                 row.get('ts_reward_bing_yb') or 0,
+                 row.get('ts_reward_prestige') or 0,
+                 row.get('update_time'), row.get('create_time')))
+            self.db.commit()
+            return True
+
+    def update_task_taofa(self, role_id, task_uid, **fields):
+        """Update one taofa quest row (known columns only)."""
+        known = {'task_id', 'master_count', 'task_state', 'ts_state',
+                 'ts_reward_jb', 'ts_reward_exp', 'ts_reward_zhenqi',
+                 'ts_reward_bing_yb', 'ts_reward_prestige', 'update_time',
+                 'create_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known task_taofa columns')
+        updates = ', '.join(f'{n}=?' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'UPDATE task_taofa SET {updates} WHERE role_id=? AND id=?',
+                [*fields.values(), str(role_id), str(task_uid)])
+            self.db.commit()
+            return True
+
+    def delete_task_taofa(self, role_id, task_uid):
+        """Delete one taofa quest row."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM task_taofa WHERE role_id=? AND id=?',
+                (str(role_id), str(task_uid)))
+            self.db.commit()
+            return True
+
+    def get_task_taofa_state(self, role_id):
+        """A role's daily taofa counters, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT tunshi_count, hebing_count, finish_count,'
+                ' total_count, create_time FROM task_taofa_state'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_task_taofa_state(self, role_id, **fields):
+        """Upsert a role's daily taofa counters (known columns only)."""
+        known = {'tunshi_count', 'hebing_count', 'finish_count',
+                 'total_count', 'create_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known task_taofa_state columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO task_taofa_state(role_id,'
+                f'{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_task_richang(self, role_id):
+        """A role's daily richang quest, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, condition_config_id, reward_config_id,'
+                ' reward_loop_config_id, task_condition, current_loop,'
+                ' task_state, fufei_state, recevie_time, create_time'
+                ' FROM task_richang WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_task_richang(self, role_id, **fields):
+        """Upsert a role's daily richang quest (known columns only)."""
+        known = {'id', 'condition_config_id', 'reward_config_id',
+                 'reward_loop_config_id', 'task_condition', 'current_loop',
+                 'task_state', 'fufei_state', 'recevie_time', 'create_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known task_richang columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO task_richang(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def delete_task_richang(self, role_id):
+        """Delete a role's daily richang quest."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM task_richang WHERE role_id=?',
+                (str(role_id),))
             self.db.commit()
             return True
 

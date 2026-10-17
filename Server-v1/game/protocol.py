@@ -234,6 +234,10 @@ CMD_SUBMIT_TASK = 50005
 CMD_CHAPTER_TIPS = 50008
 CMD_TAOFA_LIST = 50101
 CMD_TAOFA_TUNSHI = 50103
+CMD_ZUOQI_RIDE = 33000
+CMD_ZUOQI_PANEL = 33001
+CMD_ZUOQI_JINJIE = 33003
+CMD_ZUOQI_CLAIM = 33004
 CMD_RICHANG_INFO = 50201
 CMD_RICHANG_DECREASE = 50202
 CMD_RICHANG_INCREASE = 50203
@@ -536,7 +540,8 @@ class Session:
                  get_role_attr_buffs=None,
                  save_role_attr_buffs=None,
                  get_role_vip=None, get_role_xianjiechenhao=None,
-                 get_role_meiren=None, get_role_zuoqi=None, get_role_skills=None,                  get_role_shenjiang=None, save_role_stage=None,
+                 get_role_meiren=None, get_role_zuoqi=None, save_role_zuoqi=None,
+                 get_role_skills=None,                  get_role_shenjiang=None, save_role_stage=None,
                  get_role_bag_slots=None, get_role_bag_state=None,
                  get_role_bag_slot=None,                 get_role_bag_slot_by_bag_id=None, save_role_skill=None,
                  get_role_skillbook_slots=None,
@@ -599,6 +604,7 @@ class Session:
         self.get_role_meiren = get_role_meiren or (lambda role_id: [])
         self.save_role_skill = save_role_skill or (lambda *a, **k: False)
         self.get_role_zuoqi = get_role_zuoqi or (lambda role_id: None)
+        self.save_role_zuoqi = save_role_zuoqi or (lambda *a, **k: False)
         self.get_role_skills = get_role_skills or (lambda role_id: [])
         self.get_role_shenjiang = get_role_shenjiang or (lambda role_id: [])
         self.save_role_stage = save_role_stage or (lambda *args, **kwargs: False)
@@ -977,6 +983,12 @@ class Session:
             return self.richang_complete_best()
         if cmd_num == CMD_RICHANG_NOTIFY_LOOP:
             return self.richang_notify_loop()
+        if cmd_num == CMD_ZUOQI_PANEL:
+            return self.zuoqi_panel(msg)
+        if cmd_num == CMD_ZUOQI_RIDE:
+            return self.zuoqi_ride(msg)
+        if cmd_num == CMD_ZUOQI_CLAIM:
+            return self.zuoqi_claim()
         if cmd_num == CMD_BAG_MOVE:
             return self.bag_move(msg)
         if cmd_num == CMD_BAG_SPLIT:
@@ -6318,7 +6330,8 @@ class Session:
         if level < box['levelneed']:
             return GENERAL_LEVEL
         try:
-            rank = int((self.get_role_zuoqi(rid) or {}).get('rank') or 0)
+            rank = int((self.get_role_zuoqi(rid) or {}).get('zuoqi_rank')
+                         or 0)
         except (TypeError, ValueError, AttributeError):
             rank = 0
         if rank < box['zuoqi']:
@@ -8917,6 +8930,171 @@ class Session:
                         frames.append(nxt)
         self._richang_save(rid, row)
         return frames
+
+    # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
+    # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and
+    # RoleZuoQiServiceImpl (getZuoQiPannel/rideZuoqi/changeZuoqiRank).
+    ZUOQI_MIN_RANK = 1
+    ZUOQI_EMPTY_CODE = 520005
+    ZUOQI_NOCONFIG_CODE = 520006
+
+    def _zuoqi_row(self, rid):
+        """Role's mount row, created zeroed like createRoleZuoqi, or None."""
+        try:
+            row = self.get_role_zuoqi(rid)
+        except Exception:
+            row = None
+        if row is not None:
+            return dict(row)
+        row = {'zuoqi_rank': 0, 'zuoqi_cur_rank': 0, 'lucky_value': 0,
+               'update_time': 0}
+        try:
+            self.save_role_zuoqi(rid, 0, 0, 0, 0)
+        except Exception:
+            return None
+        return row
+
+    def _zuoqi_save(self, rid, row):
+        """Persist a mount row dict under its role id."""
+        try:
+            self.save_role_zuoqi(
+                rid, row.get('zuoqi_rank'), row.get('zuoqi_cur_rank'),
+                row.get('lucky_value'), row.get('update_time'))
+        except Exception:
+            pass
+
+    def _zuoqi_timer(self, rid, row):
+        """timerTask: same-day rows pass; else the blessing resets.
+
+        historyLucky/historyCount/failCount/totalExp and the zhufu-ka
+        prop clear live in unmigrated columns/services, so only the
+        observable part ports: a stale update day zeroes the blessing
+        when the rank's luckyClear is set, and stamps update_time.
+        """
+        now = int(time.time() * 1000)
+        try:
+            updated = int(row.get('update_time') or 0)
+        except (TypeError, ValueError):
+            updated = 0
+        if self._same_day_ms(now, updated):
+            return row
+        if self.config is not None:
+            cfg = self.config.zuoqi_rank_config(row.get('zuoqi_rank'))
+            if cfg is not None and cfg.get('lucky_clear'):
+                row['lucky_value'] = 0
+        row['update_time'] = now
+        self._zuoqi_save(rid, row)
+        return row
+
+    @staticmethod
+    def _zuoqi_level(role_level, cfg):
+        """getZuoqiLevel: role level clamped to [0, maxLevel]."""
+        try:
+            level = int(role_level or 0)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(level, int(cfg.get('max_level') or 0)))
+
+    def _zuoqi_in_kaifu(self, rank):
+        """isInKaifu: the rank has a kaifu row and kaifu days < lastDays."""
+        if self.config is None:
+            return False
+        cfg = self.config.kaifu_zuoqi_config(rank)
+        if cfg is None:
+            return False
+        return self._vip_kaifu_days() < cfg['last_days']
+
+    def zuoqi_panel(self, msg):
+        """Command 33001: [1, [rank, level, lucky, fight], [], kaifu, cost]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, []) or []
+        try:
+            req = int(args[1] if len(args) > 1 else 0)
+        except (TypeError, ValueError):
+            req = 0
+        row = self._zuoqi_row(rid)
+        if row is None:
+            return None
+        row = self._zuoqi_timer(rid, row)
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        if req <= 0 or req > rank:
+            req = rank
+        if req <= 0:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_PANEL), [0, [self.ZUOQI_EMPTY_CODE]]]))
+        cfg = self.config.zuoqi_rank_config(req)
+        if cfg is None:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_PANEL), [0, [self.ZUOQI_NOCONFIG_CODE]]]))
+        try:
+            lucky = int(row.get('lucky_value') or 0)
+        except (TypeError, ValueError):
+            lucky = 0
+        level = self._task_role_level(role)
+        # Cost is getUpgradeCostCount over the kaifuData 'cost-count'
+        # map, which lives in RoleZuoqi's unmigrated kaifuData column.
+        reply = [1, [rank, self._zuoqi_level(level, cfg), lucky,
+                     self.config.zuoqi_fight(req, level)],
+                 [], self._zuoqi_in_kaifu(rank), 0]
+        return frame(amf3_encode([str(CMD_ZUOQI_PANEL), reply]))
+
+    def zuoqi_ride(self, msg):
+        """Command 33000: clamp the ridden rank, persist, stage [id, rank]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, []) or []
+        try:
+            req = int(args[1] if len(args) > 1 else None)
+        except (TypeError, ValueError):
+            return None
+        row = self._zuoqi_row(rid)
+        if row is None:
+            return None
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        cur = req if 0 <= req <= rank else rank
+        row['zuoqi_cur_rank'] = cur
+        self._zuoqi_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_ZUOQI_RIDE), [_wire_id(role), cur]]))
+
+    def zuoqi_claim(self):
+        """Command 33004: free rank-1 mount; silent past the rank gate."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._zuoqi_row(rid)
+        if row is None:
+            return None
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        if rank >= self.ZUOQI_MIN_RANK:
+            return None
+        now = int(time.time() * 1000)
+        row.update(zuoqi_rank=self.ZUOQI_MIN_RANK,
+                   zuoqi_cur_rank=self.ZUOQI_MIN_RANK, update_time=now)
+        self._zuoqi_save(rid, row)
+        cfg = self.config.zuoqi_rank_config(self.ZUOQI_MIN_RANK)
+        level = self._zuoqi_level(self._task_role_level(role), cfg) \
+            if cfg is not None else 0
+        return frame(amf3_encode(
+            [str(CMD_ZUOQI_CLAIM), [1, self.ZUOQI_MIN_RANK, level]]))
 
     def _bag_money_check(self, role, money, amount):
         """AccountServiceImpl decrCheck for one MoneyType: balance covers it."""

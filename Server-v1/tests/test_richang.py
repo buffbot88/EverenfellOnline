@@ -214,6 +214,19 @@ class RichangActionTest(unittest.TestCase):
         row = self.store.get_task_richang(self.rid)
         self.assertNotEqual(row['task_condition'], '')
 
+    def test_pay_settles_row_and_grants_reward_jb(self):
+        table = self.cfg._richang_reward_assembly()[0]
+        reward = next(r for r in table.values()
+                      if r['jb'] > 0 and r['thick'] != RICHANG_THICK_MAX)
+        self.store.save_task_richang(
+            self.rid, reward_config_id=reward['id'], current_loop=1,
+            task_state=1, fufei_state=0)
+        before = self.role()['tongqian']
+        result = self.sess._richang_pay(self.role(), self.rid, False)
+        self.assertIsNotNone(result)
+        self.assertEqual(self.store.get_task_richang(self.rid)['task_state'], 2)
+        self.assertEqual(self.role()['tongqian'], before + reward['jb'])
+
 
 if __name__ == '__main__':
     unittest.main()

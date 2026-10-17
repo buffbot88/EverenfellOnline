@@ -874,6 +874,7 @@ class GameConfig:
         self._rc_cond = None
         self._rc_rew = None
         self._rc_loop = None
+        self._kaifu_zuoqi = None
         self._birth = None
 
     @property
@@ -2790,6 +2791,108 @@ class GameConfig:
                if _number(row.get(name))}
         bag.pop('velocity', None)
         return bag
+
+    def zuoqi_rank_config(self, rank):
+        """ZuoQiConfig fields for a mount rank, or None when unconfigured.
+
+        Port of createZuoQiConfig over the rank's first ZuoJiBiao row in
+        file order (configureDataResolve creates the rank object from the
+        first row seen for a stratum): id/rideid, type/ridetype, name,
+        rank/int(stratum), cailiao from needthingsid/value, needLevel from
+        needleaderlv, upgradeJb from jinjieneedcoin, luckyYb from
+        qxlzneedgold, luckyClear, maxLevel from maxlv (minLevel is never
+        set, so the floor is 0 as in getZuoqiLevel).
+        """
+        try:
+            rank = int(rank)
+        except (TypeError, ValueError):
+            return None
+        row = next((r for (rk, _lv), r in self.zuoqi_table().items()
+                    if rk == rank), None)
+        if row is None:
+            return None
+        return {'id': str(row.get('rideid') or ''),
+                'type': str(row.get('ridetype') or ''),
+                'name': str(row.get('name') or ''),
+                'rank': rank,
+                'cailiao_id': str(row.get('needthingsid') or ''),
+                'cailiao_count': config_int(row.get('needthingsvalue')),
+                'need_level': config_int(row.get('needleaderlv')),
+                'upgrade_jb': config_int(row.get('jinjieneedcoin')),
+                'lucky_yb': config_int(row.get('qxlzneedgold')),
+                'lucky_clear': bool(row.get('luckyclear')),
+                'max_level': config_int(row.get('maxlv'))}
+
+    def zuoqi_max_rank(self):
+        """Highest configured mount rank (setMaxMinRank over the table)."""
+        ranks = [rk for (rk, _lv) in self.zuoqi_table()]
+        return max(ranks) if ranks else 0
+
+    def zuoqi_level_config(self, rank, level):
+        """ZuoQiLevelConfig fields for a (rank, level) row, or None.
+
+        Port of createLevelConfig: min/maxTimes from mintims/maxtimes,
+        odds, upgradeZhufu from maxblessing, notice, min/maxZhufu from
+        addmin/addmaxblessing.
+        """
+        try:
+            row = self.zuoqi_table().get((int(rank), int(level)))
+        except (TypeError, ValueError):
+            return None
+        if row is None:
+            return None
+        return {'level': config_int(row.get('ridelv')),
+                'min_times': config_int(row.get('mintims')),
+                'max_times': config_int(row.get('maxtimes')),
+                'odds': _number(row.get('odds')),
+                'upgrade_zhufu': config_int(row.get('maxblessing')),
+                'notice': bool(row.get('notice')),
+                'min_zhufu': config_int(row.get('addminblessing')),
+                'max_zhufu': config_int(row.get('addmaxblessing'))}
+
+    def kaifu_zuoqi_table(self):
+        """kaifuzuoqi.jat rows (KaifuZuoqiConfig list); empty when absent."""
+        if self._kaifu_zuoqi is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'kaifuzuoqi.jat')
+            try:
+                rows = amf3_decode(open(path, 'rb').read()) \
+                    if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad kaifuzuoqi table: %s', e)
+                rows = []
+            self._kaifu_zuoqi = [r for r in rows or []
+                                 if isinstance(r, dict)]
+        return self._kaifu_zuoqi
+
+    def kaifu_zuoqi_config(self, rank):
+        """KaifuZuoqiConfig row for a mount rank (keyed by jieshu), or None.
+
+        Port of loadConfig: the primary key is zuoqiRank, so a rank with
+        no row (5+ in the shipped table) is outside kaifu like a null.
+        """
+        try:
+            rank = int(rank)
+        except (TypeError, ValueError):
+            return None
+        for row in self.kaifu_zuoqi_table():
+            try:
+                if int(row.get('jieshu')) == rank:
+                    return {'rank': rank,
+                            'last_days': config_int(row.get('time')),
+                            'return_goods': bool(row.get('fanhuan')),
+                            'meiren': str(row.get('meiren') or ''),
+                            'expire_hours': config_int(row.get('guoqi'))}
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def kaifu_zuoqi_fanhuan(self):
+        """First kaifu row with fanhuan set (loadFanhuanConfig), or None."""
+        for row in self.kaifu_zuoqi_table():
+            if row.get('fanhuan'):
+                return self.kaifu_zuoqi_config(row.get('jieshu'))
+        return None
 
     def zuoqi_fight(self, max_rank, role_level):
         """ZhanDouLiServiceImpl.getZuoQiJiChuFight for a mount rank/level.

@@ -682,7 +682,9 @@ def migrate(mysql, db_path, users, dry_run=False):
 
         conn.execute('CREATE TABLE IF NOT EXISTS role_zuoqi(role_id INTEGER PRIMARY KEY,'
                      ' zuoqi_rank INTEGER DEFAULT 0,'
-                     ' zuoqi_cur_rank INTEGER DEFAULT 0)')
+                     ' zuoqi_cur_rank INTEGER DEFAULT 0,'
+                     ' lucky_value INTEGER DEFAULT 0,'
+                     ' update_time INTEGER DEFAULT 0)')
         for row in zuoqi:
             user_role_id, rank, cur_rank = (row + [None] * 3)[:3]
             local_id = legacy_to_local.get(user_role_id)

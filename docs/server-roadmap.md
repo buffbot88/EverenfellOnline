@@ -159,10 +159,12 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
 - Not verified: all taofa shapes are checked by unit tests only; no live
   client capture has confirmed them yet.
 - Richang (50201) route creates one `task_richang` row per role and reuses it;
-  level gate is 40. `tests/test_richang.py` (10 tests) covers creation, reuse,
-  the gate, and the money/VIP/state branches of 50202, 50204, 50205, 50206 and
-  50209. Handlers 50203, 50207 and 50208 are implemented but untested. Ledger
-  still lists 50201-50209 as dispatched.
+  level gate is 40. `tests/test_richang.py` (14 tests) covers creation, reuse,
+  the gate, the money/VIP/state branches of 50202, 50204, 50205, 50206 and
+  50209, the 50203 re-roll (short money, max-thick reject, 50000 YB charge),
+  the 50208 kill-progress emit, and the 50207 pay-out (row settles to state 2,
+  reward jb credited). Ledger still lists 50201-50209 as
+  dispatched.
 
 ## Phase 4 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
 

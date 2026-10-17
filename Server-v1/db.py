@@ -145,12 +145,15 @@ CREATE TABLE IF NOT EXISTS role_xianjiechenhao (
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Mount rank per role (legacy role_zuoqi subset: rank gates the ZUOQI bag
--- via ZuoQiWrapper, cur_rank is informational; attribute_goods_id is NULL
--- for every migrated role so it is not copied).
+-- via ZuoQiWrapper, cur_rank is the ridden rank, lucky_value the jinjie
+-- blessing, update_time the ms timestamp timerTask resets against;
+-- attribute_goods_id is NULL for every migrated role so it is not copied).
 CREATE TABLE IF NOT EXISTS role_zuoqi (
   role_id INTEGER PRIMARY KEY,
   zuoqi_rank INTEGER DEFAULT 0,
   zuoqi_cur_rank INTEGER DEFAULT 0,
+  lucky_value INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Owned meiren per role (legacy role_meiren subset: the id/level/heti
@@ -409,6 +412,14 @@ class Store:
             if 'prop_use_time' not in vip_cols:
                 self.db.execute(
                     'ALTER TABLE role_vip ADD COLUMN prop_use_time INTEGER DEFAULT 0')
+            zuoqi_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_zuoqi)')}
+            if 'lucky_value' not in zuoqi_cols:
+                self.db.execute(
+                    'ALTER TABLE role_zuoqi ADD COLUMN lucky_value INTEGER DEFAULT 0')
+            if 'update_time' not in zuoqi_cols:
+                self.db.execute(
+                    'ALTER TABLE role_zuoqi ADD COLUMN update_time INTEGER DEFAULT 0')
             rc_pk = [row['name'] for row in self.db.execute(
                 'PRAGMA table_info(task_richang)') if row['pk']]
             if rc_pk != ['role_id']:
@@ -764,21 +775,26 @@ class Store:
         """Mount-rank row for a role (legacy role_zuoqi subset), or None."""
         with self.lock:
             row = self.db.execute(
-                'SELECT zuoqi_rank, zuoqi_cur_rank FROM role_zuoqi'
-                ' WHERE role_id=?',
+                'SELECT zuoqi_rank, zuoqi_cur_rank, lucky_value, update_time'
+                ' FROM role_zuoqi WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
 
-    def save_role_zuoqi(self, role_id, zuoqi_rank=None, zuoqi_cur_rank=None):
-        """Upsert a role's mount ranks (legacy role_zuoqi rank/cur_rank)."""
+    def save_role_zuoqi(self, role_id, zuoqi_rank=None, zuoqi_cur_rank=None,
+                        lucky_value=None, update_time=None):
+        """Upsert a role's mount row (rank/cur_rank/blessing/update ms)."""
         with self.lock:
             self.db.execute(
-                'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank)'
-                ' VALUES(?,?,?)'
+                'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank,'
+                ' lucky_value, update_time)'
+                ' VALUES(?,?,?,?,?)'
                 ' ON CONFLICT(role_id) DO UPDATE SET'
                 ' zuoqi_rank=excluded.zuoqi_rank,'
-                ' zuoqi_cur_rank=excluded.zuoqi_cur_rank',
-                (str(role_id), zuoqi_rank, zuoqi_cur_rank))
+                ' zuoqi_cur_rank=excluded.zuoqi_cur_rank,'
+                ' lucky_value=excluded.lucky_value,'
+                ' update_time=excluded.update_time',
+                (str(role_id), zuoqi_rank, zuoqi_cur_rank, lucky_value,
+                 update_time))
             self.db.commit()
             return True
 

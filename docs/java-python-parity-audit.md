@@ -44,6 +44,12 @@ Recommended route: retain Java as the production gameplay authority while the ne
   list), `33006` (kaifu meiren grant ahead of the `82001` push), and
   `33011` (claimable-now award ranks) and `33008` (mount fight total:
   jichu + mount-equip fight, longhun 0) are likewise tested there;
+  meiren inbound `82000` (owned [[type, level, heti]] panel),
+  `82001` (recruit with level/qiandao/item/zhenqi gates),
+  `82002` (zhenqi level-up), and `82003` (zhenqi + YXB chanmian)
+  are tested in `tests/test_meiren.py` against the real meiren.jat
+  (82004 stays service-internal; the 11101 obtain broadcast is not
+  emitted; qiandao reads 0 so two types stay ungated-blocked);
   longhun stays unported (33010/33012 are service-internal with no
   inbound route; the prop-use flow that feeds attribute goods is
   unported). Prop

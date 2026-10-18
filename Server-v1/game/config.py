@@ -845,6 +845,7 @@ class GameConfig:
         self._xianjie = None
         self._chenghao = None
         self._meiren = None
+        self._meiren_raw = None
         self._cd = None
         self._xiaoguo = None
         self._jineng = None
@@ -2729,6 +2730,33 @@ class GameConfig:
                 log.error('bad meiren table: %s', e)
                 self._meiren = ({}, {})
         return self._meiren
+
+    def meiren_gates(self):
+        """Raw meiren.jat rows as {type: {'l1': row, 'levels': {lv: row}}}."""
+        if self._meiren_raw is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'meiren.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad meiren table: %s', e)
+                rows = []
+            table = {}
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                mtype = str(row.get('meinvtype') or '')
+                try:
+                    level = int(row.get('meinvlv') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not mtype or level <= 0:
+                    continue
+                entry = table.setdefault(mtype, {'levels': {}})
+                entry['levels'][level] = row
+                if level == 1 and 'l1' not in entry:
+                    entry['l1'] = row
+            self._meiren_raw = table
+        return self._meiren_raw
 
     def meiren_attribute_map(self, pairs):
         """Summed MeiRenConfig.getAttribtueMap bags for [(type, chanmian)].

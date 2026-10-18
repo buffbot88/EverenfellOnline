@@ -167,6 +167,7 @@ VIP_ERR_DAY_MISMATCH = 621011
 VIP_ERR_NO_LOTTERY = 621012
 VIP_ERR_NO_COUNT = 621013
 GENERAL_VIP_LEVEL = 1011
+GENERAL_ZUOQI_RANK = 1013
 CMD_EQUIP_QIANGHUA_MAX = 34009
 # 31015 rides inside the 11101 broadcast; 30106 is a session-directed push.
 # Neither has an inbound route (like the 30104/30105 split pushes).
@@ -246,6 +247,10 @@ CMD_ZUOQI_ZHANLI = 33008
 CMD_ZUOQI_AWARD = 33011
 # addMeiRen's 82001 push (CreateMeirenOutPut.getMeiRen), emitted by 33006.
 CMD_MEIREN_ADD = 82001
+# Inbound meiren routes (MeirenModuleInit.getInCmd: 82000-82003 only).
+CMD_MEIREN_PANEL = 82000
+CMD_MEIREN_UPGRADE = 82002
+CMD_MEIREN_CHANMIAN = 82003
 CMD_RICHANG_INFO = 50201
 CMD_RICHANG_DECREASE = 50202
 CMD_RICHANG_INCREASE = 50203
@@ -1014,6 +1019,14 @@ class Session:
             return self.zuoqi_zhanli()
         if cmd_num == CMD_ZUOQI_AWARD:
             return self.zuoqi_award_info()
+        if cmd_num == CMD_MEIREN_PANEL:
+            return self.meiren_panel()
+        if cmd_num == CMD_MEIREN_ADD:
+            return self.meiren_obtain(msg)
+        if cmd_num == CMD_MEIREN_UPGRADE:
+            return self.meiren_upgrade(msg)
+        if cmd_num == CMD_MEIREN_CHANMIAN:
+            return self.meiren_chanmian(msg)
         if cmd_num == CMD_BAG_MOVE:
             return self.bag_move(msg)
         if cmd_num == CMD_BAG_SPLIT:
@@ -9422,6 +9435,280 @@ class Session:
         except Exception:
             return False
         return True
+
+    @staticmethod
+    def _meiren_int(cell):
+        """object2int over a config cell ('' and junk read as 0)."""
+        try:
+            return int(cell or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _meiren_item_map(raw):
+        """ConfigAnalyzeUtil.convert2Map over 'goods|count' pairs."""
+        out = {}
+        for chunk in str(raw or '').split(','):
+            parts = chunk.split('|')
+            if len(parts) != 2 or not parts[0]:
+                continue
+            try:
+                out[parts[0]] = int(parts[1])
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def _meiren_owned(self, rid, meiren_type):
+        """RoleMeiren row of one type (getRoleMeiRen: match by config type)."""
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            return None
+        for entry in owned:
+            try:
+                same = self.config.meiren_type_for(
+                    entry.get('meiren_id')) == str(meiren_type)
+            except Exception:
+                same = False
+            if same:
+                return entry
+        return None
+
+    def _meiren_decr_goods(self, rid, goods_id, need):
+        """decrGoodses across slots; False leaves stock untouched."""
+        try:
+            slots = [s for s in
+                     self.get_role_bag_slots(rid, -1000000, 1000000) or []
+                     if str(s.get('goods_id')) == str(goods_id)]
+        except Exception:
+            return False
+        have = 0
+        for slot in slots:
+            try:
+                have += int(slot.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        if have < need:
+            return False
+        left = need
+        for slot in slots:
+            if left <= 0:
+                break
+            try:
+                count = int(slot.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            take = min(count, left)
+            rest = count - take
+            try:
+                if rest > 0:
+                    self.update_role_bag_slot(rid, slot.get('slot_num'),
+                                              count=rest)
+                else:
+                    self.delete_role_bag_slot(rid, slot.get('slot_num'))
+            except Exception:
+                return False
+            left -= take
+        return True
+
+    def _meiren_request_type(self, msg):
+        """MeirenAction data: the request carries a bare String type id."""
+        data = msg[1] if len(msg) > 1 else None
+        if not isinstance(data, str) or not data:
+            return None
+        return data
+
+    def meiren_panel(self):
+        """Command 82000: owned [[type, level, heti]] or null when empty."""
+        if self.config is None:
+            return None
+        _, rid = self._task_role()
+        if rid is None:
+            return None
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            owned = []
+        entries = []
+        for entry in owned:
+            try:
+                mtype = self.config.meiren_type_for(entry.get('meiren_id'))
+                level = int(entry.get('meiren_level') or 0)
+                heti = int(entry.get('meiren_heti') or 0)
+            except (TypeError, ValueError):
+                continue
+            if mtype is None:
+                continue
+            entries.append([mtype, level, heti])
+        return frame(amf3_encode(['82000', entries or None]))
+
+    def meiren_obtain(self, msg):
+        """Command 82001: recruit a meiren, gating level/qiandao/items/zhenqi."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        meiren_type = self._meiren_request_type(msg)
+        if meiren_type is None:
+            return None
+        gates = self.config.meiren_gates()
+        entry = gates.get(meiren_type)
+        if entry is None or entry.get('l1') is None:
+            return None
+        if self._meiren_owned(rid, meiren_type) is not None:
+            return frame(amf3_encode(['82001', [0, 82100]]))
+        l1 = entry['l1']
+        need_level = self._meiren_int(l1.get('zhaomulv'))
+        if self._task_role_level(role) < need_level:
+            return frame(amf3_encode(['82001', [0, 82101, [need_level]]]))
+        need_qian = self._meiren_int(l1.get('zhaomuqiandao'))
+        if 0 < need_qian:
+            return frame(amf3_encode(['82001', [0, 82102, [need_qian]]]))
+        try:
+            zuoqi_rank = int((self.get_role_zuoqi(rid) or {}).get(
+                'zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            zuoqi_rank = 0
+        if self._meiren_int(l1.get('zhaomutiaojian')) > zuoqi_rank:
+            return frame(amf3_encode(['82001', [0, GENERAL_ZUOQI_RANK]]))
+        needs = self._meiren_item_map(l1.get('zhaomuitem'))
+        if any(self._task_goods_count(rid, gid) < need
+               for gid, need in needs.items()):
+            return frame(amf3_encode(['82001', [0, 82103]]))
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        need_zhenqi = self._meiren_int(l1.get('zhaomuzhenqi'))
+        if zhenqi < need_zhenqi:
+            return frame(amf3_encode(['82001', [0, 82104]]))
+        for gid, need in needs.items():
+            if not self._meiren_decr_goods(rid, gid, need):
+                return frame(amf3_encode(['82001', [0, 82103]]))
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            owned = []
+        rows = [dict(r) for r in owned]
+        rows.append({'meiren_id': str(l1.get('meinvid')), 'meiren_level': 1,
+                     'meiren_heti': 0})
+        try:
+            self.save_role_meiren(rid, rows)
+            self.save_role_state(rid, zhenqi=zhenqi - need_zhenqi)
+        except Exception:
+            return None
+        return frame(amf3_encode(['82001', [1, meiren_type, 1]]))
+
+    def meiren_upgrade(self, msg):
+        """Command 82002: level up for zhenqi, pushing [1, type, level]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        meiren_type = self._meiren_request_type(msg)
+        if meiren_type is None:
+            return None
+        row = self._meiren_owned(rid, meiren_type)
+        if row is None:
+            return None
+        try:
+            level = int(row.get('meiren_level') or 0)
+            heti = int(row.get('meiren_heti') or 0)
+        except (TypeError, ValueError):
+            return None
+        if heti < level:
+            return frame(amf3_encode(['82002', [0, 82105]]))
+        if level + 1 > self._task_role_level(role):
+            return frame(amf3_encode(['82002', [0, 82106]]))
+        nxt = self.config.meiren_gates().get(meiren_type, {}).get(
+            'levels', {}).get(level + 1)
+        if nxt is None:
+            return frame(amf3_encode(['82002', [0, 82106]]))
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        need = self._meiren_int(nxt.get('lvupzhenqi'))
+        if zhenqi < need:
+            return frame(amf3_encode(['82002', [0, 82108]]))
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            return None
+        rows = []
+        for entry in owned:
+            entry = dict(entry)
+            if entry.get('meiren_id') == row.get('meiren_id'):
+                entry['meiren_id'] = str(nxt.get('meinvid'))
+                entry['meiren_level'] = level + 1
+            rows.append(entry)
+        try:
+            self.save_role_meiren(rid, rows)
+            self.save_role_state(rid, zhenqi=zhenqi - need)
+        except Exception:
+            return None
+        return frame(amf3_encode(['82002', [1, meiren_type, level + 1]]))
+
+    def meiren_chanmian(self, msg):
+        """Command 82003: chanmian for zhenqi + YXB, pushing [1, type, lv, heti]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        meiren_type = self._meiren_request_type(msg)
+        if meiren_type is None:
+            return None
+        row = self._meiren_owned(rid, meiren_type)
+        if row is None:
+            return None
+        try:
+            level = int(row.get('meiren_level') or 0)
+            heti = int(row.get('meiren_heti') or 0)
+        except (TypeError, ValueError):
+            return None
+        if level <= heti:
+            return frame(amf3_encode(['82003', [0, 82109]]))
+        cfg = self.config.meiren_gates().get(meiren_type, {}).get(
+            'levels', {}).get(level)
+        if cfg is None:
+            return None
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        if zhenqi < self._meiren_int(cfg.get('chanmianzhenqi')):
+            return frame(amf3_encode(['82003', [0, 82110]]))
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            yxb = int((roles[0] if roles else {}).get('tongqian') or 0)
+        except (TypeError, ValueError):
+            yxb = 0
+        coin = self._meiren_int(cfg.get('chanmiancoin'))
+        if yxb < coin:
+            return frame(amf3_encode(['82003', [0, 82112]]))
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            return None
+        rows = []
+        for entry in owned:
+            entry = dict(entry)
+            if entry.get('meiren_id') == row.get('meiren_id'):
+                entry['meiren_heti'] = heti + 1
+            rows.append(entry)
+        try:
+            self.save_role_meiren(rid, rows)
+            self.save_role_state(
+                rid, zhenqi=zhenqi - self._meiren_int(
+                    cfg.get('chanmianzhenqi')))
+            self._bag_money_decr(rid, 'YXB', coin)
+        except Exception:
+            return None
+        return frame(amf3_encode(['82003', [1, meiren_type, level, heti + 1]]))
 
     def zuoqi_jiangli_meiren(self):
         """Command 33006: grant the kaifu meiren, pushing 82001 first.

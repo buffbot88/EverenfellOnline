@@ -140,4 +140,4 @@ Recorded so they are not retried:
 
 - `python3 tools/game_data_survey.py` writes `output/game-data-survey.json`;
   re-run and compare `summary.by_status` after any codec change.
-- Suites drift; re-run before trusting counts (`Server-v1`: `python3 -m unittest discover -s tests`; `tools`: `python3 -m unittest discover -s tests`). Last green after the zuoqi slice: 820 server + 44 tools.
+- Suites drift; re-run before trusting counts (`Server-v1`: `python3 -m unittest discover -s tests`; `tools`: `python3 -m unittest discover -s tests`). Last green after the zuoqi slice: 837 server + 44 tools.

@@ -72,4 +72,4 @@ is a positional `Object[8]` per `GetRoleOutput.roleInfo` (see
 - `game/amf3.py` — AMF3 codec (incl. anonymous objects)
 - `game/cipher.py` — `SimpleEncrypt`
 - `auth.py` / `db.py` / `web.py` — sign, SQLite store, account API
-- `tests/` — `python3 -m unittest discover -s tests` (820 tests)
+- `tests/` — `python3 -m unittest discover -s tests` (837 tests)

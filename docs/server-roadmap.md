@@ -7,22 +7,23 @@ and the parity audit per phase. No servers start/stop without the user asking.
 
 ## Completion tracker (primary denominator: 879 command IDs in docs/command-ledger.md — 886 jar IDs minus 7 non-command error codes; module count secondary)
 
-ID track (ledger header: 722 not started, 4 dispatched-only, 9 golden-only, 105 persisted, 6 emitted, 33 push-golden-tested): 118 of 879 routed (13.4%) — 114 routed-with-tests (105 persisted, 9 golden-only), 4 dispatched-only; 39 server-push IDs emitted (33 with a test mention); 722 not started. Module track: 43 of 71 `*Commands` modules touched (~61%). Tables: 29 SQLite vs 176 MySQL (163 unmapped; 13 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track (ledger header: 719 not started, 4 dispatched-only, 9 golden-only, 109 persisted, 6 emitted, 32 push-golden-tested): 122 of 879 routed (13.9%) — 118 routed-with-tests (109 persisted, 9 golden-only), 4 dispatched-only; 38 server-push IDs emitted (32 with a test mention); 719 not started. Module track: 44 of 71 `*Commands` modules touched (~62%). Tables: 29 SQLite vs 176 MySQL (163 unmapped; 13 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
 | 1 core loop (72) | bag 21, equip 13, vip 12, vipqq 3, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 60 persisted (+9 push-golden) | 0 | 0 (closed: vip 62003/62006 push-golden-tested; mall 2000 excluded as a non-command; vipqq 88003/88004 persisted, 88005 push-golden-tested; 1003/1006/430405/794000-794002 excluded as error codes) |
 | 2 scene (210) | stage | 9 persisted, 8 golden-only | 0 | 180 not started (+13 push-golden); scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); inner fly 40101 landed (`tests/test_inner_fly.py`, 6: same-map teleport echoes `[x, y, 0, roleId]` to the surround, other maps change map one-step, bad args silent); 179 open |
-| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 2 persisted (+2 push-golden) | 5 | 104 not started (+3 emitted) + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
+| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 6 persisted (+1 push-golden) | 5 | 101 not started (+2 emitted) + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
 | 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | 92 not started |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
 | triage | public_ 183, gamerule 13, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase (vipqq done: 3 routed, 3 error codes excluded) |
 
-Module history (how the 40 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
+Module history (how the 41 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
 32002/32003/32004/32006 (+4), vipqq info/rewards/bind 88003/88004/88005 (+3), prop gift-box selection 30305/30306/30307
 (+3), zuoqi panel/ride/claim 33001/33000/33004 (+3), zuoqi jinjie 33003
-(+1). Evidence logs below are unchanged.
+(+1), meiren panel/obtain/upgrade/chanmian 82000/82001/82002/82003 (+4).
+Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)
 
@@ -271,6 +272,41 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
   checkAttDan at maxAttributeGoodsCount ([0, 520011]), decr by guid,
   then the {goodsId: count} map is pushed as '33010'. No live client
   capture confirms any zuoqi shape.
+
+## Meiren (82000-82003) evidence log (all from `dntg_start.jar` via `tools/javap.py`)
+
+- Routes: MeirenModuleInit.getInCmd carries exactly [82000, 82001, 82002,
+  82003]; 82004 is service-internal (MeirenServiceImpl.getMeiRen, called
+  only from the 82001 success path's 11101 broadcast), so no dispatch
+  was added for it. MeirenAction takes the role id plus, for
+  82001/82002/82003, a bare String type id; 82000 takes no data.
+- 82000 -> getMeiRenMessage -> getMeiRenAllObj: one [typeId, level, heti]
+  per owned row (type from MeiRenConfig, unlisted ids skipped), null
+  when the role owns none.
+- 82001 -> getMeiRen: owned type -> [0, 82100]; role level below the
+  level-1 row's zhaomulv -> [0, 82101, [need]]; qiandao count below
+  zhaomuqiandao -> [0, 82102, [need]]; viplv (int of zhaomutiaojian,
+  always empty -> 0) above the zuoqi rank -> [0, 1013
+  GeneralErrorCode.ZUOQI_RANK_NOT_ENOUGH]; missing recruit items ->
+  [0, 82103]; zhenqi below zhaomuzhenqi -> [0, 82104]; then items +
+  zhenqi are consumed, the type's level-1 row is inserted (level 1,
+  heti 0), and [1, type, 1] is pushed (CreateMeirenOutPut.getMeiRen).
+  The 11101 ['82004', notice] world broadcast is not emitted (no
+  broadcast primitive; events ride no bus).
+- 82002 -> meiRenUpgrade: heti below level -> [0, 82105]; level+1 above
+  role level or past the top row -> [0, 82106]; zhenqi below the next
+  row's lvupzhenqi -> [0, 82108]; then zhenqi is consumed and [1, type,
+  level] is pushed (getUpgrade).
+- 82003 -> meiRenChanMian: level at/below heti -> [0, 82109]; zhenqi
+  below chanmianzhenqi -> [0, 82110]; YXB below chanmiancoin ->
+  [0, 82112]; then both are consumed, heti rises, and
+  [1, type, level, heti] is pushed (getChanMian).
+- Known gaps: qiandao count reads 0 (jiangli sign-in unported), so
+  baijingjing (60) and jiufeng (25) cannot be recruited yet; error
+  codes 82107/82111 have no use site in the ported flow; MeiRenLingQuEvent
+  and MeiRenChanMianEvent publish ride no bus. Tested in
+  `tests/test_meiren.py` (17) against the real meiren.jat (6 types,
+  max level 100). No live client capture confirms any meiren shape.
 
 ## Phase 4 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
 

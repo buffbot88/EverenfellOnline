@@ -146,7 +146,10 @@ CREATE TABLE IF NOT EXISTS role_xianjiechenhao (
 );
 -- Mount rank per role (legacy role_zuoqi subset: rank gates the ZUOQI bag
 -- via ZuoQiWrapper, cur_rank is the ridden rank, lucky_value the jinjie
--- blessing, update_time the ms timestamp timerTask resets against;
+-- blessing, update_time the ms timestamp timerTask resets against,
+-- fail_count/total_exp the jinjie pity counters, free_jb the free-upgrade
+-- flag, lucky_goods_id/expire/add_lucky the blessing-pill state, and
+-- kaifu_data the fastjson blob (cost-count map, fanhuan/meiren flags);
 -- attribute_goods_id is NULL for every migrated role so it is not copied).
 CREATE TABLE IF NOT EXISTS role_zuoqi (
   role_id INTEGER PRIMARY KEY,
@@ -154,7 +157,22 @@ CREATE TABLE IF NOT EXISTS role_zuoqi (
   zuoqi_cur_rank INTEGER DEFAULT 0,
   lucky_value INTEGER DEFAULT 0,
   update_time INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  total_exp INTEGER DEFAULT 0,
+  free_jb INTEGER DEFAULT 0,
+  lucky_goods_id TEXT,
+  lucky_goods_expire_time INTEGER DEFAULT 0,
+  add_lucky_value INTEGER DEFAULT 0,
+  kaifu_data TEXT,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Mount-upgrade refund feed (ZuoqiFanhuanDaoImpl filedb 'zuoqi/fanhuan':
+-- every claim appends [roleName, count]; loadNearestInfos returns the whole
+-- list, null when the file is absent, i.e. no rows here).
+CREATE TABLE IF NOT EXISTS zuoqi_fanhuan (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role_name TEXT NOT NULL,
+  goods_count INTEGER DEFAULT 0
 );
 -- Owned meiren per role (legacy role_meiren subset: the id/level/heti
 -- triple replaceMeirenAttribute resolves through meiren.jat).
@@ -420,6 +438,17 @@ class Store:
             if 'update_time' not in zuoqi_cols:
                 self.db.execute(
                     'ALTER TABLE role_zuoqi ADD COLUMN update_time INTEGER DEFAULT 0')
+            for column, declaration in (
+                    ('fail_count', 'INTEGER DEFAULT 0'),
+                    ('total_exp', 'INTEGER DEFAULT 0'),
+                    ('free_jb', 'INTEGER DEFAULT 0'),
+                    ('lucky_goods_id', 'TEXT'),
+                    ('lucky_goods_expire_time', 'INTEGER DEFAULT 0'),
+                    ('add_lucky_value', 'INTEGER DEFAULT 0'),
+                    ('kaifu_data', 'TEXT')):
+                if column not in zuoqi_cols:
+                    self.db.execute(
+                        f'ALTER TABLE role_zuoqi ADD COLUMN {column} {declaration}')
             rc_pk = [row['name'] for row in self.db.execute(
                 'PRAGMA table_info(task_richang)') if row['pk']]
             if rc_pk != ['role_id']:
@@ -775,26 +804,58 @@ class Store:
         """Mount-rank row for a role (legacy role_zuoqi subset), or None."""
         with self.lock:
             row = self.db.execute(
-                'SELECT zuoqi_rank, zuoqi_cur_rank, lucky_value, update_time'
+                'SELECT zuoqi_rank, zuoqi_cur_rank, lucky_value, update_time,'
+                ' fail_count, total_exp, free_jb, lucky_goods_id,'
+                ' lucky_goods_expire_time, add_lucky_value, kaifu_data'
                 ' FROM role_zuoqi WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
 
     def save_role_zuoqi(self, role_id, zuoqi_rank=None, zuoqi_cur_rank=None,
-                        lucky_value=None, update_time=None):
-        """Upsert a role's mount row (rank/cur_rank/blessing/update ms)."""
+                        lucky_value=None, update_time=None, fail_count=None,
+                        total_exp=None, free_jb=None, lucky_goods_id=None,
+                        lucky_goods_expire_time=None, add_lucky_value=None,
+                        kaifu_data=None):
+        """Upsert a role's mount row (rank/cur_rank/blessing/pity/kaifu)."""
         with self.lock:
             self.db.execute(
                 'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank,'
-                ' lucky_value, update_time)'
-                ' VALUES(?,?,?,?,?)'
+                ' lucky_value, update_time, fail_count, total_exp, free_jb,'
+                ' lucky_goods_id, lucky_goods_expire_time, add_lucky_value,'
+                ' kaifu_data)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
                 ' ON CONFLICT(role_id) DO UPDATE SET'
                 ' zuoqi_rank=excluded.zuoqi_rank,'
                 ' zuoqi_cur_rank=excluded.zuoqi_cur_rank,'
                 ' lucky_value=excluded.lucky_value,'
-                ' update_time=excluded.update_time',
+                ' update_time=excluded.update_time,'
+                ' fail_count=excluded.fail_count,'
+                ' total_exp=excluded.total_exp,'
+                ' free_jb=excluded.free_jb,'
+                ' lucky_goods_id=excluded.lucky_goods_id,'
+                ' lucky_goods_expire_time=excluded.lucky_goods_expire_time,'
+                ' add_lucky_value=excluded.add_lucky_value,'
+                ' kaifu_data=excluded.kaifu_data',
                 (str(role_id), zuoqi_rank, zuoqi_cur_rank, lucky_value,
-                 update_time))
+                 update_time, fail_count, total_exp, free_jb, lucky_goods_id,                  lucky_goods_expire_time, add_lucky_value, kaifu_data))
+            self.db.commit()
+            return True
+
+    def get_zuoqi_fanhuan(self):
+        """Refund-feed rows as [[role_name, count]] (insertion order)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT role_name, goods_count FROM zuoqi_fanhuan'
+                ' ORDER BY id').fetchall()
+            return [[r['role_name'], r['goods_count']] for r in rows]
+
+    def save_zuoqi_fanhuan(self, role_name, goods_count):
+        """Append one refund-feed row (ZuoqiFanhuanDaoImpl.insert2Db)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO zuoqi_fanhuan(role_name, goods_count)'
+                ' VALUES(?,?)',
+                (str(role_name), goods_count))
             self.db.commit()
             return True
 

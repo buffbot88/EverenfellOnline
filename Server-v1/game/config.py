@@ -875,6 +875,7 @@ class GameConfig:
         self._rc_rew = None
         self._rc_loop = None
         self._kaifu_zuoqi = None
+        self._zhujue_zqmax = None
         self._birth = None
 
     @property
@@ -2856,8 +2857,11 @@ class GameConfig:
             path = os.path.join(self.config_dir, 'sys_config',
                                 'kaifuzuoqi.jat')
             try:
-                rows = amf3_decode(open(path, 'rb').read()) \
-                    if os.path.isfile(path) else []
+                if os.path.isfile(path):
+                    with open(path, 'rb') as f:
+                        rows = amf3_decode(f.read())
+                else:
+                    rows = []
             except ValueError as e:
                 log.error('bad kaifuzuoqi table: %s', e)
                 rows = []
@@ -2893,6 +2897,108 @@ class GameConfig:
             if row.get('fanhuan'):
                 return self.kaifu_zuoqi_config(row.get('jieshu'))
         return None
+
+    def kaifu_zuoqi_meiren(self):
+        """First kaifu row with a meiren id (loadMeirenConfig), or None.
+
+        The resolve maps empty cells to null (obj2StrOrNull), so only a
+        non-empty cell counts, like the fanhuan accessor above.
+        """
+        for row in self.kaifu_zuoqi_table():
+            if row.get('meiren'):
+                return self.kaifu_zuoqi_config(row.get('jieshu'))
+        return None
+
+    def zuoqi_fail_rates(self, rank, level):
+        """Fail-exp lottery entries for a (rank, level) row as (type, rate, exp).
+
+        Port of the RateScope build in createLevelConfig: zcfailaddexp is
+        type 0, xbjfailaddexp type 1, dbjfailaddexp type 2, each a
+        'rate|exp' string; empty cells contribute nothing. The caller rolls
+        randomZuoqiRate over these weights.
+        """
+        try:
+            row = self.zuoqi_table().get((int(rank), int(level)))
+        except (TypeError, ValueError):
+            return []
+        if row is None:
+            return []
+        entries = []
+        for kind, key in ((0, 'zcfailaddexp'), (1, 'xbjfailaddexp'),
+                          (2, 'dbjfailaddexp')):
+            cell = str(row.get(key) or '')
+            if '|' not in cell:
+                continue
+            rate_s, _, exp_s = cell.partition('|')
+            try:
+                entries.append((kind, float(rate_s), int(exp_s)))
+            except (TypeError, ValueError):
+                continue
+        return entries
+
+    def zhujue_zq_fail_max_exp(self, level):
+        """ZhuJueShuXingBiao.zqjjsbaddmaxexp for a role level (jinjie cap)."""
+        if self._zhujue_zqmax is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZhuJueShuXingBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zhujue shuxing table: %s', e)
+                rows = []
+            self._zhujue_zqmax = {}
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    self._zhujue_zqmax[int(r.get('level'))] = int(
+                        r.get('zqjjsbaddmaxexp') or 0)
+                except (TypeError, ValueError):
+                    continue
+        try:
+            return self._zhujue_zqmax.get(int(level), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def goods_specialtype_substitutes(self, goods_id, rank):
+        """Substitute pill ids for a jinjie material at a mount rank.
+
+        Port of getGoodsSpecialtypeConfig: a goods with null/0 specialtype
+        substitutes only itself; otherwise every goods sharing the
+        specialtype whose specialVal fits the rank qualifies. specialVal is
+        zuoqiLv for type 1 (bytecode) and qibinglv for type 2; higher types
+        have no verified column mapping, so they substitute only
+        themselves. Order follows the goods table (config load order).
+        Returns None when the goods id is unknown.
+        """
+        table = self._goods_table()
+        row = table.get(str(goods_id))
+        if row is None:
+            return None
+        try:
+            special = int(row.get('specialtype') or 0)
+        except (TypeError, ValueError):
+            special = 0
+        if not special:
+            return [str(goods_id)]
+        key = {1: 'zuoqilv', 2: 'qibinglv'}.get(special)
+        if key is None:
+            return [str(goods_id)]
+        try:
+            rank = int(rank)
+        except (TypeError, ValueError):
+            return []
+        subs = []
+        for gid, grow in table.items():
+            try:
+                if int(grow.get('specialtype') or 0) != special:
+                    continue
+                if int(grow.get(key) or 0) > rank:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            subs.append(str(gid))
+        return subs
 
     def zuoqi_fight(self, max_rank, role_level):
         """ZhanDouLiServiceImpl.getZuoQiJiChuFight for a mount rank/level.

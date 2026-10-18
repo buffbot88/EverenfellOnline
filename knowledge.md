@@ -32,10 +32,10 @@ A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "Ton
 ```sh
 python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080
 python3 server.py --db data/mko.db --add-char ACCOUNT:NAME   # seed a character, then exit
-python3 -m unittest discover -s tests                        # server tests (619, all pass)
+python3 -m unittest discover -s tests                        # server tests (820, all pass)
 ```
 
-**Tools tests** (from `tools/`): `python3 -m unittest discover -s tests` (43 tests).
+**Tools tests** (from `tools/`): `python3 -m unittest discover -s tests` (44 tests).
 
 **Legacy data migration** (from the repo root; MySQL must be running, it is only read):
 ```sh
@@ -74,7 +74,7 @@ Role state lives in a `role_stage` table mirroring the legacy MySQL table, joine
 ## Conventions and gotchas
 
 - **Protocol bugs hide in empty data.** Two real bugs (login TimeZone must be an object with `rawOffset`; each role is a positional `Object[8]`, not a keyed object) only surfaced once a character existed. Test with seeded data and feed replies to the real client.
-- Auth sign is `md5(uid + 'xianlingkey' + t)`, a legacy scheme that is forgeable and replayable. Do not expose the server to the internet (see `docs/java-python-parity-audit.md`).
+- Auth sign is HMAC-SHA256 over `uid|t` with a server secret (`MKO_SIGN_SECRET`, else per-process random) and a 300s freshness window; the legacy `md5(uid + 'xianlingkey' + t)` is rejected. Do not expose the server to the internet (see `docs/java-python-parity-audit.md`).
 - Passwords in the Python server use PBKDF2; the legacy stack stores plaintext and unsanitized SQL. Do not reintroduce either.
 - The Java game server is still the behavioral oracle; port subsystems incrementally and compare packet sequences.
 - `reference/TonNgoKhong/server/ESSamp/essamp.ini` hardcodes an absolute Windows path; update it if the tree moves.

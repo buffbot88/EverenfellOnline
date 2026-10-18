@@ -34,6 +34,7 @@ Deviations from the original (all logged, to refine against the live client):
 """
 import json
 import logging
+import math
 import random
 import re
 import struct
@@ -238,6 +239,13 @@ CMD_ZUOQI_RIDE = 33000
 CMD_ZUOQI_PANEL = 33001
 CMD_ZUOQI_JINJIE = 33003
 CMD_ZUOQI_CLAIM = 33004
+CMD_ZUOQI_FANHUAN = 33005
+CMD_ZUOQI_MEIREN = 33006
+CMD_ZUOQI_FANHUAN_LIST = 33007
+CMD_ZUOQI_ZHANLI = 33008
+CMD_ZUOQI_AWARD = 33011
+# addMeiRen's 82001 push (CreateMeirenOutPut.getMeiRen), emitted by 33006.
+CMD_MEIREN_ADD = 82001
 CMD_RICHANG_INFO = 50201
 CMD_RICHANG_DECREASE = 50202
 CMD_RICHANG_INCREASE = 50203
@@ -540,7 +548,9 @@ class Session:
                  get_role_attr_buffs=None,
                  save_role_attr_buffs=None,
                  get_role_vip=None, get_role_xianjiechenhao=None,
-                 get_role_meiren=None, get_role_zuoqi=None, save_role_zuoqi=None,
+                 get_role_meiren=None, save_role_meiren=None,
+                 get_role_zuoqi=None, save_role_zuoqi=None,
+                 get_zuoqi_fanhuan=None, save_zuoqi_fanhuan=None,
                  get_role_skills=None,                  get_role_shenjiang=None, save_role_stage=None,
                  get_role_bag_slots=None, get_role_bag_state=None,
                  get_role_bag_slot=None,                 get_role_bag_slot_by_bag_id=None, save_role_skill=None,
@@ -602,6 +612,9 @@ class Session:
         self.get_vip_qq = get_vip_qq or (lambda: None)
         self.save_vip_qq = save_vip_qq or (lambda *a, **k: False)
         self.get_role_meiren = get_role_meiren or (lambda role_id: [])
+        self.save_role_meiren = save_role_meiren or (lambda *a: False)
+        self.get_zuoqi_fanhuan = get_zuoqi_fanhuan or (lambda: [])
+        self.save_zuoqi_fanhuan = save_zuoqi_fanhuan or (lambda *a: False)
         self.save_role_skill = save_role_skill or (lambda *a, **k: False)
         self.get_role_zuoqi = get_role_zuoqi or (lambda role_id: None)
         self.save_role_zuoqi = save_role_zuoqi or (lambda *a, **k: False)
@@ -989,6 +1002,18 @@ class Session:
             return self.zuoqi_ride(msg)
         if cmd_num == CMD_ZUOQI_CLAIM:
             return self.zuoqi_claim()
+        if cmd_num == CMD_ZUOQI_JINJIE:
+            return self.zuoqi_jinjie(msg)
+        if cmd_num == CMD_ZUOQI_FANHUAN:
+            return self.zuoqi_fanhuan()
+        if cmd_num == CMD_ZUOQI_MEIREN:
+            return self.zuoqi_jiangli_meiren()
+        if cmd_num == CMD_ZUOQI_FANHUAN_LIST:
+            return self.zuoqi_fanhuan_list()
+        if cmd_num == CMD_ZUOQI_ZHANLI:
+            return self.zuoqi_zhanli()
+        if cmd_num == CMD_ZUOQI_AWARD:
+            return self.zuoqi_award_info()
         if cmd_num == CMD_BAG_MOVE:
             return self.bag_move(msg)
         if cmd_num == CMD_BAG_SPLIT:
@@ -8937,6 +8962,17 @@ class Session:
     ZUOQI_MIN_RANK = 1
     ZUOQI_EMPTY_CODE = 520005
     ZUOQI_NOCONFIG_CODE = 520006
+    ZUOQI_MAX_CODE = 520001
+    ZUOQI_LEVEL_CODE = 520002
+    ZUOQI_MONEY_CODE = 520003
+    ZUOQI_MALL_FAIL = 430249
+    ZUOQI_TRY_FAIL = 430250
+    ZUOQI_NOTICE_CODE = 520013
+    ZUOQI_FANHUAN_STATE = 520020
+    ZUOQI_MEIREN_STATE = 520021
+    ZUOQI_FANHUAN_CLAIMED = 520022
+    ZUOQI_MEIREN_CLAIMED = 520023
+    ZUOQI_KAIFU_OVER = 520024
 
     def _zuoqi_row(self, rid):
         """Role's mount row, created zeroed like createRoleZuoqi, or None."""
@@ -8947,9 +8983,12 @@ class Session:
         if row is not None:
             return dict(row)
         row = {'zuoqi_rank': 0, 'zuoqi_cur_rank': 0, 'lucky_value': 0,
-               'update_time': 0}
+               'update_time': 0, 'fail_count': 0, 'total_exp': 0,
+               'free_jb': 0, 'lucky_goods_id': None,
+               'lucky_goods_expire_time': 0, 'add_lucky_value': 0,
+               'kaifu_data': None}
         try:
-            self.save_role_zuoqi(rid, 0, 0, 0, 0)
+            self.save_role_zuoqi(rid, 0, 0, 0, 0, 0, 0, 0, None, 0, 0, None)
         except Exception:
             return None
         return row
@@ -8959,7 +8998,11 @@ class Session:
         try:
             self.save_role_zuoqi(
                 rid, row.get('zuoqi_rank'), row.get('zuoqi_cur_rank'),
-                row.get('lucky_value'), row.get('update_time'))
+                row.get('lucky_value'), row.get('update_time'),
+                row.get('fail_count'), row.get('total_exp'),
+                row.get('free_jb'), row.get('lucky_goods_id'),
+                row.get('lucky_goods_expire_time'),
+                row.get('add_lucky_value'), row.get('kaifu_data'))
         except Exception:
             pass
 
@@ -9039,10 +9082,15 @@ class Session:
             lucky = 0
         level = self._task_role_level(role)
         # Cost is getUpgradeCostCount over the kaifuData 'cost-count'
-        # map, which lives in RoleZuoqi's unmigrated kaifuData column.
+        # map for the fanhuan rank (0 when no fanhuan row or no spend).
+        cost = 0
+        fanhuan = self.config.kaifu_zuoqi_fanhuan() \
+            if self.config is not None else None
+        if fanhuan is not None:
+            cost = self._zuoqi_cost_count(row, fanhuan['rank'])
         reply = [1, [rank, self._zuoqi_level(level, cfg), lucky,
                      self.config.zuoqi_fight(req, level)],
-                 [], self._zuoqi_in_kaifu(rank), 0]
+                 [], self._zuoqi_in_kaifu(rank), cost]
         return frame(amf3_encode([str(CMD_ZUOQI_PANEL), reply]))
 
     def zuoqi_ride(self, msg):
@@ -9095,6 +9143,669 @@ class Session:
             if cfg is not None else 0
         return frame(amf3_encode(
             [str(CMD_ZUOQI_CLAIM), [1, self.ZUOQI_MIN_RANK, level]]))
+
+    # Mount kaifu refund/meiren (zuoqi 33005/33006/33007/33011). Evidence:
+    # RoleZuoQiServiceImpl.zuoqiFanhuan/zuoqiJiangliMeiren/
+    # getZuoqiFanhuanList/getZuoqiAwardInfo with ZuoQiUtil's kaifuData
+    # helpers: 'cost-count' maps rank->jinjie pill spend, 'fanhuan' and
+    # 'meiren' flags mark claimed (null/False means claimable, fastjson).
+    @staticmethod
+    def _zuoqi_kaifu_data(row):
+        """kaifuData blob as a dict, tolerant like JsonUtils.getJSONObj."""
+        try:
+            text = row.get('kaifu_data')
+        except AttributeError:
+            return {}
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except (TypeError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _zuoqi_cost_count(self, row, rank):
+        """ZuoQiUtil.getUpgradeCostCount: tracked spend at a rank."""
+        try:
+            key = str(int(rank))
+        except (TypeError, ValueError):
+            return 0
+        inner = self._zuoqi_kaifu_data(row).get('cost-count')
+        if isinstance(inner, str):
+            try:
+                inner = json.loads(inner)
+            except (TypeError, ValueError):
+                return 0
+        if not isinstance(inner, dict):
+            return 0
+        try:
+            return int(inner.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zuoqi_add_cost(self, row, rank, count):
+        """ZuoQiUtil.addCostCount: bank one attempt's cailiao count."""
+        try:
+            key = str(int(rank))
+        except (TypeError, ValueError):
+            return 0
+        try:
+            add = int(count or 0)
+        except (TypeError, ValueError):
+            add = 0
+        data = self._zuoqi_kaifu_data(row)
+        inner = data.get('cost-count')
+        if isinstance(inner, str):
+            try:
+                inner = json.loads(inner)
+            except (TypeError, ValueError):
+                inner = None
+        if not isinstance(inner, dict):
+            inner = {}
+        try:
+            total = int(inner.get(key) or 0) + add
+        except (TypeError, ValueError):
+            total = add
+        inner[key] = total
+        data['cost-count'] = inner
+        try:
+            row['kaifu_data'] = json.dumps(data)
+        except (TypeError, ValueError):
+            pass
+        return total
+
+    def _zuoqi_can_claim(self, row, key):
+        """ZuoQiUtil.checkCanLingqu*: an unset flag means claimable."""
+        try:
+            return not self._zuoqi_kaifu_data(row).get(key)
+        except Exception:
+            return True
+
+    def _zuoqi_set_claimed(self, row, key):
+        """ZuoQiUtil.change*State: set the claim flag on the blob."""
+        data = self._zuoqi_kaifu_data(row)
+        data[key] = True
+        try:
+            row['kaifu_data'] = json.dumps(data)
+        except (TypeError, ValueError):
+            pass
+
+    def _zuoqi_fanhuan_cfg(self, rank):
+        """Fanhuan gate config: the rank's own row when it refunds."""
+        if self.config is None:
+            return None
+        own = self.config.kaifu_zuoqi_config(rank)
+        if own is not None and own.get('return_goods'):
+            return own
+        return self.config.kaifu_zuoqi_fanhuan()
+
+    def _zuoqi_meiren_cfg(self, rank):
+        """Meiren gate config: the rank's own row when it names one."""
+        if self.config is None:
+            return None
+        own = self.config.kaifu_zuoqi_config(rank)
+        if own is not None and own.get('meiren'):
+            return own
+        return self.config.kaifu_zuoqi_meiren()
+
+    def _zuoqi_raw_row(self, rid):
+        """Mount row without auto-create (None is Java's cacheLoad miss)."""
+        try:
+            row = self.get_role_zuoqi(rid)
+        except Exception:
+            return None
+        return dict(row) if row is not None else None
+
+    @staticmethod
+    def _zuoqi_name_str(role, wire_id):
+        """ClientStrUtil.getNameStr: '{user|id,name,sex,0}' for the feed."""
+        try:
+            sex = int((role or {}).get('sex') or 0)
+        except (TypeError, ValueError):
+            sex = 0
+        return '{user|%s,%s,%s,0}' % (
+            wire_id, (role or {}).get('name'), sex)
+
+    def zuoqi_fanhuan(self):
+        """Command 33005: refund the fanhuan rank's tracked pill spend.
+
+        Gates answer [0, code] (520020 state, 520024 past kaifu, 520022
+        claimed, 1006 full bag); the grant is the rank's cailiao goods
+        times the tracked count, bind 1, expiring per guoqi hours, and the
+        reply is [1, [[goodsId, count]]] with a feed row appended.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._zuoqi_raw_row(rid)
+        if row is None:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_FANHUAN), [0, self.ZUOQI_FANHUAN_STATE]]))
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        cfg = self._zuoqi_fanhuan_cfg(rank)
+        if cfg is None or rank <= cfg['rank']:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_FANHUAN), [0, self.ZUOQI_FANHUAN_STATE]]))
+        if self._vip_kaifu_days() > cfg['last_days']:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_FANHUAN), [0, self.ZUOQI_KAIFU_OVER]]))
+        if not self._zuoqi_can_claim(row, 'fanhuan'):
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_FANHUAN), [0, self.ZUOQI_FANHUAN_CLAIMED]]))
+        goods_cfg = self.config.zuoqi_rank_config(cfg['rank'])
+        if goods_cfg is None or not goods_cfg.get('cailiao_id'):
+            return None
+        count = self._zuoqi_cost_count(row, cfg['rank'])
+        try:
+            expire_hours = int(cfg.get('expire_hours') or 0)
+        except (TypeError, ValueError):
+            expire_hours = 0
+        expire = int(time.time() * 1000) + expire_hours * 3600 * 1000 \
+            if expire_hours > 0 else None
+        if not self._prop_fits(rid, {'goods': goods_cfg['cailiao_id'],
+                                     'count': count}, 1):
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_FANHUAN), [0, GENERAL_NOSLOT]]))
+        self._zuoqi_set_claimed(row, 'fanhuan')
+        self._zuoqi_save(rid, row)
+        self._task_grant(rid, [{'goods_id': goods_cfg['cailiao_id'],
+                                'count': count, 'bind': 1, 'expire': expire}])
+        try:
+            self.save_zuoqi_fanhuan(
+                self._zuoqi_name_str(role, _wire_id(role)), count)
+        except Exception:
+            pass
+        return frame(amf3_encode(
+            [str(CMD_ZUOQI_FANHUAN),
+             [1, [[goods_cfg['cailiao_id'], count]]]]))
+
+    def zuoqi_fanhuan_list(self):
+        """Command 33007: [costCount, [[name, count]...] or null]."""
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._zuoqi_raw_row(rid)
+        if row is None:
+            return frame(amf3_encode([str(CMD_ZUOQI_FANHUAN_LIST), None]))
+        cfg = self.config.kaifu_zuoqi_fanhuan()
+        if cfg is None:
+            return None
+        try:
+            feed = self.get_zuoqi_fanhuan() or []
+        except Exception:
+            feed = []
+        return frame(amf3_encode(
+            [str(CMD_ZUOQI_FANHUAN_LIST),
+             [self._zuoqi_cost_count(row, cfg['rank']), feed or None]]))
+
+    def zuoqi_zhanli(self):
+        """Command 33008: mount fight total (jichu + mount gear).
+
+        Port of sendZhanli over getZuoQiFight: the cached fight-map
+        total is jichu + mount-equip + longhun, computed live here.
+        Longhun is 0 (getlongLingOrLongHun over an empty goods map,
+        and attribute_goods_id has no source: 33010 useLongHun is
+        service-internal with no inbound route, see the roadmap).
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            items = self.get_role_equip(rid) or []
+        except Exception:
+            items = []
+        try:
+            mount = self.get_role_zuoqi(rid) or {}
+        except Exception:
+            mount = {}
+        try:
+            total = self.config.zuoqi_fight(
+                mount.get('zuoqi_rank'), role.get('level')) or 0
+        except Exception:
+            total = 0
+        try:
+            total += self.config.zuoqi_equip_fight(items) or 0
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_ZUOQI_ZHANLI), total]))
+
+    def _zuoqi_grant_meiren(self, rid, meiren_id):
+        """addMeiRen: insert the type's level-1 row; True means push 82001.
+
+        An owned row of the same type ([0, 82100] in Java) or a missing
+        level-1 config (empty array) grants nothing; the caller still
+        answers the claim either way.
+        """
+        if self.config is None:
+            return False
+        _, types = self.config.meiren_table()
+        if not types.get(str(meiren_id), {}).get(1):
+            return False
+        try:
+            owned = self.get_role_meiren(rid) or []
+        except Exception:
+            owned = []
+        for entry in owned:
+            try:
+                same = self.config.meiren_type_for(
+                    entry.get('meiren_id')) == str(meiren_id)
+            except Exception:
+                same = False
+            if same:
+                return False
+        by_id, _ = self.config.meiren_table()
+        meinvid = None
+        for vid, pair in by_id.items():
+            try:
+                mtype, level = pair
+            except (TypeError, ValueError):
+                continue
+            if mtype == str(meiren_id) and level == 1:
+                meinvid = vid
+                break
+        if meinvid is None:
+            return False
+        rows = [dict(r) for r in owned]
+        rows.append({'meiren_id': meinvid, 'meiren_level': 1,
+                     'meiren_heti': 0})
+        try:
+            self.save_role_meiren(rid, rows)
+        except Exception:
+            return False
+        return True
+
+    def zuoqi_jiangli_meiren(self):
+        """Command 33006: grant the kaifu meiren, pushing 82001 first.
+
+        Gates answer [0, code] (520021 state, 520024 past kaifu, 520023
+        claimed); success pushes [1, meirenId, 1] ahead of [1, meirenId].
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._zuoqi_raw_row(rid)
+        if row is None:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_MEIREN), [0, self.ZUOQI_MEIREN_STATE]]))
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        cfg = self._zuoqi_meiren_cfg(rank)
+        if cfg is None or rank <= cfg['rank']:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_MEIREN), [0, self.ZUOQI_MEIREN_STATE]]))
+        if self._vip_kaifu_days() > cfg['last_days']:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_MEIREN), [0, self.ZUOQI_KAIFU_OVER]]))
+        if not self._zuoqi_can_claim(row, 'meiren'):
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_MEIREN), [0, self.ZUOQI_MEIREN_CLAIMED]]))
+        grant = self.config.kaifu_zuoqi_meiren()
+        if grant is None or not grant.get('meiren'):
+            return None
+        meiren_id = grant['meiren']
+        self._zuoqi_set_claimed(row, 'meiren')
+        self._zuoqi_save(rid, row)
+        frames = []
+        if self._zuoqi_grant_meiren(rid, meiren_id):
+            frames.append(frame(amf3_encode(
+                [str(CMD_MEIREN_ADD), [1, meiren_id, 1]])))
+        frames.append(frame(amf3_encode(
+            [str(CMD_ZUOQI_MEIREN), [1, meiren_id]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def zuoqi_award_info(self):
+        """Command 33011: [fanhuanRank?, meirenRank?] claimable-now slots.
+
+        Each slot carries the kaifu rank when the role could claim it
+        now (in-kaifu, past the rank, unclaimed), else null; no mount
+        row answers the empty array.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._zuoqi_raw_row(rid)
+        if row is None:
+            return frame(amf3_encode([str(CMD_ZUOQI_AWARD), []]))
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        days = self._vip_kaifu_days()
+        fanhuan = self.config.kaifu_zuoqi_fanhuan()
+        meiren = self.config.kaifu_zuoqi_meiren()
+        first = fanhuan['rank'] if (
+            fanhuan is not None and days <= fanhuan['last_days']
+            and rank > fanhuan['rank']
+            and self._zuoqi_can_claim(row, 'fanhuan')) else None
+        second = meiren['rank'] if (
+            meiren is not None and days <= meiren['last_days']
+            and rank > meiren['rank']
+            and self._zuoqi_can_claim(row, 'meiren')) else None
+        return frame(amf3_encode(
+            [str(CMD_ZUOQI_AWARD), [first, second]]))
+
+    @staticmethod
+    def _zuoqi_java_round(value):
+        """Math.round for non-negative floats (floor(x + 0.5))."""
+        try:
+            return int(math.floor(float(value) + 0.5))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _zuoqi_random_int(low, high):
+        """Lottery.randomInt: low when equal, else low + nextInt(high-low)."""
+        try:
+            low, high = int(low), int(high)
+        except (TypeError, ValueError):
+            return 0
+        if low == high:
+            return low
+        if high < low:
+            return low
+        return low + random.randrange(high - low)
+
+    @staticmethod
+    def _zuoqi_is_success(odds):
+        """Lottery.isSuccess: nextFloat() below the odds."""
+        try:
+            return random.random() < float(odds)
+        except (TypeError, ValueError):
+            return False
+
+    def _zuoqi_can_upgrade(self, role, row, cfg):
+        """canUpgradeRank gates, or None when the attempt may proceed."""
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        if rank >= self.config.zuoqi_max_rank():
+            return [self.ZUOQI_MAX_CODE]
+        if self._task_role_level(role) < cfg['need_level']:
+            return [self.ZUOQI_LEVEL_CODE, cfg['need_level']]
+        try:
+            free = int(row.get('free_jb') or 0)
+        except (TypeError, ValueError):
+            free = 0
+        if free != 1 and not self._bag_money_check(
+                role, 'YXB', cfg['upgrade_jb']):
+            return [self.ZUOQI_MONEY_CODE, cfg['upgrade_jb']]
+        return None
+
+    def _zuoqi_bag_stock(self, rid, goods_id):
+        """Total count of a goods across the role's bag slots."""
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return 0
+        total = 0
+        for slot in slots:
+            if str(slot.get('goods_id')) != str(goods_id):
+                continue
+            try:
+                total += int(slot.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _zuoqi_material_plan(self, rid, role, cfg, rank, auto_buy):
+        """Jinjie material check: bag pills, mall money for the rest.
+
+        Port of checkGoodsJinJieDanMoneyEnough over the specialtype
+        substitutes: each deficit is mall-priced (npc 2000, first affordable
+        non-guild type in int order; HashMap order matches it for the
+        shipped small-int keys) when auto_buy holds, else GOODS_NOT_ENOUGH.
+        Returns (decr_map, mall_money) or (None, code).
+        """
+        subs = self.config.goods_specialtype_substitutes(
+            cfg['cailiao_id'], rank)
+        if not subs:
+            return None, self.ZUOQI_TRY_FAIL
+        need = cfg['cailiao_count']
+        decr = {}
+        for sub in subs:
+            if need <= 0:
+                break
+            stock = self._zuoqi_bag_stock(rid, sub)
+            if stock <= 0:
+                continue
+            take = min(need, stock)
+            decr[sub] = take
+            need -= take
+        if need <= 0:
+            return decr, {}
+        if not auto_buy:
+            return None, GENERAL_GOODS
+        offer = self.config.mall_offer(cfg['cailiao_id'], '2000')
+        if offer is None:
+            return None, self.ZUOQI_MALL_FAIL
+        for money_type in sorted(offer['costs']):
+            if money_type == 5:
+                continue
+            name = MALL_MONEY_NAMES.get(money_type)
+            column = BAG_MONEY_COLUMNS.get(name) if name else None
+            if column is None:
+                continue
+            try:
+                total = int(offer['costs'][money_type]) * need
+                balance = int((role or {}).get(column) or 0)
+            except (TypeError, ValueError):
+                continue
+            if balance >= total:
+                return decr, {money_type: total}
+        first = next((t for t in sorted(offer['costs']) if t != 5), 2)
+        return None, {2: GENERAL_YB, 3: GENERAL_BINDYB,
+                       1: GENERAL_JB}.get(first, GENERAL_YB)
+
+    def _zuoqi_upgrade_success(self, row, lvl, role_level):
+        """upgradeSuccess lottery over the pity window plus base odds.
+
+        Lucky-pill time shaves (minTimes-scaled luckyChance) and the
+        addLucky shave (round(add/90)) apply; no local row can carry lucky
+        pills (their writers are unported), so only the addLucky term can
+        fire. The zhufu-card rate prop is unported, hence 0.
+        """
+        max_times, min_times = lvl['max_times'], lvl['min_times']
+        try:
+            add = int(row.get('add_lucky_value') or 0)
+        except (TypeError, ValueError):
+            add = 0
+        if add:
+            shave = max(self._zuoqi_java_round(add / 90.0), 1)
+            max_times -= shave
+            min_times -= shave
+        try:
+            lucky = int(row.get('lucky_value') or 0)
+            fails = int(row.get('fail_count') or 0)
+        except (TypeError, ValueError):
+            return False
+        if lucky >= lvl['upgrade_zhufu']:
+            return True
+        if fails < min_times:
+            return False
+        if fails >= max_times:
+            return True
+        return self._zuoqi_is_success(lvl['odds'])
+
+    def _zuoqi_upgrade_fail(self, role, rid, row, lvl, role_level):
+        """upgradeFailOperate: pity up, fail exp, or [0, -1] at the cap.
+
+        Returns ([type, exp], granted): the baoji roll pays role exp through
+        the shared exp persist (level-up thresholds stay unported, as in
+        combat), and lucky caps at upgradeZhufu.
+        """
+        try:
+            fails = int(row.get('fail_count') or 0)
+            lucky = int(row.get('lucky_value') or 0)
+            total = int(row.get('total_exp') or 0)
+        except (TypeError, ValueError):
+            fails, lucky, total = 0, 0, 0
+        row['fail_count'] = fails + 1
+        add = self._zuoqi_random_int(lvl['min_zhufu'], lvl['max_zhufu'])
+        row['lucky_value'] = min(lucky + add, lvl['upgrade_zhufu'])
+        if total >= self.config.zhujue_zq_fail_max_exp(role_level):
+            return [0, -1], False
+        rates = self.config.zuoqi_fail_rates(
+            row.get('zuoqi_rank'), lvl['level'])
+        roll = random.random() * sum(r for _, r, _ in rates) \
+            if rates else 0
+        pick, exp = 0, 0
+        for kind, rate, value in rates:
+            roll -= rate
+            if roll < 0:
+                pick, exp = kind, value
+                break
+        row['total_exp'] = total + exp
+        try:
+            exp_total = int((role or {}).get('exp') or 0) + exp
+        except (TypeError, ValueError):
+            exp_total = exp
+        try:
+            self.save_role_state(rid, exp=exp_total)
+        except Exception:
+            pass
+        return [pick, exp], True
+
+    def zuoqi_jinjie(self, msg):
+        """Command 33003: bless/advance the mount (upgradeRank).
+
+        C> is an Integer auto-buy flag (other shapes stay silent like the
+        action's early return). Gates answer [0, error], consumed materials
+        [0, code], success the panel shape plus the 11101 [520013, ...]
+        notice when the new level row wants one, failure
+        [-1, lucky, type, exp, 0] with the 12001 exp notice ahead of it.
+        Events ride no bus, like the other ported upgrade flows.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, None)
+        if isinstance(data, bool) or not isinstance(data, int) or \
+                data not in (0, 1):
+            return None
+        auto_buy = data == 1
+        row = self._zuoqi_row(rid)
+        if row is None:
+            return None
+        row = self._zuoqi_timer(rid, row)
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        cfg = self.config.zuoqi_rank_config(rank)
+        if cfg is None:
+            return None
+        level = self._task_role_level(role)
+        gate = self._zuoqi_can_upgrade(role, row, cfg)
+        if gate is not None:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_JINJIE), [0, gate]]))
+        decr, mall_money = self._zuoqi_material_plan(
+            rid, role, cfg, rank, auto_buy) if cfg['cailiao_id'] \
+            else ({}, {})
+        if decr is None:
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_JINJIE), [0, mall_money]]))
+        try:
+            free = int(row.get('free_jb') or 0)
+        except (TypeError, ValueError):
+            free = 0
+        if free != 1 and not self._bag_money_check(
+                role, 'YXB', cfg['upgrade_jb']):
+            return frame(amf3_encode(
+                [str(CMD_ZUOQI_JINJIE), [0, GENERAL_JB]]))
+        for gid, take in decr.items():
+            self._prop_take(rid, gid, take)
+        if free != 1 and cfg['upgrade_jb']:
+            self._bag_money_decr(rid, 'YXB', cfg['upgrade_jb'])
+        # ZuoQiUtil.addCostCount: every attempt banks the rank's full
+        # cailiao count under the current rank, win or lose.
+        self._zuoqi_add_cost(row, rank, cfg['cailiao_count'])
+        for money_type, total in mall_money.items():
+            name = MALL_MONEY_NAMES.get(money_type)
+            if name is not None and total:
+                self._bag_money_decr(rid, name, total)
+        lvl = self.config.zuoqi_level_config(
+            rank, self._zuoqi_level(level, cfg))
+        if lvl is None:
+            return None
+        now = int(time.time() * 1000)
+        if self._zuoqi_upgrade_success(row, lvl, level):
+            success = True
+            ret = None
+        else:
+            ret, granted = self._zuoqi_upgrade_fail(
+                role, rid, row, lvl, level)
+            try:
+                lucky_now = int(row.get('lucky_value') or 0)
+            except (TypeError, ValueError):
+                lucky_now = 0
+            success = lucky_now >= lvl['upgrade_zhufu']
+        if success:
+            row.update(fail_count=0, lucky_value=0, add_lucky_value=0,
+                       lucky_goods_id=None, lucky_goods_expire_time=0,
+                       zuoqi_rank=rank + 1, zuoqi_cur_rank=rank + 1,
+                       update_time=now)
+            self._zuoqi_save(rid, row)
+            new_cfg = self.config.zuoqi_rank_config(rank + 1)
+            new_level = self._zuoqi_level(
+                level, new_cfg) if new_cfg is not None else 0
+            new_lvl = self.config.zuoqi_level_config(rank + 1, new_level)
+            reply = [1, [rank + 1, new_level, 0,
+                         self.config.zuoqi_fight(rank + 1, level)],
+                     [], self._zuoqi_in_kaifu(rank + 1), 0]
+            frames = []
+            if new_lvl is not None and new_lvl['notice'] and \
+                    new_cfg is not None:
+                frames.append(frame(amf3_encode(
+                    [str(CMD_NOTICE_ALL),
+                     [self.ZUOQI_NOTICE_CODE,
+                      [str(role.get('name')), rank + 1,
+                       new_cfg['name']]]])))
+            frames.append(frame(amf3_encode(
+                [str(CMD_ZUOQI_JINJIE), reply])))
+            return tuple(frames) if len(frames) > 1 else frames[0]
+        row['update_time'] = now
+        self._zuoqi_save(rid, row)
+        try:
+            lucky_now = int(row.get('lucky_value') or 0)
+        except (TypeError, ValueError):
+            lucky_now = 0
+        # Slot 4 is getUpgradeCostCount for the fanhuan rank, not 0.
+        cost = 0
+        fanhuan = self.config.kaifu_zuoqi_fanhuan()
+        if fanhuan is not None:
+            cost = self._zuoqi_cost_count(row, fanhuan['rank'])
+        reply = frame(amf3_encode(
+            [str(CMD_ZUOQI_JINJIE),
+             [-1, lucky_now, ret[0], ret[1], cost]]))
+        if granted:
+            try:
+                exp_total = int((self.get_roles(
+                    self.authed_user or '', self.server_id or '')[0] or {})
+                    .get('exp') or 0)
+            except (TypeError, ValueError, IndexError):
+                exp_total = 0
+            return (frame(amf3_encode(combat_lib.exp_notice(
+                exp_total, level))), reply)
+        return reply
 
     def _bag_money_check(self, role, money, amount):
         """AccountServiceImpl decrCheck for one MoneyType: balance covers it."""

@@ -5,9 +5,9 @@ Oracle: the live Java server + `reference/TonNgoKhong` configs; captures in
 from bytecode, never invent numbers, golden-test everything, update this file
 and the parity audit per phase. No servers start/stop without the user asking.
 
-## Completion tracker (primary denominator: 885 command IDs in docs/command-ledger.md; module count secondary)
+## Completion tracker (primary denominator: 879 command IDs in docs/command-ledger.md — 886 jar IDs minus 7 non-command error codes; module count secondary)
 
-ID track (ledger, regenerated 2026-10-16): 100 of 879 routed (11.4%) — 92 golden-tested (83 persisted, 9 golden-only), 8 dispatched-only; 31 server-push IDs emitted (28 with a test mention); 748 not started. Module track: 42 of 71 `*Commands` modules touched (~59%). Tables: 25 SQLite vs 176 MySQL (161 unmapped; 15 mapped). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track (ledger header: 722 not started, 4 dispatched-only, 9 golden-only, 105 persisted, 6 emitted, 33 push-golden-tested): 118 of 879 routed (13.4%) — 114 routed-with-tests (105 persisted, 9 golden-only), 4 dispatched-only; 39 server-push IDs emitted (33 with a test mention); 722 not started. Module track: 43 of 71 `*Commands` modules touched (~61%). Tables: 29 SQLite vs 176 MySQL (163 unmapped; 13 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
@@ -19,9 +19,10 @@ ID track (ledger, regenerated 2026-10-16): 100 of 879 routed (11.4%) — 92 gold
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
 | triage | public_ 183, gamerule 13, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase (vipqq done: 3 routed, 3 error codes excluded) |
 
-Module history (how the 39 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
+Module history (how the 40 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
 32002/32003/32004/32006 (+4), vipqq info/rewards/bind 88003/88004/88005 (+3), prop gift-box selection 30305/30306/30307
-(+3). Evidence logs below are unchanged.
+(+3), zuoqi panel/ride/claim 33001/33000/33004 (+3), zuoqi jinjie 33003
+(+1). Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)
 
@@ -165,6 +166,111 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
   the 50208 kill-progress emit, and the 50207 pay-out (row settles to state 2,
   reward jb credited). Ledger still lists 50201-50209 as
   dispatched.
+
+## Zuoqi (33000/33001/33004) evidence log (all from `dntg_start.jar` via `tools/javap.py`)
+
+- 33001 -> `ZuoQiAction.ZuoqiMianban` (data [String, Integer] rank request)
+  -> `RoleZuoQiServiceImpl.getZuoQiPannel`: missing row is created zeroed
+  (createRoleZuoqi), timerTask runs first, the request clamps to the owned
+  rank (0 or over -> owned rank), rank 0 answers
+  `GetZuoQiOutOut.isZuoQiEmpty` [0, [520005]], a rank with no config answers
+  `isLoginZuoQiFail` [0, [520006]], else `CreateZuoQiOutput.outputZuoQi`
+  [1, [rank, level, lucky, fighting], [], inKaifu, cost]. Level is
+  getZuoqiLevel (role level clamped to [0, maxlv]; minLevel never set);
+  fighting is getZuoQiFight (existing `zuoqi_fight`); inKaifu is
+  kaifuDays < the rank's kaifuzuoqi `time` (keyed by `jieshu`; shipped rows
+  cover ranks 1-4, all `time` 3); cost is the kaifuData `cost-count` map.
+- 33000 -> `rideZuoQi` (data[1] Integer): 0 <= req <= rank sets curRank,
+  else curRank falls back to rank; persists; stage-pushes
+  `GetZuoQiOutOut.rideZuoQi` [roleId, curRank] (returned directly here;
+  the stage-side pet enter/leave listener is not ported, nor is the
+  `zuoqi_info` rideOrNo flip).
+- 33004 -> `lingquZuoqi` -> `changeZuoqiRank(MIN_RANK=1)`: rank >= 1 stays
+  silent (null, queue flushed empty); else rank=curRank=1 with fresh
+  update/upgrade stamps, reply [1, 1, level].
+- Config (`ZuoQiConfigExportServiceImpl`): rank object from the rank's first
+  ZuoJiBiao row in file order (id/rideid, type/ridetype, name,
+  rank/int(stratum), cailiaoId/needthingsid, cailiaoCount/needthingsvalue,
+  needLevel/needleaderlv, upgradeJb/jinjieneedcoin, luckyYb/qxlzneedgold,
+  luckyClear, maxLevel/maxlv); 10 ranks shipped. Level rows keyed
+  (rank, ridelv): min/maxTimes from mintims/maxtimes, odds,
+  upgradeZhufu/maxblessing, notice, min/maxZhufu from addmin/addmaxblessing.
+- timerTask ports the observable part (same-day rows pass; stale days zero
+  the blessing when the rank's luckyClear is set and restamp update_time).
+  role_zuoqi gains lucky_value/update_time with an ALTER migration; the
+  history columns and the zhufu-ka prop clear stay unported. kaifuData is
+  now a first-class column (fastjson blob: 'cost-count' rank->spend map,
+  'fanhuan'/'meiren' claim flags), so panel cost and award states read
+  real data.
+- Also fixed: the prop gift-box mount gate read `.get('rank')` (always 0)
+  instead of `.get('zuoqi_rank')`; every other reader already used the
+  latter. Covered by `tests/test_zuoqi.py` (6 tests); ledger lists
+  33000/33001/33004 as persisted.- 33003 -> `upgradeRank` (data Integer 0/1 auto-buy; other shapes stay
+  silent): timerTask, canUpgradeRank gates ([0, [520001]] past max rank,
+  [0, [520002, need]] under role level, [0, [520003, jb]] short YXB),
+  material check ([0, code]: 430250 unknown pills, 1005 no auto-buy,
+  430249 no mall offer, 1002/1003/1004 short mall money), YXB decrCheck
+  ([0, 1003]), bag + mall-money consume, then the pity lottery: lucky at
+  upgradeZhufu wins; failCount under minTimes loses; past maxTimes wins;
+  else the odds roll. Every attempt first banks the rank's full cailiao
+  count via addCostCount (win or lose). Fail adds randomInt(minZhufu,
+  maxZhufu) blessing (capped at upgradeZhufu), pays the RateScope fail
+  exp ([type, exp] from the zc/xbj/dbj `rate|exp` strings: 0.5|5000,
+  0.3|8000, 0.2|10000 at rank 1) unless totalExp hit zqjjsbaddmaxexp
+  ([0, -1], no exp), and answers [-1, lucky, type, exp, costCount] (slot
+  4 is getUpgradeCostCount for the fanhuan rank) with the 12001 notice
+  ahead. Success resets
+  pity, rank/curRank +1, and answers the panel shape plus the 11101
+  [520013, [name, rank, cfgName]] notice when the new level row wants one.
+  Substitutes come from the goods specialtype (type 1 filters zuoqilv by
+  rank: rank-1 rolls see only jinjiedan001, rank 9+ also 006/007); mall
+  prices npc 2000 (jinjiedan001: YB 30 / BIND_YB 150), first affordable
+  non-guild type in int order (HashMap order matches for small-int keys).
+  Covered by `tests/test_zuoqi.py` (11 new tests); ledger lists 33003 as
+  persisted.
+- 33005/33007 -> fanhuan claim/list: checkCanLingqiZuoqiFanhuan gates
+  ([0, 520020] no row/config/rank, [0, 520024] past lastDays, [0, 520022]
+  claimed; the rank's own row refunds when its fanhuan cell is set, else
+  the first fanhuan row), then the rank's cailiao goods times the tracked
+  cost count, bind 1, expiring per guoqi hours ([0, 1006] short bag room),
+  answering [1, [[goodsId, count]]] and appending [nameStr, count] (name
+  is ClientStrUtil's '{user|id,name,sex,0}') to the zuoqi_fanhuan feed
+  table (the filedb 'zuoqi/fanhuan' equivalent). 33007 answers
+  [costCount, [[name, count]...] or null], null with no mount row.
+  Covered by `tests/test_zuoqi.py` (5 new tests); ledger lists
+  33005/33007 as persisted.
+- 33006 -> zuoqiJiangliMeiren (gates [0, 520021]/[0, 520024]/[0, 520023],
+  same rank-row fallback over the meiren cell): grants the meiren row's
+  activateMeiren (shipped: rank 3 baijingjing) as the type's level-1
+  meinvid row (level 1, heti 0; owned-type and missing-config grant
+  nothing, like addMeiRen's [0, 82100]/empty returns), pushing 82001
+  [1, meirenId, 1] (CreateMeirenOutPut.getMeiRen) ahead of [1, meirenId].
+  33011 -> getZuoqiAwardInfo: [fanhuanRank?, meirenRank?] with each slot
+  set only when claimable now (in-kaifu, past rank, unclaimed), empty
+  array with no mount row. Covered by `tests/test_zuoqi.py` (3 new
+  tests); ledger lists 33006/33011 as persisted.
+- 33008 -> sendZhanli over getZuoQiFight: the cached fight-map total
+  (jichu + mount-equip + longhun) computed live as zuoqi_fight +
+  zuoqi_equip_fight over the [-105, -100] rows; longhun stays 0 with no
+  attribute-goods source. Covered by `tests/test_zuoqi.py` (2 new
+  tests, incl. a mount-gear row proving the equip half); ledger lists
+  33008 as persisted.
+- Known gaps: shipped upgradeJb is 0 at every rank so the YXB gate never
+  fires; lucky-pill time shaves need the GoodsConfig.luckyChance column
+  mapping (no local row can carry lucky pills); zhufu-card odds/baoji
+  props are unported (0.0); fail level-ups ride the plain exp persist;
+  GetZuoQiEvent/ZuoqiUpgradeFanhuanEvent/MeiRenLingQuEvent publish ride
+  no bus. 33010 longhun / 33012 longling are service-internal by
+  design: ZuoQiModuleInit.getInCmd routes 11 ids (33000/33008/S:33008/
+  33006/33005/33004/33003/33001/12102/33007/33011) with no 33010/33012,
+  and useLongHun/useLongLing are called only from the prop-use flow
+  (PropServiceImpl inner types), which is unported -- so the '33010'
+  frame is never emitted and attribute_goods_id stays NULL. Decoded
+  for the prop milestone: guid lookup ([0, 1008] GOODS_INEXISTENCE),
+  GoodsConfig.zuoqiLv > rank or missing level row ([0, 520004]),
+  checkAttDan at maxAttributeGoodsCount ([0, 520011]), decr by guid,
+  then the {goodsId: count} map is pushed as '33010'. No live client
+  capture confirms any zuoqi shape.
 
 ## Phase 4 evidence log (all from `dntg_start.jar` via `tools/javap.py`)
 

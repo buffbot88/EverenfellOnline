@@ -684,7 +684,13 @@ def migrate(mysql, db_path, users, dry_run=False):
                      ' zuoqi_rank INTEGER DEFAULT 0,'
                      ' zuoqi_cur_rank INTEGER DEFAULT 0,'
                      ' lucky_value INTEGER DEFAULT 0,'
-                     ' update_time INTEGER DEFAULT 0)')
+                     ' update_time INTEGER DEFAULT 0,'
+                     ' fail_count INTEGER DEFAULT 0,'
+                     ' total_exp INTEGER DEFAULT 0,'
+                     ' free_jb INTEGER DEFAULT 0,'
+                     ' lucky_goods_id TEXT,'
+                     ' lucky_goods_expire_time INTEGER DEFAULT 0,'
+                     ' add_lucky_value INTEGER DEFAULT 0)')
         for row in zuoqi:
             user_role_id, rank, cur_rank = (row + [None] * 3)[:3]
             local_id = legacy_to_local.get(user_role_id)

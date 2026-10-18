@@ -39,7 +39,7 @@ python3 server.py --db data/mko.db --add-char wukong:SunWukong
 | `GET /configuration/VerifyCode.php` | 4-char captcha PNG |
 | `GET /gamesession.php` | `{ok,uid,t,sign,seid,sport,ip,pid}`; 401 when logged out |
 
-`sign = md5(uid + 'xianlingkey' + t)` — identical to `LoginHelper` / the PHP.
+`sign` is HMAC-SHA256 over `uid|t` with a server secret (`MKO_SIGN_SECRET`, else per-process random) and a 300s freshness window; the legacy `md5(uid + 'xianlingkey' + t)` is rejected.
 Passwords are **PBKDF2**, not the legacy plaintext. Sessions live in SQLite,
 so restarting the server does not invalidate browser logins.
 
@@ -72,4 +72,4 @@ is a positional `Object[8]` per `GetRoleOutput.roleInfo` (see
 - `game/amf3.py` — AMF3 codec (incl. anonymous objects)
 - `game/cipher.py` — `SimpleEncrypt`
 - `auth.py` / `db.py` / `web.py` — sign, SQLite store, account API
-- `tests/` — `python3 -m unittest discover -s tests` (619 tests)
+- `tests/` — `python3 -m unittest discover -s tests` (820 tests)

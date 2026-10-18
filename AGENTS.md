@@ -6,7 +6,7 @@ Full context lives in [knowledge.md](knowledge.md). Development rules live in [V
 - Current client: Adobe Flash Player projector (`MKO_Client/flash-projector/flashplayer363.exe`). Vite is not in use and `client/` is not in this checkout.
 - Setup: none beyond the Python 3 standard library (plus Pillow for captcha only).
 - Dev: from `Server-v1/`, run `python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080`.
-- Test: from `Server-v1/`, run `python3 -m unittest discover -s tests` (101 tests); from `tools/`, `python3 -m unittest discover -s tests` (26 tests).
+- Test: from `Server-v1/`, run `python3 -m unittest discover -s tests` (820 tests); from `tools/`, `python3 -m unittest discover -s tests` (44 tests).
 - Legacy data: `python3 tools/migrate_mysql_to_sqlite.py --users stress` copies only the named account's rows into SQLite (see [docs/mysql-to-sqlite-migration.md](docs/mysql-to-sqlite-migration.md)).
 
 ## Architecture

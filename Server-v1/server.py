@@ -8,6 +8,8 @@ Python + SQLite (Pillow only for the captcha image).
 """
 import argparse
 import logging
+import os
+import socket
 import socketserver
 import threading
 import time
@@ -39,6 +41,15 @@ import itertools as _itertools
 _conn_ids = _itertools.count(1)
 
 
+class GameTCPServer(socketserver.ThreadingTCPServer):
+    """Game listener with TCP_NODELAY, matching the Java MINA acceptor."""
+
+    def get_request(self):
+        conn, addr = super().get_request()
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return conn, addr
+
+
 class GameTCPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         sess = GameSession(
@@ -57,6 +68,41 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_role_equip=self.server.save_role_equip,
             get_role_jianding=self.server.get_role_jianding,
             save_role_jianding=self.server.save_role_jianding,
+            get_role_dengluqi=self.server.get_role_dengluqi,
+            save_role_dengluqi=self.server.save_role_dengluqi,
+            get_role_online_reward=self.server.get_role_online_reward,
+            save_role_online_reward=self.server.save_role_online_reward,
+            get_role_qiandao=self.server.get_role_qiandao,
+            save_role_qiandao=self.server.save_role_qiandao,
+            get_role_jiangli_list=self.server.get_role_jiangli_list,
+            save_role_jiangli_list=self.server.save_role_jiangli_list,
+            get_role_husong=self.server.get_role_husong,
+            save_role_husong=self.server.save_role_husong,
+            get_role_loginlibao=self.server.get_role_loginlibao,
+            save_role_loginlibao=self.server.save_role_loginlibao,
+            get_role_loginlingjiang=self.server.get_role_loginlingjiang,
+            save_role_loginlingjiang=self.server.save_role_loginlingjiang,
+            get_role_touxian=self.server.get_role_touxian,
+            save_role_touxian=self.server.save_role_touxian,
+            get_role_guangyi=self.server.get_role_guangyi,
+            save_role_guangyi=self.server.save_role_guangyi,
+            get_role_baixian=self.server.get_role_baixian,
+            save_role_baixian=self.server.save_role_baixian,
+            get_role_zhuihui=self.server.get_role_zhuihui,
+            save_role_zhuihui=self.server.save_role_zhuihui,
+            get_role_dafuwong=self.server.get_role_dafuwong,
+            save_role_dafuwong=self.server.save_role_dafuwong,
+            get_role_xianshibuy=self.server.get_role_xianshibuy,
+            save_role_xianshibuy=self.server.save_role_xianshibuy,
+            get_xianshi_buy=self.server.get_xianshi_buy,
+            save_xianshi_buy=self.server.save_xianshi_buy,
+            get_role_lvlibao=self.server.get_role_lvlibao,
+            save_role_lvlibao=self.server.save_role_lvlibao,
+            list_role_email=self.server.list_role_email,
+            get_role_email=self.server.get_role_email,
+            save_role_email=self.server.save_role_email,
+            update_role_email=self.server.update_role_email,
+            delete_role_email=self.server.delete_role_email,
             save_role_vip=self.server.save_role_vip,
             get_role_vip_kaifu=self.server.get_role_vip_kaifu,
             save_role_vip_kaifu=self.server.save_role_vip_kaifu,
@@ -74,10 +120,18 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_role_meiren=self.server.save_role_meiren,
             get_role_zuoqi=self.server.get_role_zuoqi,
             save_role_zuoqi=self.server.save_role_zuoqi,
+            get_role_pets=self.server.get_role_pets,
+            save_role_pet=self.server.save_role_pet,
+            get_role_pet_zhenfa=self.server.get_role_pet_zhenfa,
+            save_role_pet_zhenfa=self.server.save_role_pet_zhenfa,
             get_zuoqi_fanhuan=self.server.get_zuoqi_fanhuan,
             save_zuoqi_fanhuan=self.server.save_zuoqi_fanhuan,
             get_role_skills=self.server.get_role_skills,
             get_role_shenjiang=self.server.get_role_shenjiang,
+            save_role_shenjiang=self.server.save_role_shenjiang,
+            get_role_chengjiu=self.server.get_role_chengjiu,
+            save_role_chengjiu=self.server.save_role_chengjiu,
+            save_role_skill=self.server.save_role_skill,
             save_role_stage=self.server.save_role_stage,
             get_role_bag_slots=self.server.get_role_bag_slots,
             get_role_bag_state=self.server.get_role_bag_state,
@@ -116,7 +170,12 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 data = self.request.recv(65536)
                 if not data:
                     break
+                pace_ms = int(os.environ.get('MKO_PACE_MS', '0') or 0)
                 for out in sess.feed(data):
+                    if pace_ms > 0:
+                        # TEMPORARY E3 experiment: mimic Java reply tempo.
+                        # Revert after the verdict.
+                        time.sleep(pace_ms / 1000.0)
                     if self.server.log_frames:
                         from game.amf3 import decode as _amf3_decode
                         try:
@@ -179,7 +238,7 @@ def main():
               f'server={a.server_id}')
         return
 
-    tcpd = socketserver.ThreadingTCPServer((g_host, int(g_port)), GameTCPHandler)
+    tcpd = GameTCPServer((g_host, int(g_port)), GameTCPHandler)
     tcpd.daemon_threads = True
     tcpd.sessions = {}
     tcpd.sessions_lock = threading.Lock()
@@ -214,10 +273,18 @@ def main():
     tcpd.save_role_meiren = store.save_role_meiren
     tcpd.get_role_zuoqi = store.get_role_zuoqi
     tcpd.save_role_zuoqi = store.save_role_zuoqi
+    tcpd.get_role_pets = store.get_role_pets
+    tcpd.save_role_pet = store.save_role_pet
+    tcpd.get_role_pet_zhenfa = store.get_role_pet_zhenfa
+    tcpd.save_role_pet_zhenfa = store.save_role_pet_zhenfa
     tcpd.get_zuoqi_fanhuan = store.get_zuoqi_fanhuan
     tcpd.save_zuoqi_fanhuan = store.save_zuoqi_fanhuan
     tcpd.get_role_skills = store.get_role_skills
     tcpd.get_role_shenjiang = store.get_role_shenjiang
+    tcpd.save_role_shenjiang = store.save_role_shenjiang
+    tcpd.get_role_chengjiu = store.get_role_chengjiu
+    tcpd.save_role_chengjiu = store.save_role_chengjiu
+    tcpd.save_role_skill = store.save_role_skill
     tcpd.save_role_stage = store.save_role_stage
     tcpd.get_role_bag_slots = store.get_role_bag_slots
     tcpd.get_role_bag_state = store.get_role_bag_state
@@ -235,6 +302,41 @@ def main():
     tcpd.delete_role_buyback = store.delete_role_buyback
     tcpd.get_role_prop = store.get_role_prop
     tcpd.save_role_prop = store.save_role_prop
+    tcpd.get_role_loginlibao = store.get_role_loginlibao
+    tcpd.save_role_loginlibao = store.save_role_loginlibao
+    tcpd.get_role_loginlingjiang = store.get_role_loginlingjiang
+    tcpd.save_role_loginlingjiang = store.save_role_loginlingjiang
+    tcpd.get_role_touxian = store.get_role_touxian
+    tcpd.save_role_touxian = store.save_role_touxian
+    tcpd.get_role_guangyi = store.get_role_guangyi
+    tcpd.save_role_guangyi = store.save_role_guangyi
+    tcpd.get_role_baixian = store.get_role_baixian
+    tcpd.save_role_baixian = store.save_role_baixian
+    tcpd.get_role_zhuihui = store.get_role_zhuihui
+    tcpd.save_role_zhuihui = store.save_role_zhuihui
+    tcpd.get_role_dafuwong = store.get_role_dafuwong
+    tcpd.save_role_dafuwong = store.save_role_dafuwong
+    tcpd.get_role_xianshibuy = store.get_role_xianshibuy
+    tcpd.save_role_xianshibuy = store.save_role_xianshibuy
+    tcpd.get_xianshi_buy = store.get_xianshi_buy
+    tcpd.save_xianshi_buy = store.save_xianshi_buy
+    tcpd.get_role_lvlibao = store.get_role_lvlibao
+    tcpd.save_role_lvlibao = store.save_role_lvlibao
+    tcpd.list_role_email = store.list_role_email
+    tcpd.get_role_email = store.get_role_email
+    tcpd.save_role_email = store.save_role_email
+    tcpd.update_role_email = store.update_role_email
+    tcpd.delete_role_email = store.delete_role_email
+    tcpd.get_role_qiandao = store.get_role_qiandao
+    tcpd.save_role_qiandao = store.save_role_qiandao
+    tcpd.get_role_jiangli_list = store.get_role_jiangli_list
+    tcpd.save_role_jiangli_list = store.save_role_jiangli_list
+    tcpd.get_role_dengluqi = store.get_role_dengluqi
+    tcpd.save_role_dengluqi = store.save_role_dengluqi
+    tcpd.get_role_online_reward = store.get_role_online_reward
+    tcpd.save_role_online_reward = store.save_role_online_reward
+    tcpd.get_role_husong = store.get_role_husong
+    tcpd.save_role_husong = store.save_role_husong
     tcpd.update_role_bag_slot = store.update_role_bag_slot
     tcpd.delete_role_bag_slot = store.delete_role_bag_slot
     tcpd.move_role_bag_slot = store.move_role_bag_slot
@@ -256,9 +358,13 @@ def main():
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id
-    tcpd.game_config = GameConfig(a.config_dir)
+    tcpd.game_config = GameConfig(a.config_dir).warm()
     tcpd.stage_registry = StageRegistry()
-    tcpd.server_start_ms = int(time.time() * 1000)
+    # Server open time echoed in the 10001 login reply (slot 0). The Java
+    # server sends this fixed value (2014-03-10, the fu0 open date; captured
+    # in session-20261018-040230), not its boot time. Mirrored exactly: the
+    # client derives kaifu-day math from it (cf. _vip_kaifu_days).
+    tcpd.server_start_ms = 1394466091000
 
     threading.Thread(target=tcpd.serve_forever, daemon=True).start()
     if a.tick_interval > 0:
@@ -267,7 +373,8 @@ def main():
         log.info('scheduler tick every %ss', a.tick_interval)
     log.info('game up: %s:%s', g_host, g_port)
     try:
-        serve_web(store, sessions, w_host, int(w_port), a.captcha)
+        serve_web(store, sessions, w_host, int(w_port), a.captcha,
+                  g_host, int(g_port))
     except KeyboardInterrupt:
         pass
     tcpd.shutdown()

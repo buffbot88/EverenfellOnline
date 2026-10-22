@@ -89,3 +89,37 @@ Not decrypted. Next checks, in order: (1) recover the `Platform__loc_1.bin`
 bytes from `res/Main.swf` with ffdec and check whether it is the only place a
 real decode is registered; (2) test the stall hypothesis by loading `tg.swf`
 through the projector with the bridge log, to see whether `loadBytes` fails.
+
+## Session 2026-10-18: loader trace and runtime capture (stock client only)
+
+**Constraint:** the client is the stock, unmodified SWF set. The repo's SWFs work as-is with the Java stack. Do not patch them. The patched copies under `output/swfdec/` (`Main-patched.swf`, `loc1-patched.swf`, `patch/`, `capture_proxy.py`) are scratch experiments and must not be served to the client.
+
+### Verified
+
+- **Decoder references:** `RFPluginUtils.decodeFunction` is declared as the stock `de` in `Main` and in the embedded loader blob, and is called only from `EnLoader.c`. The decompressed `PlatformLoader.swf` contains no `decodeFunction` string, so nothing there reassigns it by name. The stock `de` returns its input unchanged for a first byte below `0x80`.
+- **No transform before `EnLoader`:** the bytes received by the client for `assets/tg.swf?v=1.0.173` match the file on disk (1,551,064 bytes).
+- **Stock output is invalid:** the `de` output for `tg.swf` starts `CWSq`, with version byte `0x71` and declared length 3,058,859, against 1,551,052 bytes. ffdec `-dumpSWF` reports a premature end of stream, and zlib rejects the body.
+- **No byte-level relation:** the `de` output does not match the raw bytes at any offset from 0 to 15 beyond chance.
+- **Header fields:** across all 193 encrypted UI SWFs, neither a little- nor a big-endian `u32` at offset 2 equals the file size. The two-byte prefix is mostly `0000` (108), `0001` (46), `0002` (16), `0003` (15).
+
+### Conflict to resolve
+
+- The Java-era Apache log shows `tg.swf` served at the same size (1,551,064) and, in the Java session, a request for `tw/bagUI.swf` afterwards. The user reports the stock client works with the Java stack. Yet the stock `de` output for the same bytes is invalid. So either `tg.swf` is not decoded by `de` on that path, or the decode path differs from the one traced here. This is unresolved.
+
+### Failed or inconclusive
+
+- **Patched `EnLoader` capture:** dumping raw and decoded bytes works, but it captures only `tg.swf`. UI files load from inside `tg.swf`, so this hook does not reach them. The approach is abandoned.
+- **Stock-client A/B:** Apache logged no new `tg.swf` request after relaunch, so the client likely used its cache. The check needs a cache clear first, and it has not been run.
+
+### Next lead
+
+1. Find the path Java-era `tg.swf` takes: check whether `EnLoader` is used for `tg.swf` at all on the working stack, using only the stock client and Apache logs.
+2. Clear the client cache, then confirm which assets are requested and whether `tw/bagUI.swf` follows.
+
+Hypotheses with no evidence yet are not recorded as findings.
+
+### Stock-client A/B after cache clear (2026-10-19, current Python stack)
+
+- Approved by the user. Deleted only the two `INetCache\IE\*\tg[1].swf` entries (outside the repo). Nothing else was removed.
+- Stock `flashplayer363.exe` on the Python stack requested `Main.swf` and `assets/tg.swf?v=1.0.173` (200, 1,551,064 bytes), then the gameconfig files. It requested no `tw/*.swf` UI module, and the projector exited about 2.5 minutes later.
+- This result does not show `tg.swf` is broken. Earlier Python-stack sessions ended at map entry (`108001`, then `#1009` in `SettingModel.initSetting`), and in the Java-era log the UI modules come after map entry. So the missing UI requests are more likely a server-side gap than a decode failure. This needs confirming.

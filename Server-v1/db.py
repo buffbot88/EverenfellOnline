@@ -66,7 +66,19 @@ CREATE TABLE IF NOT EXISTS role_shenjiang (
   jiangxing_id TEXT,
   jiangxing_rank INTEGER DEFAULT 1,
   skills TEXT,
+  jiangxing_state INTEGER DEFAULT 0,
+  cur_jiangxing_id TEXT,
+  fail_count INTEGER DEFAULT 0,
+  rank_fail_count INTEGER DEFAULT 0,
+  rank_lucky INTEGER DEFAULT 0,
   PRIMARY KEY(role_id, shenjiang_key),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS role_chengjiu (
+  role_id INTEGER NOT NULL,
+  task_id TEXT NOT NULL,
+  task_status INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, task_id),
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS role_equip (
@@ -164,6 +176,40 @@ CREATE TABLE IF NOT EXISTS role_zuoqi (
   lucky_goods_expire_time INTEGER DEFAULT 0,
   add_lucky_value INTEGER DEFAULT 0,
   kaifu_data TEXT,
+  attribute_goods_id TEXT,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Pets per role (legacy role_pet subset: pet_lv/pet_rank feed 136000's
+-- [petId, lv, rank, lvExp, rankExp] rows; rank pity columns ride along
+-- for the later upgrade/jinjie slice; live MySQL carries no rows).
+CREATE TABLE IF NOT EXISTS role_pet (
+  id TEXT PRIMARY KEY,
+  role_id INTEGER NOT NULL,
+  pet_id TEXT,
+  pet_lv INTEGER DEFAULT 0,
+  pet_lv_exp INTEGER DEFAULT 0,
+  pet_rank INTEGER DEFAULT 0,
+  pet_rank_exp INTEGER DEFAULT 0,
+  pet_rank_fail INTEGER DEFAULT 0,
+  pet_rank_update_time INTEGER DEFAULT 0,
+  create_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Pet formation per role (legacy role_pet_zhenfa subset: zhenfa_id and
+-- upgrade_exp plus the zhenfa_pet fastjson {pos: petId} map feed 136000's
+-- [zhenfaId, upgradeExp, [[pos, petId]...]] slot; chuzhan/upgrade-count
+-- the remaining slots; jinjie columns ride along for the later slice).
+CREATE TABLE IF NOT EXISTS role_pet_zhenfa (
+  role_id INTEGER PRIMARY KEY,
+  zhenfa_id TEXT,
+  pet_chuzhan_id TEXT,
+  upgrade_exp INTEGER DEFAULT 0,
+  jinjie_fail_count INTEGER DEFAULT 0,
+  jinjie_time INTEGER DEFAULT 0,
+  jinjie_data TEXT,
+  zhenfa_pet TEXT DEFAULT '{}',
+  pet_upgrade_count INTEGER DEFAULT 0,
+  pet_upgrade_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Mount-upgrade refund feed (ZuoqiFanhuanDaoImpl filedb 'zuoqi/fanhuan':
@@ -173,6 +219,158 @@ CREATE TABLE IF NOT EXISTS zuoqi_fanhuan (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   role_name TEXT NOT NULL,
   goods_count INTEGER DEFAULT 0
+);
+-- Login gift-pack claim per role (legacy role_loginlibao subset:
+-- lingqujson is the fastjson {id: state} map, lingqu_time the last claim ms).
+CREATE TABLE IF NOT EXISTS role_loginlibao (
+  role_id INTEGER PRIMARY KEY,
+  lingqujson TEXT,
+  lingqu_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Level gift-pack claim per role (legacy role_lvlibao subset: state is the
+-- fastjson {number: 0/1} map LynquLvLiBao reads).
+CREATE TABLE IF NOT EXISTS role_lvlibao (
+  role_id INTEGER PRIMARY KEY,
+  state TEXT DEFAULT '{}',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- In-game mail (role_email subset + system broadcast table). Fresh roles
+-- have no rows, so 63001 answers null like Java's empty-list branch.
+CREATE TABLE IF NOT EXISTS system_email (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT DEFAULT '',
+  content TEXT DEFAULT '',
+  attachment TEXT DEFAULT '',
+  created INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS role_email (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  role_id INTEGER NOT NULL,
+  system_email_id INTEGER DEFAULT 0,
+  title TEXT DEFAULT '',
+  content TEXT DEFAULT '',
+  attachment TEXT DEFAULT '',
+  jb INTEGER DEFAULT 0,
+  yb INTEGER DEFAULT 0,
+  is_read INTEGER DEFAULT 0,
+  is_claimed INTEGER DEFAULT 0,
+  created INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Consecutive-login reward state (RoleLoginlingjiang subset: the streak day
+-- count plus the fastjson {day: 1} claim map).
+CREATE TABLE IF NOT EXISTS role_loginlingjiang (
+  role_id INTEGER PRIMARY KEY,
+  day_number INTEGER DEFAULT 1,
+  lingqujson TEXT DEFAULT '{}',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Titles (RoleTouxian subset: worn title id + JSON owned-id list).
+CREATE TABLE IF NOT EXISTS role_touxian (
+  role_id INTEGER PRIMARY KEY,
+  peidai_id TEXT,
+  jihuoids TEXT DEFAULT '[]',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Wings (RoleGuangyi subset: worn id, upgrade level, blessing, wear flag
+-- and the attribute-dan JSON map guangyiInfo reports).
+CREATE TABLE IF NOT EXISTS role_guangyi (
+  role_id INTEGER PRIMARY KEY,
+  peidai_id INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  lucky INTEGER DEFAULT 0,
+  ispeidai INTEGER DEFAULT 0,
+  attr_dan TEXT DEFAULT '{}',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Immortal-worship counts (RoleBaiXian.baiXianInfo subset: JSON {god: n}
+-- plus the last worship day; todayChuli resets daily like Java).
+CREATE TABLE IF NOT EXISTS role_baixian (
+  role_id INTEGER PRIMARY KEY,
+  counts TEXT DEFAULT '{}',
+  last_day TEXT DEFAULT '',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Kapai reward states (per-entry [got, canClaim] markers backing 121001;
+-- card counts themselves live in role_bag_dummy like Java's getCount).
+CREATE TABLE IF NOT EXISTS role_kapai (
+  role_id INTEGER PRIMARY KEY,
+  state TEXT DEFAULT '{}',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Dafuwong board state (RoleDafuwong: slot, grade, zanshi counters plus
+-- the roll counters and last-roll stamp clear() resets daily/weekly).
+CREATE TABLE IF NOT EXISTS role_dafuwong (
+  role_id INTEGER PRIMARY KEY,
+  slot INTEGER DEFAULT 0,
+  grade INTEGER DEFAULT 0,
+  zanshi INTEGER DEFAULT 0,
+  roll_count INTEGER DEFAULT 0,
+  tongqian_count INTEGER DEFAULT 0,
+  last_roll_ms INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Timed-shop purchases (RoleXianshibuy: JSON {id: [count, lastMs, cdMs]}
+-- plus the day the map was last reset; XianshiBuy keeps the server-wide
+-- {id: sold} counts in one row).
+CREATE TABLE IF NOT EXISTS role_xianshibuy (
+  role_id INTEGER PRIMARY KEY,
+  buy_data TEXT DEFAULT '{}',
+  buy_day TEXT DEFAULT '',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS xianshi_buy (
+  id TEXT PRIMARY KEY,
+  buy_data TEXT DEFAULT '{}'
+);
+-- Micro-client login-device reward (RoleDengluqi: claim state plus the day
+-- stamp initDengLuQi resets on; 10060 reads the state, 10061 claims it).
+CREATE TABLE IF NOT EXISTS role_jiangli_list (
+  role_id INTEGER PRIMARY KEY,
+  baidu_yingyin INTEGER DEFAULT 0,
+  baidu_yingyin_xiazai INTEGER DEFAULT 0,
+  baidu_yingyin_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS role_dengluqi (
+  role_id INTEGER PRIMARY KEY,
+  lingqu_state INTEGER DEFAULT 0,
+  lingqu_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Online-time rewards (RoleOnlineReward: daily/monthly counters in ms,
+-- comma-joined claimed tier ids, bind-yb accrual and the session anchor
+-- role_online_time that read-time totals are measured from).
+CREATE TABLE IF NOT EXISTS role_online_reward (
+  role_id INTEGER PRIMARY KEY,
+  month INTEGER,
+  online_time INTEGER DEFAULT 0,
+  month_online_time INTEGER DEFAULT 0,
+  refresh_time INTEGER,
+  online_reward TEXT DEFAULT '',
+  is_lingqu_reward INTEGER DEFAULT 0,
+  month_bind_yb INTEGER DEFAULT 0,
+  role_online_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Escort state per role (RoleHusong subset: the beauty id, daily escort
+-- count with its day stamp, and the rob count with its stamp; 83001 reads
+-- the remainder, 83008 the rob remainder).
+CREATE TABLE IF NOT EXISTS role_husong (
+  role_id INTEGER PRIMARY KEY,
+  mei_qi_id TEXT,
+  husong_times INTEGER DEFAULT 0,
+  refresh_time INTEGER,
+  dajie_cishu INTEGER DEFAULT 0,
+  dajie_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Resource-recovery claims (RoleZyzhuihui subset: JSON {id: claimed}).
+CREATE TABLE IF NOT EXISTS role_zhuihui (
+  role_id INTEGER PRIMARY KEY,
+  state TEXT DEFAULT '{}',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Owned meiren per role (legacy role_meiren subset: the id/level/heti
 -- triple replaceMeirenAttribute resolves through meiren.jat).
@@ -244,6 +442,21 @@ CREATE TABLE IF NOT EXISTS role_prop (
   surplus_time INTEGER,
   use_count INTEGER DEFAULT 0,
   PRIMARY KEY(role_id, goods_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Sign-in state per role (legacy role_qiandao subset: the counters and the
+-- comma-joined day/reward lists that 58011 formats).
+CREATE TABLE IF NOT EXISTS role_qiandao (
+  role_id INTEGER PRIMARY KEY,
+  total_qiandao_count INTEGER DEFAULT 0,
+  month INTEGER,
+  month_qiandao TEXT,
+  total_qiandao_reward TEXT,
+  month_qiandao_reward TEXT,
+  week INTEGER,
+  vip_buqian_count INTEGER DEFAULT 0,
+  qiandao_time INTEGER,
+  online_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Vip event state per role (legacy role_vip_huodong subset: the fixed
@@ -430,6 +643,13 @@ class Store:
             if 'prop_use_time' not in vip_cols:
                 self.db.execute(
                     'ALTER TABLE role_vip ADD COLUMN prop_use_time INTEGER DEFAULT 0')
+            email_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_email)')}
+            for column in ('jb', 'yb'):
+                if column not in email_cols:
+                    self.db.execute(
+                        f'ALTER TABLE role_email ADD COLUMN {column}'
+                        ' INTEGER DEFAULT 0')
             zuoqi_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_zuoqi)')}
             if 'lucky_value' not in zuoqi_cols:
@@ -445,7 +665,8 @@ class Store:
                     ('lucky_goods_id', 'TEXT'),
                     ('lucky_goods_expire_time', 'INTEGER DEFAULT 0'),
                     ('add_lucky_value', 'INTEGER DEFAULT 0'),
-                    ('kaifu_data', 'TEXT')):
+                    ('kaifu_data', 'TEXT'),
+                    ('attribute_goods_id', 'TEXT')):
                 if column not in zuoqi_cols:
                     self.db.execute(
                         f'ALTER TABLE role_zuoqi ADD COLUMN {column} {declaration}')
@@ -605,10 +826,56 @@ class Store:
         """Owned shenjiang rows for a role (legacy role_shenjiang subset)."""
         with self.lock:
             rows = self.db.execute(
-                'SELECT shenjiang_id, jiangxing_id, jiangxing_rank, skills'
+                'SELECT shenjiang_id, jiangxing_id, jiangxing_rank, skills,'
+                ' jiangxing_state, cur_jiangxing_id, fail_count,'
+                ' rank_fail_count, rank_lucky'
                 ' FROM role_shenjiang WHERE role_id=? ORDER BY shenjiang_key',
                 (str(role_id),)).fetchall()
             return [dict(row) for row in rows]
+
+    def save_role_shenjiang(self, role_id, shenjiang_id, **state):
+        """Upsert one owned shenjiang row keyed by (role, shenjiang id)."""
+        fields = {'shenjiang_id': str(shenjiang_id), **state}
+        unknown = set(fields) - {'shenjiang_id', 'jiangxing_id',
+                                 'jiangxing_rank', 'skills', 'jiangxing_state',
+                                 'cur_jiangxing_id', 'fail_count',
+                                 'rank_fail_count', 'rank_lucky'}
+        if unknown:
+            raise ValueError(f'unknown shenjiang fields: {sorted(unknown)}')
+        cols = ['shenjiang_key', 'shenjiang_id',
+                *[k for k in fields if k != 'shenjiang_id']]
+        vals = [str(shenjiang_id), str(shenjiang_id),
+                *[fields[k] for k in cols[2:]]]
+        sets = ', '.join(f'{c}=excluded.{c}' for c in cols[2:])
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_shenjiang(role_id, { ", ".join(cols)})'
+                f' VALUES(?, { ", ".join("?" for _ in cols)})'
+                f' ON CONFLICT(role_id, shenjiang_key) DO UPDATE SET {sets}',
+                (str(role_id), *vals))
+            self.db.commit()
+            return True
+
+    def get_role_chengjiu(self, role_id):
+        """Claimed achievement rows for a role (legacy role_chengjiu subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT task_id, task_status FROM role_chengjiu'
+                ' WHERE role_id=? ORDER BY task_id',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_chengjiu(self, role_id, task_id, task_status=1):
+        """Upsert one claimed achievement keyed by (role, achievement id)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_chengjiu(role_id, task_id, task_status)'
+                ' VALUES(?,?,?)'
+                ' ON CONFLICT(role_id, task_id) DO UPDATE SET'
+                ' task_status=excluded.task_status',
+                (str(role_id), str(task_id), int(task_status)))
+            self.db.commit()
+            return True
 
     def save_role_equip(self, role_id, items):
         """Replace a role's equipped rows; items carry slot/goods/levels/blob."""
@@ -749,6 +1016,248 @@ class Store:
             self.db.commit()
             return True
 
+    def get_role_loginlibao(self, role_id):
+        """Login gift-pack row for a role, or None when never claimed."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT lingqujson, lingqu_time FROM role_loginlibao'
+                ' WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_loginlibao(self, role_id, **fields):
+        """Upsert a role's loginlibao row; only known columns."""
+        allowed = {'lingqujson', 'lingqu_time'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown loginlibao fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_loginlibao(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_lvlibao(self, role_id):
+        """Level gift-pack row for a role, or None when never claimed."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT state FROM role_lvlibao WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_lvlibao(self, role_id, **fields):
+        """Upsert a role's lvlibao row; only known columns."""
+        allowed = {'state'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown lvlibao fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_lvlibao(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def list_role_email(self, role_id):
+        """Mail rows for a role, oldest first; empty when none."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, system_email_id, title, content, attachment, jb,'
+                ' yb, is_read, is_claimed, created FROM role_email'
+                ' WHERE role_id=? ORDER BY id',
+                (str(role_id),)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_role_email(self, role_id, mail_id):
+        """One mail row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, system_email_id, title, content, attachment, jb,'
+                ' yb, is_read, is_claimed, created FROM role_email'
+                ' WHERE role_id=? AND id=?',
+                (str(role_id), str(mail_id))).fetchone()
+            return dict(row) if row else None
+
+    def save_role_email(self, role_id, title='', content='',
+                        attachment='', system_email_id=0, jb=0, yb=0):
+        """Insert a mail row for a role; returns the new id."""
+        import time as _time
+        with self.lock:
+            cur = self.db.execute(
+                'INSERT INTO role_email(role_id, system_email_id, title,'
+                ' content, attachment, jb, yb, created)'
+                ' VALUES(?,?,?,?,?,?,?,?)',
+                (str(role_id), str(system_email_id), title, content,
+                 attachment, int(jb or 0), int(yb or 0),
+                 int(_time.time() * 1000)))
+            self.db.commit()
+            return cur.lastrowid
+
+    def update_role_email(self, role_id, mail_id, **fields):
+        """Update read/claimed flags on a role's mail row."""
+        allowed = {'is_read', 'is_claimed', 'attachment', 'jb', 'yb'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown email fields: {sorted(set(fields) - allowed)}')
+        sets = ', '.join(f'{n}=?' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'UPDATE role_email SET {sets} WHERE role_id=? AND id=?',
+                [*fields.values(), str(role_id), str(mail_id)])
+            self.db.commit()
+            return True
+
+    def delete_role_email(self, role_id, mail_id):
+        """Delete one mail row for a role."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM role_email WHERE role_id=? AND id=?',
+                (str(role_id), str(mail_id)))
+            self.db.commit()
+            return True
+
+    def _get_simple_row(self, table, role_id, cols):
+        """One role-keyed row as a dict, or None."""
+        with self.lock:
+            row = self.db.execute(
+                f'SELECT {cols} FROM {table} WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def _save_simple_row(self, table, role_id, allowed, fields):
+        """Upsert a role-keyed row; only known columns."""
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown {table} fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO {table}(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_loginlingjiang(self, role_id):
+        """Login-streak row for a role, or None."""
+        return self._get_simple_row(
+            'role_loginlingjiang', role_id, 'day_number, lingqujson')
+
+    def save_role_loginlingjiang(self, role_id, **fields):
+        """Upsert a role's loginlingjiang row."""
+        return self._save_simple_row(
+            'role_loginlingjiang', role_id, {'day_number', 'lingqujson'},
+            fields)
+
+    def get_role_touxian(self, role_id):
+        """Title row for a role, or None."""
+        return self._get_simple_row(
+            'role_touxian', role_id, 'peidai_id, jihuoids')
+
+    def save_role_touxian(self, role_id, **fields):
+        """Upsert a role's title row."""
+        return self._save_simple_row(
+            'role_touxian', role_id, {'peidai_id', 'jihuoids'}, fields)
+
+    def get_role_guangyi(self, role_id):
+        """Wing row for a role, or None."""
+        return self._get_simple_row(
+            'role_guangyi', role_id,
+            'peidai_id, level, lucky, ispeidai, attr_dan')
+
+    def save_role_guangyi(self, role_id, **fields):
+        """Upsert a role's wing row."""
+        return self._save_simple_row(
+            'role_guangyi', role_id,
+            {'peidai_id', 'level', 'lucky', 'ispeidai', 'attr_dan'},
+            fields)
+
+    def get_role_baixian(self, role_id):
+        """Worship-count row for a role, or None."""
+        return self._get_simple_row(
+            'role_baixian', role_id, 'counts, last_day')
+
+    def save_role_baixian(self, role_id, **fields):
+        """Upsert a role's worship row."""
+        return self._save_simple_row(
+            'role_baixian', role_id, {'counts', 'last_day'}, fields)
+
+    def get_role_kapai(self, role_id):
+        """Kapai reward-state row for a role, or None."""
+        return self._get_simple_row('role_kapai', role_id, 'state')
+
+    def save_role_kapai(self, role_id, **fields):
+        """Upsert a role's kapai row."""
+        return self._save_simple_row('role_kapai', role_id, {'state'},
+                                     fields)
+
+    def get_role_dafuwong(self, role_id):
+        """Dafuwong board-state row for a role, or None."""
+        return self._get_simple_row(
+            'role_dafuwong', role_id,
+            'slot, grade, zanshi, roll_count, tongqian_count,'
+            ' last_roll_ms')
+
+    def save_role_dafuwong(self, role_id, **fields):
+        """Upsert a role's dafuwong row."""
+        return self._save_simple_row(
+            'role_dafuwong', role_id,
+            {'slot', 'grade', 'zanshi', 'roll_count', 'tongqian_count',
+             'last_roll_ms'},
+            fields)
+
+    def get_role_xianshibuy(self, role_id):
+        """Timed-shop purchase row for a role, or None."""
+        return self._get_simple_row(
+            'role_xianshibuy', role_id, 'buy_data, buy_day')
+
+    def save_role_xianshibuy(self, role_id, **fields):
+        """Upsert a role's xianshibuy row."""
+        return self._save_simple_row(
+            'role_xianshibuy', role_id, {'buy_data', 'buy_day'}, fields)
+
+    def get_xianshi_buy(self):
+        """Server-wide sold-count row, or None before the first sale."""
+        with self.lock:
+            row = self.db.execute(
+                "SELECT buy_data FROM xianshi_buy WHERE id='global'"
+            ).fetchone()
+            return dict(row) if row else None
+
+    def save_xianshi_buy(self, buy_data):
+        """Upsert the server-wide sold-count row."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO xianshi_buy(id, buy_data) VALUES(\'global\', ?)'
+                ' ON CONFLICT(id) DO UPDATE SET buy_data=excluded.buy_data',
+                (str(buy_data),))
+            self.db.commit()
+            return True
+
+    def get_role_zhuihui(self, role_id):
+        """Recovery-claim row for a role, or None."""
+        return self._get_simple_row(
+            'role_zhuihui', role_id, 'state')
+
+    def save_role_zhuihui(self, role_id, **fields):
+        """Upsert a role's zhuihui row."""
+        return self._save_simple_row(
+            'role_zhuihui', role_id, {'state'}, fields)
+
     def get_role_jianding(self, role_id):
         """Appraisal state row for a role, or None when never appraised."""
         with self.lock:
@@ -800,13 +1309,93 @@ class Store:
             self.db.commit()
             return True
 
+    def get_role_pets(self, role_id):
+        """Pet rows for a role as [{pet_id, pet_lv, pet_rank, pet_lv_exp,
+        pet_rank_exp}] in insertion order (RolePetDao.cacheLoadAll)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT pet_id, pet_lv, pet_rank, pet_lv_exp, pet_rank_exp'
+                ' FROM role_pet WHERE role_id=? ORDER BY rowid',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_pet(self, role_id, pet_id, pet_lv=None, pet_lv_exp=None,
+                      pet_rank=None, pet_rank_exp=None, pet_rank_fail=None,
+                      pet_rank_update_time=None, create_time=None,
+                      row_id=None):
+        """Upsert a role's pet row keyed by (role_id, pet_id)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id FROM role_pet WHERE role_id=? AND pet_id=?',
+                (str(role_id), str(pet_id))).fetchone()
+            rid = row['id'] if row else (row_id or f'pet{uuid.uuid4().hex}')
+            self.db.execute(
+                'INSERT INTO role_pet(id, role_id, pet_id, pet_lv,'
+                ' pet_lv_exp, pet_rank, pet_rank_exp, pet_rank_fail,'
+                ' pet_rank_update_time, create_time)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(id) DO UPDATE SET'
+                ' pet_lv=excluded.pet_lv,'
+                ' pet_lv_exp=excluded.pet_lv_exp,'
+                ' pet_rank=excluded.pet_rank,'
+                ' pet_rank_exp=excluded.pet_rank_exp,'
+                ' pet_rank_fail=excluded.pet_rank_fail,'
+                ' pet_rank_update_time=excluded.pet_rank_update_time,'
+                ' create_time=excluded.create_time',
+                (str(rid), str(role_id), str(pet_id), pet_lv, pet_lv_exp,
+                 pet_rank, pet_rank_exp, pet_rank_fail,
+                 pet_rank_update_time, create_time))
+            self.db.commit()
+            return str(rid)
+
+    def get_role_pet_zhenfa(self, role_id):
+        """Formation row for a role (legacy role_pet_zhenfa subset), or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT zhenfa_id, pet_chuzhan_id, upgrade_exp,'
+                ' jinjie_fail_count, jinjie_time, jinjie_data, zhenfa_pet,'
+                ' pet_upgrade_count, pet_upgrade_time'
+                ' FROM role_pet_zhenfa WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_pet_zhenfa(self, role_id, zhenfa_id=None,
+                             pet_chuzhan_id=None, upgrade_exp=None,
+                             jinjie_fail_count=None, jinjie_time=None,
+                             jinjie_data=None, zhenfa_pet=None,
+                             pet_upgrade_count=None, pet_upgrade_time=None):
+        """Upsert a role's pet formation row."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_pet_zhenfa(role_id, zhenfa_id,'
+                ' pet_chuzhan_id, upgrade_exp, jinjie_fail_count,'
+                ' jinjie_time, jinjie_data, zhenfa_pet, pet_upgrade_count,'
+                ' pet_upgrade_time)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' zhenfa_id=excluded.zhenfa_id,'
+                ' pet_chuzhan_id=excluded.pet_chuzhan_id,'
+                ' upgrade_exp=excluded.upgrade_exp,'
+                ' jinjie_fail_count=excluded.jinjie_fail_count,'
+                ' jinjie_time=excluded.jinjie_time,'
+                ' jinjie_data=excluded.jinjie_data,'
+                ' zhenfa_pet=excluded.zhenfa_pet,'
+                ' pet_upgrade_count=excluded.pet_upgrade_count,'
+                ' pet_upgrade_time=excluded.pet_upgrade_time',
+                (str(role_id), zhenfa_id, pet_chuzhan_id, upgrade_exp,
+                 jinjie_fail_count, jinjie_time, jinjie_data, zhenfa_pet,
+                 pet_upgrade_count, pet_upgrade_time))
+            self.db.commit()
+            return True
+
     def get_role_zuoqi(self, role_id):
         """Mount-rank row for a role (legacy role_zuoqi subset), or None."""
         with self.lock:
             row = self.db.execute(
                 'SELECT zuoqi_rank, zuoqi_cur_rank, lucky_value, update_time,'
                 ' fail_count, total_exp, free_jb, lucky_goods_id,'
-                ' lucky_goods_expire_time, add_lucky_value, kaifu_data'
+                ' lucky_goods_expire_time, add_lucky_value, kaifu_data,'
+                ' attribute_goods_id'
                 ' FROM role_zuoqi WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
@@ -815,15 +1404,15 @@ class Store:
                         lucky_value=None, update_time=None, fail_count=None,
                         total_exp=None, free_jb=None, lucky_goods_id=None,
                         lucky_goods_expire_time=None, add_lucky_value=None,
-                        kaifu_data=None):
+                        kaifu_data=None, attribute_goods_id=None):
         """Upsert a role's mount row (rank/cur_rank/blessing/pity/kaifu)."""
         with self.lock:
             self.db.execute(
                 'INSERT INTO role_zuoqi(role_id, zuoqi_rank, zuoqi_cur_rank,'
                 ' lucky_value, update_time, fail_count, total_exp, free_jb,'
                 ' lucky_goods_id, lucky_goods_expire_time, add_lucky_value,'
-                ' kaifu_data)'
-                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?)'
+                ' kaifu_data, attribute_goods_id)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)'
                 ' ON CONFLICT(role_id) DO UPDATE SET'
                 ' zuoqi_rank=excluded.zuoqi_rank,'
                 ' zuoqi_cur_rank=excluded.zuoqi_cur_rank,'
@@ -834,10 +1423,13 @@ class Store:
                 ' free_jb=excluded.free_jb,'
                 ' lucky_goods_id=excluded.lucky_goods_id,'
                 ' lucky_goods_expire_time=excluded.lucky_goods_expire_time,'
+                ' attribute_goods_id=excluded.attribute_goods_id,'
                 ' add_lucky_value=excluded.add_lucky_value,'
                 ' kaifu_data=excluded.kaifu_data',
                 (str(role_id), zuoqi_rank, zuoqi_cur_rank, lucky_value,
-                 update_time, fail_count, total_exp, free_jb, lucky_goods_id,                  lucky_goods_expire_time, add_lucky_value, kaifu_data))
+                 update_time, fail_count, total_exp, free_jb, lucky_goods_id,
+                 lucky_goods_expire_time, add_lucky_value, kaifu_data,
+                 attribute_goods_id))
             self.db.commit()
             return True
 
@@ -1316,6 +1908,148 @@ class Store:
                     f'UPDATE role_prop SET {key}=?'
                     ' WHERE role_id=? AND goods_id=?',
                     (val, str(role_id), str(goods_id)))
+            self.db.commit()
+            return True
+
+    def get_role_qiandao(self, role_id):
+        """One role_qiandao row by role id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT total_qiandao_count, month, month_qiandao,'
+                ' total_qiandao_reward, month_qiandao_reward, week,'
+                ' vip_buqian_count, qiandao_time, online_time'
+                ' FROM role_qiandao WHERE role_id=?',
+                (int(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_qiandao(self, role_id, **fields):
+        """Upsert one role_qiandao row (only known columns are written)."""
+        cols = ('total_qiandao_count', 'month', 'month_qiandao',
+                'total_qiandao_reward', 'month_qiandao_reward', 'week',
+                'vip_buqian_count', 'qiandao_time', 'online_time')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_qiandao(role_id) VALUES(?)'
+                ' ON CONFLICT(role_id) DO NOTHING',
+                (int(role_id),))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_qiandao SET {key}=?'
+                    ' WHERE role_id=?',
+                    (val, int(role_id)))
+            self.db.commit()
+            return True
+
+    def get_role_jiangli_list(self, role_id):
+        """One role_jiangli_list row by role id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT baidu_yingyin, baidu_yingyin_xiazai,'
+                ' baidu_yingyin_time'
+                ' FROM role_jiangli_list WHERE role_id=?',
+                (int(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_jiangli_list(self, role_id, **fields):
+        """Upsert one role_jiangli_list row (only known columns)."""
+        cols = ('baidu_yingyin', 'baidu_yingyin_xiazai',
+                'baidu_yingyin_time')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_jiangli_list(role_id) VALUES(?)'
+                ' ON CONFLICT(role_id) DO NOTHING',
+                (int(role_id),))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_jiangli_list SET {key}=?'
+                    ' WHERE role_id=?',
+                    (val, int(role_id)))
+            self.db.commit()
+            return True
+
+    def get_role_dengluqi(self, role_id):
+        """One role_dengluqi row by role id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT lingqu_state, lingqu_time'
+                ' FROM role_dengluqi WHERE role_id=?',
+                (int(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_dengluqi(self, role_id, **fields):
+        """Upsert one role_dengluqi row (only known columns are written)."""
+        cols = ('lingqu_state', 'lingqu_time')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_dengluqi(role_id) VALUES(?)'
+                ' ON CONFLICT(role_id) DO NOTHING',
+                (int(role_id),))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_dengluqi SET {key}=?'
+                    ' WHERE role_id=?',
+                    (val, int(role_id)))
+            self.db.commit()
+            return True
+
+    def get_role_online_reward(self, role_id):
+        """One role_online_reward row by role id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT month, online_time, month_online_time, refresh_time,'
+                ' online_reward, is_lingqu_reward, month_bind_yb,'
+                ' role_online_time'
+                ' FROM role_online_reward WHERE role_id=?',
+                (int(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_online_reward(self, role_id, **fields):
+        """Upsert one role_online_reward row (only known columns are written)."""
+        cols = ('month', 'online_time', 'month_online_time', 'refresh_time',
+                'online_reward', 'is_lingqu_reward', 'month_bind_yb',
+                'role_online_time')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_online_reward(role_id) VALUES(?)'
+                ' ON CONFLICT(role_id) DO NOTHING',
+                (int(role_id),))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_online_reward SET {key}=?'
+                    ' WHERE role_id=?',
+                    (val, int(role_id)))
+            self.db.commit()
+            return True
+
+    def get_role_husong(self, role_id):
+        """One role_husong row by role id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT mei_qi_id, husong_times, refresh_time,'
+                ' dajie_cishu, dajie_time'
+                ' FROM role_husong WHERE role_id=?',
+                (int(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_husong(self, role_id, **fields):
+        """Upsert one role_husong row (only known columns are written)."""
+        cols = ('mei_qi_id', 'husong_times', 'refresh_time',
+                'dajie_cishu', 'dajie_time')
+        sets = {k: v for k, v in fields.items() if k in cols}
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_husong(role_id) VALUES(?)'
+                ' ON CONFLICT(role_id) DO NOTHING',
+                (int(role_id),))
+            for key, val in sets.items():
+                self.db.execute(
+                    f'UPDATE role_husong SET {key}=?'
+                    ' WHERE role_id=?',
+                    (val, int(role_id)))
             self.db.commit()
             return True
 

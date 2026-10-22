@@ -20,6 +20,8 @@ spec.loader.exec_module(decode_tap)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from unittest import mock
+
 from auth import check_sign, generate_sign, hash_password, verify_password
 from db import Store
 from game import amf3
@@ -184,6 +186,43 @@ def make_session(store=None, config=None):
         'get_role_meiren': store.get_role_meiren,
         'get_role_zuoqi': store.get_role_zuoqi,
         'save_role_stage': store.save_role_stage,
+        'get_role_bag_slots': store.get_role_bag_slots,
+        'get_role_bag_state': store.get_role_bag_state,
+        'insert_role_bag_slot': store.insert_role_bag_slot,
+        'update_role_bag_slot': store.update_role_bag_slot,
+        'delete_role_bag_slot': store.delete_role_bag_slot,
+        'get_role_loginlibao': store.get_role_loginlibao,
+        'save_role_loginlibao': store.save_role_loginlibao,
+        'get_role_lvlibao': store.get_role_lvlibao,
+        'save_role_lvlibao': store.save_role_lvlibao,
+        'get_role_dengluqi': store.get_role_dengluqi,
+        'save_role_dengluqi': store.save_role_dengluqi,
+        'get_role_online_reward': store.get_role_online_reward,
+        'save_role_online_reward': store.save_role_online_reward,
+        'get_role_husong': store.get_role_husong,
+        'save_role_husong': store.save_role_husong,
+        'get_role_loginlingjiang': store.get_role_loginlingjiang,
+        'save_role_loginlingjiang': store.save_role_loginlingjiang,
+        'get_role_touxian': store.get_role_touxian,
+        'save_role_touxian': store.save_role_touxian,
+        'get_role_guangyi': store.get_role_guangyi,
+        'save_role_guangyi': store.save_role_guangyi,
+        'get_role_baixian': store.get_role_baixian,
+        'save_role_baixian': store.save_role_baixian,
+        'get_role_zhuihui': store.get_role_zhuihui,
+        'save_role_zhuihui': store.save_role_zhuihui,
+        'get_role_dafuwong': store.get_role_dafuwong,
+        'save_role_dafuwong': store.save_role_dafuwong,
+        'get_role_xianshibuy': store.get_role_xianshibuy,
+        'save_role_xianshibuy': store.save_role_xianshibuy,
+        'get_xianshi_buy': store.get_xianshi_buy,
+        'save_xianshi_buy': store.save_xianshi_buy,
+        'list_role_email': store.list_role_email,
+        'get_role_email': store.get_role_email,
+        'save_role_email': store.save_role_email,
+        'update_role_email': store.update_role_email,
+        'delete_role_email': store.delete_role_email,
+        'get_role_shenjiang': store.get_role_shenjiang,
     }
     if config is not None:
         kwargs['config'] = config
@@ -249,7 +288,28 @@ class TestLogin(unittest.TestCase):
         env = amf3.decode(out[0][4:])
         self.assertEqual(env[1], [0, '16002'])  # InOutput.signError shape
 
-    def test_login_pushes_java_bootstrap_after_login_reply(self):
+    def test_login_sends_no_bootstrap(self):
+        # The Java captures (session-20261018-040230,
+        # session-20261020-072313) show the 13000/32010 pushes arriving
+        # after the client sends 10003, just before the 10003 reply — never
+        # with the login reply. Pushing them at login wedged the stock
+        # client at a black screen (no 21000 ever sent).
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        store.create_character(
+            'hero', 'fu1304', 'SunWukong', job='C', tongqian=4509290,
+            lingshi=9986377, bind_lingshi=360, recive_yb=0)
+        s = make_session(store)
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(self.login_frame(s, 'hero', NOW_TS,
+                                      generate_sign('hero', NOW_TS)))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:])[0], '10001')
+        self.assertEqual(s.authed_user, 'hero')
+
+    def test_enter_world_pushes_java_bootstrap_before_10003_reply(self):
         cleanups = []
         self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
         store = temp_store(cleanups)
@@ -260,16 +320,15 @@ class TestLogin(unittest.TestCase):
         panel = ByteArray(b'captured panel config')
         store.save_role_settings(role_id, 'hero', 'fu1304', panel_config=panel)
         s = make_session(store)
-        s.feed(CAPTURED_INITKEY)
-        out = s.feed(self.login_frame(s, 'hero', NOW_TS,
-                                      generate_sign('hero', NOW_TS)))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        out = s.enter_world([10003, str(role_id)])
         self.assertEqual(len(out), 3)
         messages = [amf3.decode(packet[4:]) for packet in out]
         self.assertEqual([msg[0] for msg in messages],
-                         ['10001', '13000', '32010'])
-        self.assertEqual(messages[1], ['13000', [None, panel, None, None]])
-        self.assertEqual(messages[2], ['32010', [4509290, 9986377, 360, 0]])
-        self.assertEqual(s.authed_user, 'hero')
+                         ['13000', '32010', '10003'])
+        self.assertEqual(messages[1], ['32010', [4509290.0, 9986377.0, 360.0,
+                                                  1]])
+        self.assertEqual(messages[0], ['13000', [None, panel, None, None]])
         self.assertEqual(store.get_role_settings(str(role_id), 'someone-else',
                                                 'fu1304'), None)
 
@@ -402,7 +461,8 @@ class TestWorldInit(unittest.TestCase):
         # are tested with a role-backed session below.
         self.assertEqual(self.reply(19001)[0], '19001')
         self.assertIsNone(self.reply(20000))
-        self.assertEqual(self.reply(32010)[1], [0, 0, 0, 0])
+        # CreateAccountOutPut.getMoneyChange: Longs as doubles, NOTIFYORNOT 1.
+        self.assertEqual(self.reply(32010)[1], [0.0, 0.0, 0.0, 1])
 
     def test_java_scene_entry_confirmation_21000(self):
         cleanups = []
@@ -417,9 +477,11 @@ class TestWorldInit(unittest.TestCase):
         request = frame(session.cipher.encode(
             amf3.encode([21000, [str(role_id), '5']])))
         out = session.feed(request)
-        self.assertEqual(len(out), 1)
+        # No configmonsters/vitals here: the ack plus the 12005 shanbi push.
+        self.assertEqual(len(out), 2)
         result = amf3.decode(out[0][4:])
         self.assertEqual(result, ['21000', [1, 1, 1]])
+        self.assertEqual(amf3.decode(out[1][4:]), ['12005', [0]])
 
         # An unknown/unowned role id still gets nothing (no role to place).
         self.assertIsNone(session.change_stage([21000, '999']))
@@ -427,9 +489,10 @@ class TestWorldInit(unittest.TestCase):
         # sends; the type falls back to the documented default rather than
         # leaving the client with no scene entry at all.
         store.update_character_state(role_id, map_id='999')
-        fallback = amf3.decode(session.change_stage(
-            [21000, str(role_id)])[4:])
-        self.assertEqual(fallback, ['21000', [1, 1, DEFAULT_MAP_TYPE]])
+        fallback = session.change_stage([21000, str(role_id)])
+        fallback = fallback if isinstance(fallback, bytes) else fallback[0]
+        self.assertEqual(amf3.decode(fallback[4:]),
+                         ['21000', [1, 1, DEFAULT_MAP_TYPE]])
 
     def test_map5_change_pushes_scene_entry_and_role_hp(self):
         cleanups = []
@@ -443,15 +506,19 @@ class TestWorldInit(unittest.TestCase):
         session.feed(CAPTURED_INITKEY)
         out = session.feed(frame(session.cipher.encode(
             amf3.encode([20000, [str(role_id), '5']]))))
-        self.assertEqual(len(out), 5)
-        decoded = [amf3.decode(o[4:]) for o in out]
-        self.assertEqual(decoded[0], ['20000', [1, '5', [44, 33]]])
-        self.assertEqual(decoded[1], ['21000', [1, 1, 1]])
-        self.assertEqual(decoded[2], ['12004', [str(role_id), 5226, 5466, 1811, 1811]])
+        # Java answers 20000 bare; the scene follows the client's own 21000.
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]),
+                         ['20000', [1, '5', [44, 33]]])
+        tail = session.change_stage([21000, str(role_id)])
+        decoded = [amf3.decode(f[4:]) for f in tail]
+        self.assertEqual([d[0] for d in decoded],
+                         ['21000', '12004', '12005'])
+        self.assertEqual(decoded[0], ['21000', [1, 1, 1]])
+        self.assertEqual(decoded[1], ['12004', [str(role_id), 5226.0, 5466.0,
+                                                 1811.0, 1811.0]])
         # Tap order continues with the shanbi value (none stored for this role).
-        self.assertEqual(decoded[3], ['12005', [0]])
-        # No level row is migrated, so the burst closes with 40501.
-        self.assertEqual(decoded[4], ['40501', str(role_id)])
+        self.assertEqual(decoded[2], ['12005', [0]])
 
     def test_stage_and_movement_persist_to_db(self):
         cleanups = []
@@ -485,7 +552,8 @@ class TestWorldInit(unittest.TestCase):
         self.assertEqual(amf3.decode(echo[4:])[0], '42001')
 
         # enter_world now reports the persisted stage, not the defaults.
-        entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
+        # The 10003 reply is the last frame after the 13000/32010 bootstrap.
+        entry = amf3.decode(s.enter_world([10003, str(role_id)])[-1][4:])
         self.assertEqual(entry[1][2], ['5', 43, 32])
 
     def test_move_without_coordinates_is_ignored(self):
@@ -511,21 +579,25 @@ class TestWorldInit(unittest.TestCase):
             recive_yb=0)
         s = make_session(store)
         s.authed_user, s.server_id = 'hero', 'fu1304'
-        entry = amf3.decode(s.enter_world([10003, str(role_id)])[4:])
+        entry = amf3.decode(s.enter_world([10003, str(role_id)])[-1][4:])
         self.assertEqual(entry[0], '10003')
+        # StageControllOutputWrapper.login: vip from role_vip (none -> 0),
+        # recharge from unmigrated rows ([0.0, 0.0]), exp Long as double.
         self.assertEqual(entry[1][1],
-                         ['', 1, 10692892, 0, 'C', False, 0, 10,
-                          [20000000, 0], 0])
+                         ['', 1, 10692892.0, 0, 'C', False, 0, 0,
+                          [0.0, 0.0], 0])
         self.assertEqual(entry[1][2], ['5', 44, 33])
         money = amf3.decode(s.money_info()[4:])
-        self.assertEqual(money, ['32010', [4509290, 9986377, 360, 0]])
+        self.assertEqual(money, ['32010', [4509290.0, 9986377.0, 360.0, 1]])
         apply = amf3.decode(s.apply_stage([20000, [str(role_id), '5']])[4:])
         self.assertEqual(apply, ['20000', [1, '5', [44, 33]]])
-        scene = amf3.decode(s.change_stage([21000, str(role_id)])[4:])
-        self.assertEqual(scene, ['21000', [1, 1, 1]])
+        scene = s.change_stage([21000, str(role_id)])
+        scene = scene if isinstance(scene, bytes) else scene[0]
+        self.assertEqual(amf3.decode(scene[4:]), ['21000', [1, 1, 1]])
+        # RoleAdditionalDataOutput.info: no mount/pk/guild state migrated.
         extra = amf3.decode(s.role_extra_info()[4:])
-        self.assertEqual(extra, ['12011', [1, 5226, 1811, 9999, 0, 0,
-                                           0, None, None, 0, 1]])
+        self.assertEqual(extra, ['12011', [0, 0, 0, 0, 0, 0, 0,
+                                           None, None, 0, 1]])
         panel = ByteArray(bytes(range(256)) * 2 + b'panel')
         self.assertTrue(store.save_role_settings(
             role_id, 'hero', 'fu1304', panel_config=panel))
@@ -541,7 +613,7 @@ class TestWorldInit(unittest.TestCase):
         self.assertIsNone(self.reply(64010)[1])
         self.assertEqual(self.reply(64001)[1], [1, [0, None, None, None]])
         self.assertEqual(self.reply(62000)[1], [0, 0, [], 0, 0])
-        self.assertEqual(self.reply(108001)[1], [1, [None, [], None]])
+        self.assertEqual(self.reply(108001)[1], [1, [0, [['1', 0, 1]], None]])
         self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 
@@ -648,7 +720,7 @@ class TestReciveYbClaimAndNameQuery(unittest.TestCase):
                                           lingshi=100)
         money, reply = self.s.recive_yb_claim()
         self.assertEqual(amf3.decode(money[4:])[0], '32010')
-        self.assertEqual(amf3.decode(money[4:])[1][1::2], [400, 0])
+        self.assertEqual(amf3.decode(money[4:])[1][1::2], [400.0, 1])
         self.assertEqual(amf3.decode(reply[4:]), ['35012', [1, 300]])
         self.assertEqual((self.row()['lingshi'], self.row()['recive_yb']),
                          (400, 0))
@@ -829,7 +901,8 @@ class TestMigratedRoleStage(unittest.TestCase):
         self.assertEqual(role['level'], 7)
 
     def test_enter_world_reports_the_migrated_stage(self):
-        entry = amf3.decode(self.s.enter_world([10003, str(self.role_id)])[4:])
+        entry = amf3.decode(
+            self.s.enter_world([10003, str(self.role_id)])[-1][4:])
         self.assertEqual(entry[0], '10003')
         self.assertEqual(entry[1][2], ['2', 10, 150])
         # level/exp come from the migrated role row.
@@ -841,21 +914,25 @@ class TestMigratedRoleStage(unittest.TestCase):
             self.s.apply_stage([20000, [str(self.role_id), '']])[4:])
         self.assertEqual(apply, ['20000', [1, '2', [10, 150]]])
 
-    def test_bootstrap_pushes_hp_mp_from_the_stage_row(self):
-        frames = self.s.apply_stage_bootstrap([20000, [str(self.role_id), '']])
+    def test_apply_stage_answers_bare_like_java(self):
+        # The 20000 reply carries no scene: the client sends 21000 when it
+        # is ready, and only then does the server push the scene tail.
+        reply = self.s.apply_stage([20000, [str(self.role_id), '']])
+        self.assertEqual(amf3.decode(reply[4:]),
+                         ['20000', [1, '2', [10, 150]]])
+
+    def test_change_stage_pushes_hp_mp_from_the_stage_row(self):
+        frames = self.s.change_stage([21000, str(self.role_id)])
         self.assertIsInstance(frames, tuple)
         decoded = [amf3.decode(f[4:]) for f in frames]
-        self.assertEqual(decoded[0], ['20000', [1, '2', [10, 150]]])
         # The scene entry is pushed for map 2 too, not only for map 5.
-        self.assertEqual(decoded[1], ['21000', [1, 1, DEFAULT_MAP_TYPE]])
-        # Tap order after the scene entry: hp/mp, then shanbi. This session
-        # has no config, so the 12050/12000 pushes that follow are skipped.
-        self.assertEqual(decoded[2], ['12004', [str(self.role_id), 144, 144,
-                                                 96, 96]])
-        self.assertEqual(decoded[3], ['12005', [0]])
-        # 40501 needs no config: the fight-state notice always closes entry.
-        self.assertEqual(decoded[4], ['40501', str(self.role_id)])
-        self.assertEqual(len(decoded), 5)
+        self.assertEqual(decoded[0], ['21000', [1, 1, DEFAULT_MAP_TYPE]])
+        # Tap order after the scene entry: hp/mp as doubles, then shanbi.
+        # This session has no config, so 12050/12000 are skipped.
+        self.assertEqual(decoded[1], ['12004', [str(self.role_id), 144.0, 144.0,
+                                                 96.0, 96.0]])
+        self.assertEqual(decoded[2], ['12005', [0]])
+        self.assertEqual(len(decoded), 3)
 
     def test_empty_stage_blobs_stay_null(self):
         stage = self.store.get_role_stage(self.role_id)
@@ -892,22 +969,28 @@ class TestWorldEntryStats(unittest.TestCase):
                     physicdefence=50, critical=10, volt=7, attackrate=3,
                     velocity=520, dunshudian=12.7, jiangu=0.25,
                     zhenqi=100000)]))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'XiaoGuoBiao.jat'), 'wb') as f:
+            f.write(amf3.encode([Obj(effectid='birthprotect',
+                                     lasttime=10000)]))
         s = make_session(store, config=GameConfig(cfg_dir))
         s.authed_user, s.server_id = 'hero', 'fu1304'
         return s, role_id
 
     def test_entry_pushes_the_captured_stats_sequence(self):
         s, role_id = self.build()
-        decoded = [amf3.decode(f[4:]) for f in
-                   s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        first = amf3.decode(s.apply_stage([20000, [str(role_id), '']])[4:])
+        self.assertEqual(first, ['20000', [1, '0', [57, 148]]])
+        tail = s.change_stage([21000, str(role_id)])
+        decoded = [amf3.decode(f[4:]) for f in tail]
         self.assertEqual([d[0] for d in decoded],
-                         ['20000', '21000', '12004', '12005', '12050', '12000',
-                          '40501'])
-        # 40501 is the bare role id (send2One), closing the entry burst.
-        self.assertEqual(decoded[6], ['40501', str(role_id)])
-        self.assertEqual(decoded[3], ['12005', [0]])    # shanbi_val: none stored
-        self.assertEqual(decoded[4], ['12050', [77, 100000]])  # zhenqi, cap
-        self.assertEqual(decoded[5][1], {
+                         ['21000', '12004', '12005', '12050', '12000',
+                          '42100'])
+        self.assertEqual(decoded[1][1], [str(role_id), 120.0, 120.0,
+                                         60.0, 60.0])
+        self.assertEqual(decoded[2], ['12005', [0]])    # shanbi_val: none stored
+        self.assertEqual(decoded[3], ['12050', [77, 100000]])  # zhenqi, cap
+        self.assertEqual(decoded[4][1], {
             '1': 60.0,    # persisted max_mp wins over the level row's mana
             '2': 200.0,   # physicdamage; effect slots are empty in migration
             '3': 62.5,    # physicdefence*(1+jiangu) = 50*1.25
@@ -927,13 +1010,50 @@ class TestWorldEntryStats(unittest.TestCase):
         self.assertEqual(decoded[0], '12000')
         self.assertEqual(decoded[1]['7'], 520.0)
 
-    def test_without_a_level_row_only_the_first_four_are_pushed(self):
+    def test_without_a_level_row_only_vitals_and_shanbi_are_pushed(self):
         s, role_id = self.build()
         s.config = None
-        decoded = [amf3.decode(f[4:]) for f in
-                   s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        tail = s.change_stage([21000, str(role_id)])
+        decoded = [amf3.decode(f[4:]) for f in tail]
         self.assertEqual([d[0] for d in decoded],
-                         ['20000', '21000', '12004', '12005', '40501'])
+                         ['21000', '12004', '12005'])
+
+    def test_xianjie_fight_feeds_slot_11(self):
+        # ZhanDouLiServiceImpl.getxianjie: the stress role's active
+        # xianjie 1 bag computes to the captured 122 (getFight over the
+        # XianJieConfig attributes with ZhanLiXiShu factors).
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        role_id = store.create_character('hero', 'fu1304', 'Wukong', job='A')
+        store.save_role_xianjiechenhao(role_id, xianjie_id='["1"]')
+        cfg_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, cfg_dir, ignore_errors=True)
+        os.makedirs(os.path.join(cfg_dir, 'sys_config'))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'xianjie.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(id=1, shuxing='hitpoints:60;mana:60;physicdamage:30;'
+                                 'physicdefence:15;critical:8;volt:8;'
+                                 'attackrate:3;velocity:10')]))
+        with open(os.path.join(cfg_dir, 'sys_config',
+                               'ZhanLiXiShu.jat'), 'wb') as f:
+            f.write(amf3.encode([
+                Obj(name='hitpoints', factor=0.25),
+                Obj(name='mana', factor=0.25),
+                Obj(name='physicdamage', factor=0.5),
+                Obj(name='physicdefence', factor=1.0),
+                Obj(name='critical', factor=2.0),
+                Obj(name='volt', factor=2.0),
+                Obj(name='attackrate', factor=10.0),
+                Obj(name='velocity', factor=0.0)]))
+        s = make_session(store, config=GameConfig(cfg_dir))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        env = amf3.decode(s.fighting_info()[4:])
+        self.assertEqual(env[1][11], 122)
+        # No xianjie row stays 0 like Java's empty source.
+        s2 = make_session(temp_store(cleanups), config=GameConfig(cfg_dir))
+        self.assertEqual(amf3.decode(s2.fighting_info()[4:])[1][11], 0)
 
 
 class TestZuoQiPetFrame(unittest.TestCase):
@@ -985,15 +1105,17 @@ class TestZuoQiPetFrame(unittest.TestCase):
         return s, role_id
 
     def bootstrap(self, s, role_id):
-        return [amf3.decode(f[4:]) for f in
-                s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        first = amf3.decode(s.apply_stage([20000, [str(role_id), '']])[4:])
+        tail = s.change_stage([21000, str(role_id)])
+        tail = list(tail) if isinstance(tail, tuple) else [tail]
+        return [first] + [amf3.decode(f[4:]) for f in tail]
 
     def test_entry_pushes_the_captured_mount_frame(self):
         s, role_id = self.build()
         decoded = self.bootstrap(s, role_id)
         self.assertEqual([d[0] for d in decoded],
                          ['20000', '21000', '23009', '12004', '12005',
-                          '12050', '12000', '40501'])
+                          '12050', '12000'])
         record = decoded[2][1][0]
         self.assertEqual(len(record), 14)
         self.assertTrue(record[0].startswith('zuoqi_5_'))
@@ -1009,7 +1131,7 @@ class TestZuoQiPetFrame(unittest.TestCase):
         decoded = self.bootstrap(s, role_id)
         self.assertEqual([d[0] for d in decoded],
                          ['20000', '21000', '12004', '12005', '12050',
-                          '12000', '40501'])
+                          '12000'])
 
     def test_riding_or_dead_mount_is_not_spawned(self):
         for info in ('{"id":1,"hp":500,"rideOrNo":true}',
@@ -1182,17 +1304,20 @@ class TestPhase1InitBurst(unittest.TestCase):
         env = amf3.decode(self.s.vip_info()[4:])
         self.assertEqual(env[1][:2], [0, 0])  # Java zeroes day/week at level 0
 
-    def test_mall_sends_list_with_null_sign_like_java(self):
-        # Java's sign is null (classpath loader), so every non-empty
-        # category request gets [1, None, raw rows].
+    def test_mall_sends_list_with_sign_like_java(self):
+        # The sign comes from the gameconfig sign service; a stale (or no)
+        # sign gets [1, sign, raw rows], a matching sign gets [-1, category].
+        from game.config import MALL_SIGN
         for sign in ('stale', None):
             env = amf3.decode(self.s.mall_info([32000, [sign, '1001']])[4:])
             self.assertEqual(env[0], '32000')
             self.assertEqual(env[1][0], 1)
-            self.assertIsNone(env[1][1])
+            self.assertEqual(env[1][1], MALL_SIGN)
             self.assertTrue(env[1][2])  # real WuPinChuShouBiao rows
             self.assertEqual(env[1][2][0]['modelid'], 1001)
             self.assertIn('sellid', env[1][2][0])
+        echo = amf3.decode(self.s.mall_info([32000, [MALL_SIGN, '1001']])[4:])
+        self.assertEqual(echo, ['32000', [-1, '1001']])
 
     def test_mall_empty_category_has_no_reply_like_java(self):
         self.assertIsNone(self.s.mall_info([32000, ['x', '']]))
@@ -1560,11 +1685,11 @@ class MallBuyBackTest(unittest.TestCase):
 
 
 class TestEntryBuffs(unittest.TestCase):
-    """Phase 2 entry pushes: 42100 buff flush, 42005 skill cooldown, 40501.
+    """Entry buff flush 42100 after the 12000 attribute map.
 
-    Shapes from FightOutputWrapper.buffChange / skillReadyFire /
-    RoleEventManager.enterFightState2 bytecode; the entry order
-    (12000 -> 42100 -> 42005 -> 40501) from tap-decoded.txt lines 12-24.
+    Shape from FightOutputWrapper.buffChange bytecode; position from both
+    captures (fresh map-2 entry and old map-5 tap). 42005 fires on
+    skill-ready and 40501 on fight-state change, never as entry frames.
     """
 
     LEVEL = 5
@@ -1607,16 +1732,19 @@ class TestEntryBuffs(unittest.TestCase):
         return s, role_id
 
     def bootstrap(self, s, role_id):
-        return [amf3.decode(f[4:]) for f in
-                s.apply_stage_bootstrap([20000, [str(role_id), '']])]
+        first = amf3.decode(s.apply_stage([20000, [str(role_id), '']])[4:])
+        tail = s.change_stage([21000, str(role_id)])
+        tail = list(tail) if isinstance(tail, tuple) else [tail]
+        return [first] + [amf3.decode(f[4:]) for f in tail]
 
-    def test_vip_role_gets_vip_plus_birthprotect_then_fight_state(self):
+    def test_vip_role_gets_vip_plus_birthprotect(self):
         s, role_id = self.build(vip_level=10)
         decoded = self.bootstrap(s, role_id)
-        # No attack_skill on the role row, so 42005 is skipped, not faked.
+        # No attack_skill on the role row, so 42005 is skipped, not faked;
+        # 40501 is a fight-state frame, not an entry frame.
         self.assertEqual([d[0] for d in decoded],
                          ['20000', '21000', '12004', '12005', '12050',
-                          '12000', '42100', '40501'])
+                          '12000', '42100'])
         buff = decoded[6]
         self.assertEqual(buff[0], '42100')
         self.assertEqual(buff[1][0], str(role_id))
@@ -1630,7 +1758,6 @@ class TestEntryBuffs(unittest.TestCase):
                                    str(role_id)])
         self.assertEqual(adds[1], ['buff_1_2', 'birthprotect', 10000.0, 1,
                                    str(role_id)])
-        self.assertEqual(decoded[7], ['40501', str(role_id)])
 
     def test_role_without_vip_gets_birthprotect_alone(self):
         s, role_id = self.build()
@@ -1659,6 +1786,1034 @@ class TestEntryBuffs(unittest.TestCase):
         s, _ = self.build()
         env = amf3.decode(s.buff_value_frame('r1', 'propbuff_1_3', 328576)[4:])
         self.assertEqual(env, ['42102', ['r1', 'propbuff_1_3', 328576.0]])
+
+
+class ShenjiangSlotInfoTest(unittest.TestCase):
+    """Command 41023 against the captured Java replies (sj0101, sj0199, sj0202)."""
+
+    def setUp(self):
+        self.sess = Session(conn_id=1, check_sign=lambda *a: False,
+                            get_roles=lambda u, s: [], server_start_ms=0,
+                            config=None)
+
+    def test_captured_ids_reply_with_null_slots(self):
+        for sj_id in ('sj0101', 'sj0199', 'sj0202'):
+            out = self.sess.shenjiang_slot_info([41023, sj_id])
+            self.assertEqual(amf3.decode(out[4:]), ['41023', [1, sj_id, None]])
+
+    def test_missing_id_still_replies_with_null_id(self):
+        out = self.sess.shenjiang_slot_info([41023])
+        self.assertEqual(amf3.decode(out[4:]), ['41023', [1, None, None]])
+
+    def test_non_string_id_is_silent(self):
+        self.assertIsNone(self.sess.shenjiang_slot_info([41023, 7]))
+
+
+class QiandaoInfoTest(unittest.TestCase):
+    """Command 58011 against the captured Java reply (no role_qiandao row)."""
+
+    def test_reply_matches_captured_no_row_shape(self):
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [], server_start_ms=0,
+                       config=None)
+        out = sess.qiandao_info()
+        self.assertEqual(amf3.decode(out[4:]),
+                         ['58011', [1, None, 0, None, None]])
+
+    def test_row_formats_month_days_and_rewards(self):
+        row = {'total_qiandao_count': 3, 'month': 10,
+               'month_qiandao': '1,2,3',
+               'total_qiandao_reward': 'a,b',
+               'month_qiandao_reward': 'x1',
+               'week': 43, 'vip_buqian_count': 0,
+               'qiandao_time': 1, 'online_time': 2}
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [{'id': 'r1'}],
+                       get_role_qiandao=lambda rid: row,
+                       server_start_ms=0, config=None)
+        out = sess.qiandao_info()
+        self.assertEqual(amf3.decode(out[4:]),
+                         ['58011', [1, [1, 2, 3], 3, ['x1'], ['a', 'b']]])
+
+    def test_row_with_empty_strings_answers_empty_lists(self):
+        # The legacy fu0UR1-0-1-1 row stores '' in every list column. The live
+        # Java server answered [1, [], 1, [], []] for it (capture:
+        # output/swfdec/trace/reply58011-row.txt).
+        row = {'total_qiandao_count': 1, 'month': 10, 'month_qiandao': '',
+               'total_qiandao_reward': '', 'month_qiandao_reward': ''}
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [{'id': 'r1'}],
+                       get_role_qiandao=lambda rid: row,
+                       server_start_ms=0, config=None)
+        out = sess.qiandao_info()
+        self.assertEqual(amf3.decode(out[4:]),
+                         ['58011', [1, [], 1, [], []]])
+
+    def test_dispatch_routes_58011_through_handle(self):
+        row = {'total_qiandao_count': 2, 'month_qiandao': '4',
+               'total_qiandao_reward': '', 'month_qiandao_reward': ''}
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [{'id': 1}],
+                       get_role_qiandao=lambda rid: row,
+                       server_start_ms=0, config=None)
+        sess.cipher = SimpleEncrypt('testkey')
+        out = sess.handle(sess.cipher.encode(amf3.encode([58011])))
+        self.assertEqual(amf3.decode(bytes(out)[4:]),
+                         ['58011', [1, [4], 2, [], []]])
+
+    def test_real_store_row_reaches_the_reply(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.save_role_qiandao(42, total_qiandao_count=1, month=10,
+                                month_qiandao='', total_qiandao_reward='',
+                                month_qiandao_reward='')
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [{'id': 42}],
+                       get_role_qiandao=store.get_role_qiandao,
+                       server_start_ms=0, config=None)
+        out = sess.qiandao_info()
+        self.assertEqual(amf3.decode(out[4:]),
+                         ['58011', [1, [], 1, [], []]])
+
+    def test_no_role_still_answers_the_no_row_shape(self):
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [],
+                       get_role_qiandao=lambda rid: {'month_qiandao': '1'},
+                       server_start_ms=0, config=None)
+        out = sess.qiandao_info()
+        self.assertEqual(amf3.decode(out[4:]),
+                         ['58011', [1, None, 0, None, None]])
+
+
+
+
+class TestLoadingStubs(unittest.TestCase):
+    """Post-21000 loading replies match the Java fresh-role capture.
+
+    session-20261020-072313 (fu0 fresh level 8): every C> in the loading
+    cascade that Java answers with an S> must get the same shape from
+    Python. The 8 fire-and-forget notifies (81000, 40600, 53021, 82022,
+    130000, 101000, 73113, 75004) have no S> in either Java capture,
+    so they stay silent like Java instead of inventing a reply.
+    """
+
+    def sess(self):
+        return Session(conn_id=7, check_sign=lambda *a: True,
+                       get_roles=lambda u, s: [{'id': 2, 'name': 'NewHero'}],
+                       server_start_ms=0, config=None)
+
+    def call(self, cmd, arg=None):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return s.loading_stub([cmd, arg], cmd)
+
+    def decode(self, cmd, arg=None):
+        out = self.call(cmd, arg)
+        self.assertIsNotNone(out, f'{cmd} should reply')
+        return amf3.decode(out[4:])
+
+    def test_simple_shapes(self):
+        self.assertEqual(self.decode(35115), ['35115', [[0.0, 0.0]]])
+        self.assertEqual(self.decode(53006), ['53006', [None]])
+        self.assertEqual(self.decode(51000), ['51000', [[0, None, [], [], [], []]]])
+        self.assertEqual(self.decode(82024), ['82024', [None]])
+        self.assertEqual(self.decode(74000), ['74000', [[1, 0]]])
+        self.assertEqual(self.decode(86000), ['86000', [[0, 0, [], 0, None]]])
+        self.assertEqual(self.decode(85000), ['85000', [None]])
+        self.assertEqual(self.decode(87000), ['87000', [None]])
+        self.assertEqual(self.decode(70500), ['70500', [[]]])
+        self.assertEqual(self.decode(90000), ['90000', [[0, [['1', '0'], ['11', 2130]], []]]])
+        self.assertEqual(self.decode(92015), ['92015', [[None, [], None]]])
+        self.assertEqual(self.decode(93000), ['93000', [None]])
+        self.assertEqual(self.decode(94000), ['94000', [None]])
+        self.assertEqual(self.decode(94002), ['94002', [None]])
+        self.assertEqual(self.decode(94100), ['94100', [None]])
+        self.assertEqual(self.decode(95000), ['95000', [None]])
+        self.assertEqual(self.decode(113000), ['113000', [None]])
+        self.assertEqual(self.decode(124001), ['124001', [None]])
+        self.assertEqual(self.decode(70000), ['70000', [None]])
+
+    def test_buff_query_quiet_session_is_null_null(self):
+        # BuffStatistics serializes empty lists as null, never [].
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        out = s.buff_query([42100, None])
+        self.assertEqual(amf3.decode(out[4:]), ['42100', ['2', None, None]])
+
+    def test_buff_query_replays_entry_ids_with_ticked_remaining(self):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        t0 = time.time()
+        s._buff_live = [['buff_0_1', 'birthprotect', 10000.0, t0],
+                        ['buff_0_2', 'vip010', None, t0]]
+        env = amf3.decode(s.buff_query([42100, None])[4:])
+        self.assertEqual(env[0], '42100')
+        self.assertEqual([a[0] for a in env[1][1]],
+                         ['buff_0_1', 'buff_0_2'])
+        self.assertEqual(env[1][1][1][1], 'vip010')
+        self.assertEqual(env[1][1][1][2], -1.0)
+        remaining = env[1][1][0][2]
+        self.assertLessEqual(remaining, 10000.0)
+        self.assertGreater(remaining, 9000.0)
+        self.assertIsNone(env[1][2])
+
+    def test_buff_query_reports_expired_once_then_forgets(self):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        s._buff_live = [['buff_0_1', 'birthprotect', 10000.0,
+                         time.time() - 20.0],
+                        ['buff_0_2', 'vip010', None, time.time()]]
+        env = amf3.decode(s.buff_query([42100, None])[4:])
+        self.assertEqual(env[1][2], ['buff_0_1'])
+        self.assertEqual([a[0] for a in env[1][1]], ['buff_0_2'])
+        env = amf3.decode(s.buff_query([42100, None])[4:])
+        self.assertIsNone(env[1][2])
+        self.assertEqual([a[0] for a in env[1][1]], ['buff_0_2'])
+
+    def test_entry_buff_frame_stashes_live_instances(self):
+        # Without config there is no VIP mapping and no birthprotect
+        # lasttime, so the frame is None — but the stash is still reset.
+        s = self.sess()
+        s._buff_live = [['stale', 'x', 1.0, 0.0]]
+        self.assertIsNone(
+            s.entry_buff_frame({'id': 2, 'name': 'NewHero'}))
+        self.assertEqual(s._buff_live, [])
+
+    def test_zuoqi_hp_without_pet_is_zero_zero(self):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        out = s.zuoqi_hp([33022, None])
+        self.assertEqual(amf3.decode(out[4:]), ['33022', [[0, 0]]])
+
+    def test_zuoqi_hp_reports_live_pet(self):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        s._pet_state['zuoqi_2_1'] = {'max_hp': 372.0, 'hp': 200.0,
+                                     'template_id': 'zuoqi1'}
+        out = s.zuoqi_hp([33022, None])
+        self.assertEqual(amf3.decode(out[4:]), ['33022', [[200, 372]]])
+
+    def test_97001_pages(self):
+        got = self.decode(97001, 1)
+        self.assertEqual(got[0], '97001')
+        self.assertEqual(got[1][0], 1)
+        self.assertEqual(self.decode(97001, 2)[1][0], 2)
+        self.assertIn('xunbaonew.ani', got[1])
+
+    def test_114000_pages(self):
+        p1 = self.decode(114000, 1)
+        p2 = self.decode(114000, 2)
+        self.assertEqual(p1[0], '114000')
+        self.assertEqual(p2[0], '114000')
+        self.assertEqual(p1[1][1], '1')
+        self.assertEqual(p2[1][1], '2')
+        self.assertNotEqual(p1[1][4], p2[1][4])
+
+    def test_122002_live_shape(self):
+        # 122002 went live (tuangou_config): the stale stub row is gone,
+        # so this asserts the live config shape instead of dead bytes.
+        # The sign still matches the session capture.
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store, config=GameConfig(DEFAULT_CONFIG_DIR))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        env = amf3.decode(s.tuangou_config([122002, [None]])[4:])
+        self.assertEqual(env[0], '122002')
+        self.assertEqual(env[1][0], 'd7e8e1151e8d1e608e5277bac82adf60')
+        self.assertEqual(len(env[1][1]), 404)
+        self.assertEqual(env[1][2], [1392008400000.0, 1394510399000.0])
+        # a matching client sign stays silent like Java's null
+        self.assertIsNone(s.tuangou_config(
+            [122002, ['d7e8e1151e8d1e608e5277bac82adf60']]))
+
+    def test_kapai_qianfu_guanggao_fight_push_shapes(self):
+        # 121000/121001/120000/109000 are config pushes with no
+        # inbound route; 40501 is the fight-state builder the stage
+        # loop calls. All pin live wire heads plus fresh-role zeros.
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store, config=GameConfig(DEFAULT_CONFIG_DIR))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        client = amf3.decode(s.kapai_client([121000, None])[4:])
+        self.assertEqual(client[0], '121000')
+        self.assertTrue(client[1][0])
+        self.assertTrue(client[1][1])
+        info = amf3.decode(s.kapai_info([121001, None])[4:])
+        self.assertEqual(info[0], '121001')
+        self.assertEqual(info[1][0], 0)
+        self.assertTrue(all(n == 0 for _, n in info[1][1]))
+        self.assertTrue(all(g == 0 and c == 0
+                             for _, g, c in info[1][2]))
+        qian = amf3.decode(s.qianfu_client([120000, None])[4:])
+        self.assertEqual(qian[0], '120000')
+        self.assertTrue(qian[1][0])
+        self.assertTrue(qian[1][1])
+        ads = amf3.decode(s.guanggao_list([109000, None])[4:])
+        self.assertEqual(ads[0], '109000')
+        self.assertTrue(ads[1][0])
+        self.assertEqual(amf3.decode(s.fight_state_frame(
+            {'id': 7})[4:]), ['40501', '7'])
+
+    def test_dispatch_prefers_real_handlers_over_stubs(self):
+        # 88003 has a real handler (vipqq_info) and must not sit in the
+        # stub table: the reply has to come from live logic. With no vip_qq
+        # row seeded, Java answers [0, 794002] — same bytes the capture
+        # showed, but computed, not copied.
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store)
+        s.feed(CAPTURED_INITKEY)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        out = s.feed(frame(s.cipher.encode(amf3.encode([88003, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]), ['88003', [0, '794002']])
+
+    def test_fire_and_forget_stays_silent_like_java(self):
+        s = self.sess()
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        for cmd in (81000, 40600, 53021, 82022, 130000, 101000, 73113, 75004):
+            self.assertIsNone(s.loading_stub([cmd, None], cmd), f'{cmd}')
+
+
+class TestLiveJiangliOnline(unittest.TestCase):
+    """De-stubbed slice: online rewards + login-device (10060/10061/58003-58005).
+
+    10060 reads the dengluqi claim state ([state] — the tunnel wraps
+    Java's bare Integer, as the session capture showed); 10061 claims the
+    dengluqijiangli pool but only for micro-end sessions, so it answers
+    [0, 592011] here exactly like Java does for every normal login.
+    58003 totals the stored ms plus the open session's delta (Longs ride
+    as doubles) with the month bind-yb claim state; 58004 rolls open daily
+    tiers with weighted prizes and marks them claimed; 58005 claims the
+    month's bind-yb into bind_lingshi. Daily/monthly resets run lazily in
+    the handlers (Java runs them at login, which has no hook here).
+    """
+
+    def live(self, dailies, monthly):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        rid = store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        kaifu = make_session(store)._online_kaifu_months()
+        cfgdir = tempfile.mkdtemp()
+        cleanups.append((shutil.rmtree, (cfgdir,), {'ignore_errors': True}))
+        sysdir = os.path.join(cfgdir, 'sys_config')
+        os.makedirs(sysdir)
+        rows = []
+        for pos, (tier, secs, mtime, prize) in enumerate(dailies):
+            rows.append(Obj(type=1, daytime='', time=secs, bindgold='',
+                            monthtime=mtime, month='', id='d%d' % pos,
+                            count=tier, randomaward=prize))
+        mday, mmonth, bindgold, mtime = monthly
+        if mmonth is None:
+            mmonth = kaifu
+        rows.append(Obj(type=2, daytime=mday, time='', bindgold=bindgold,
+                        monthtime=mtime, month=mmonth, id='m', count=''))
+        with open(os.path.join(sysdir, 'zaixianjiangli.jat'), 'wb') as f:
+            f.write(amf3.encode(rows))
+        cfg = GameConfig(cfgdir)
+        s = make_session(store, config=cfg)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        store.save_role_bag_state(rid, bag_capacity=150)
+        return store, rid, s, kaifu
+
+    def decode(self, out):
+        self.assertIsNotNone(out)
+        return amf3.decode(out[4:])
+
+    def seed_online(self, store, rid, anchor_ago_ms=408460, bind_yb=0,
+                    claimed='', done=0):
+        now = int(time.time() * 1000)
+        store.save_role_online_reward(
+            rid, month=time.localtime().tm_mon, online_time=0,
+            month_online_time=0, refresh_time=now, online_reward=claimed,
+            is_lingqu_reward=done, month_bind_yb=bind_yb,
+            role_online_time=now - anchor_ago_ms)
+
+    def test_weidan_state_fresh_claimed_and_daily_reset(self):
+        store, rid, s, _ = self.live([], ('', 3, 20, 300))
+        self.assertEqual(self.decode(s.weidan_state([10060, None])),
+                         ['10060', [0]])
+        row = store.get_role_dengluqi(str(rid))
+        self.assertEqual(row['lingqu_state'], 0)
+        self.assertIsNotNone(row['lingqu_time'])
+        store.save_role_dengluqi(rid, lingqu_state=1)
+        self.assertEqual(self.decode(s.weidan_state([10060, None])),
+                         ['10060', [1]])
+        store.save_role_dengluqi(rid, lingqu_time=1)
+        self.assertEqual(self.decode(s.weidan_state([10060, None])),
+                         ['10060', [0]])
+        self.assertEqual(store.get_role_dengluqi(str(rid))['lingqu_state'],
+                         0)
+
+    def test_weidan_reward_needs_micro_end(self):
+        # No micro-end login channel exists, so isMicroEndLogin is never
+        # true and Java answers 592011 before any other check.
+        store, rid, s, _ = self.live([], ('', 3, 20, 300))
+        self.assertEqual(self.decode(s.weidan_reward([10061, None])),
+                         ['10061', [0, '592011']])
+        self.assertEqual(store.get_role_dengluqi(str(rid))['lingqu_state'],
+                         0)
+
+    def test_online_info_fresh_role_matches_capture_shape(self):
+        # The session capture showed [[183111.0, 370120.0, 0, [], 2]];
+        # the stub's [[408460.0, 1221939.0, 0, [], 2]] is the same shape
+        # from a longer session. Totals are ms-as-doubles.
+        store, rid, s, _ = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7'),
+             (2, 999999999, 999999999, 'ceshi_item:1:1:1.0:8')],
+            ('', 3, 20, 300))
+        self.seed_online(store, rid)
+        env = self.decode(s.online_reward_info([58003, None]))
+        self.assertEqual(env[0], '58003')
+        total, month_total, bind, claimed, state = env[1][0]
+        self.assertAlmostEqual(total, 408460.0, delta=5000.0)
+        self.assertAlmostEqual(month_total, 408460.0, delta=5000.0)
+        self.assertEqual((bind, claimed, state), (0, [], 2))
+
+    def test_online_info_fresh_row_and_bindyb_state(self):
+        # No row yet: the handler settles Java's loginInit state itself.
+        store, rid, s, kaifu = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7')],
+            (str(time.localtime().tm_mday), None, 20, 300))
+        env = self.decode(s.online_reward_info([58003, None]))
+        total, month_total, bind, claimed, state = env[1][0]
+        self.assertLess(total, 5000.0)
+        self.assertEqual((bind, claimed, state), (0, [], 2))
+        # A banked month accrual on an open day flips the state to 1.
+        self.seed_online(store, rid, bind_yb=50)
+        env = self.decode(s.online_reward_info([58003, None]))
+        self.assertEqual(env[1][0][2:], [50, [], 1])
+
+    def test_yaojiang_draw_marks_claimed(self):
+        store, rid, s, _ = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7'),
+             (2, 999999999, 999999999, 'ceshi_item:1:1:1.0:8')],
+            ('', 3, 20, 300))
+        self.seed_online(store, rid)
+        env = self.decode(s.online_yaojiang([58004, None]))
+        self.assertEqual(env, ['58004', [1, [[1, 7]]]])
+        self.assertEqual(store.get_role_online_reward(str(rid))
+                         ['online_reward'], '1')
+        slots = store.get_role_bag_slots(rid, 1, 150)
+        self.assertEqual([(b['goods_id'], b['count']) for b in slots],
+                         [('ceshi_item', 1)])
+
+    def test_yaojiang_guards(self):
+        store, rid, s, _ = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7'),
+             (2, 999999999, 999999999, 'ceshi_item:1:1:1.0:8')],
+            ('', 3, 20, 300))
+        # everything claimed: the not-repeat guard fires first
+        self.seed_online(store, rid, claimed='1,2')
+        self.assertEqual(self.decode(s.online_yaojiang([58004, None])),
+                         ['58004', [0, '592003']])
+        # one tier claimed, the other locked: nothing to draw
+        self.seed_online(store, rid, claimed='1')
+        self.assertEqual(self.decode(s.online_yaojiang([58004, None])),
+                         ['58004', [0, '592004']])
+        # no bag room: the draw is refused before anything lands
+        store.save_role_bag_state(rid, bag_capacity=0)
+        self.seed_online(store, rid)
+        self.assertEqual(self.decode(s.online_yaojiang([58004, None])),
+                         ['58004', [0, '592001']])
+        self.assertEqual(store.get_role_online_reward(str(rid))
+                         ['online_reward'], '')
+
+    def test_lingqu_guards(self):
+        store, rid, s, _ = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7')],
+            ('', None, 20, 300))
+        # no tier for this kaifu month
+        store2, rid2, s2, _ = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7')], ('', 99, 20, 300))
+        s2.authed_user, s2.server_id = 'hero', 'fu1304'
+        self.seed_online(store2, rid2, bind_yb=50)
+        self.assertEqual(self.decode(s2.online_lingqu([58005, None])),
+                         ['58005', [0, '592005']])
+        # nothing accrued
+        self.seed_online(store, rid, bind_yb=0)
+        self.assertEqual(self.decode(s.online_lingqu([58005, None])),
+                         ['58005', [0, '592006']])
+        # accrued but today is outside the open days (daytime '')
+        self.seed_online(store, rid, bind_yb=50)
+        self.assertEqual(self.decode(s.online_lingqu([58005, None])),
+                         ['58005', [0, '592005']])
+
+    def test_lingqu_repeat_and_success(self):
+        today = str(time.localtime().tm_mday)
+        store, rid, s, kaifu = self.live(
+            [(1, 0, '', 'ceshi_item:1:1:1.0:7')], (today, None, 20, 300))
+        store.update_character_state(rid, bind_lingshi=360)
+        # already claimed this month
+        self.seed_online(store, rid, bind_yb=50, done=1)
+        self.assertEqual(self.decode(s.online_lingqu([58005, None])),
+                         ['58005', [0, '592003']])
+        # success zeroes the accrual and credits bind_lingshi
+        self.seed_online(store, rid, bind_yb=50)
+        self.assertEqual(self.decode(s.online_lingqu([58005, None])),
+                         ['58005', [1, 50]])
+        row = store.get_role_online_reward(str(rid))
+        self.assertEqual((row['month_bind_yb'],
+                          row['is_lingqu_reward']), (0, 1))
+        char = store.get_character(str(rid), 'hero', 'fu1304')
+        self.assertEqual(char['bind_lingshi'], 410)
+
+    def test_dispatch_routes_live_handlers(self):
+        store, rid, s, _ = self.live([], ('', 3, 20, 300))
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(amf3.encode([10060, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]), ['10060', [0]])
+        out = s.feed(frame(s.cipher.encode(amf3.encode([58003, None]))))
+        self.assertEqual(len(out), 1)
+        env = amf3.decode(out[0][4:])
+        self.assertEqual(env[0], '58003')
+        self.assertEqual(env[1][0][2:], [0, [], 2])
+
+
+class TestLiveHusong(unittest.TestCase):
+    """De-stubbed slice: escort info/position/rob count (83000/83001/83008).
+
+    83001 answers [meiQiId, vip quota minus today's count] — [['1', 3]]
+    fresh, matching the session capture and the vipbiao husongsishu
+    quota; 83008 answers the jiebiao rob remainder ([[10]] fresh, [[0]]
+    with no row like Java's null branch). 83000 pushes the escort
+    beauty's spot, which is null with no escort running ([None] as
+    captured). The daily escort count resets past its day stamp.
+    """
+
+    def live(self, husong_rows=None, vip_rows=None):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        rid = store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        cfgdir = tempfile.mkdtemp()
+        cleanups.append((shutil.rmtree, (cfgdir,), {'ignore_errors': True}))
+        sysdir = os.path.join(cfgdir, 'sys_config')
+        os.makedirs(sysdir)
+        with open(os.path.join(sysdir, 'husong.jat'), 'wb') as f:
+            f.write(amf3.encode(husong_rows if husong_rows is not None
+                               else [Obj(id=1, name='mei1')]))
+        with open(os.path.join(sysdir, 'vipbiao.jat'), 'wb') as f:
+            f.write(amf3.encode(vip_rows if vip_rows is not None
+                               else [Obj(lv=0, husongsishu=3, jiebiao=10)]))
+        s = make_session(store, config=GameConfig(cfgdir))
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return store, rid, s
+
+    def decode(self, out):
+        self.assertIsNotNone(out)
+        return amf3.decode(out[4:])
+
+    def test_info_fresh_matches_capture(self):
+        store, rid, s = self.live()
+        self.assertEqual(self.decode(s.husong_info([83001, None])),
+                         ['83001', [['1', 3]]])
+        row = store.get_role_husong(str(rid))
+        self.assertEqual((row['mei_qi_id'], row['husong_times'],
+                          row['dajie_cishu']), ('1', 0, 0))
+
+    def test_info_counts_down_and_resets_daily(self):
+        store, rid, s = self.live()
+        store.save_role_husong(rid, mei_qi_id='1', husong_times=1,
+                               refresh_time=int(time.time() * 1000))
+        self.assertEqual(self.decode(s.husong_info([83001, None])),
+                         ['83001', [['1', 2]]])
+        store.save_role_husong(rid, husong_times=2, refresh_time=1)
+        self.assertEqual(self.decode(s.husong_info([83001, None])),
+                         ['83001', [['1', 3]]])
+        self.assertEqual(store.get_role_husong(str(rid))['husong_times'],
+                         0)
+
+    def test_dajie_missing_used_and_fresh(self):
+        store, rid, s = self.live()
+        # no row yet: Java's null branch answers [[0]]
+        self.assertEqual(self.decode(s.husong_dajie([83008, None])),
+                         ['83008', [[0]]])
+        # the info call settles the row; the full quota answers
+        self.decode(s.husong_info([83001, None]))
+        self.assertEqual(self.decode(s.husong_dajie([83008, None])),
+                         ['83008', [[10]]])
+        store.save_role_husong(rid, dajie_cishu=4)
+        self.assertEqual(self.decode(s.husong_dajie([83008, None])),
+                         ['83008', [[6]]])
+
+    def test_position_stays_null_without_escort(self):
+        _, _, s = self.live()
+        self.assertEqual(self.decode(s.husong_position([83000, None])),
+                         ['83000', [None]])
+
+    def test_dispatch_routes_live_handlers(self):
+        _, _, s = self.live()
+        s.feed(CAPTURED_INITKEY)
+        out = s.feed(frame(s.cipher.encode(amf3.encode([83001, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]), ['83001', [['1', 3]]])
+        # the info call settled the row, so the rob quota answers
+        out = s.feed(frame(s.cipher.encode(amf3.encode([83008, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]), ['83008', [[10]]])
+
+
+class TestLiveLoginLvEmailShenjiang(unittest.TestCase):
+    """De-stubbed slice 1: config/DB-backed infos + claim loops."""
+
+    def live(self, **kw):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        rid = store.create_character('hero', 'fu1304', '孫悟空', job='C')
+        cfg = GameConfig(DEFAULT_CONFIG_DIR)
+        s = make_session(store, config=cfg)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        for k, v in kw.items():
+            setattr(s, k, v)
+        return store, rid, s, cfg
+
+    def test_loginlibao_info_live(self):
+        store, rid, s, cfg = self.live()
+        env = amf3.decode(s.loginlibao_info([127000, [None]])[4:])
+        sign, rows = cfg.denglulibao_table()
+        self.assertEqual(env[0], '127000')
+        self.assertEqual(env[1][0], sign)
+        self.assertEqual(len(env[1][1]), len(rows))
+        self.assertEqual(env[1][2], 1)
+        # client sign match -> configs null, unclaimed still computed
+        env2 = amf3.decode(s.loginlibao_info([127000, [sign]])[4:])
+        self.assertIsNone(env2[1][1])
+        self.assertEqual(env2[1][2], 1)
+
+    def test_loginlibao_claim_roundtrip(self):
+        store, rid, s, cfg = self.live()
+        sign, rows = cfg.denglulibao_table()
+        gid = str(rows[0]['id'])
+        out = amf3.decode(s.loginlibao_claim([127001, [gid]])[4:])
+        self.assertEqual(out, ['127001', [1, gid]])
+        row = store.get_role_loginlibao(str(rid))
+        self.assertIn(gid, json.loads(row['lingqujson']))
+        self.assertEqual(amf3.decode(s.loginlibao_claim(
+            [127001, [gid]])[4:]), ['127001', [0]])
+        env = amf3.decode(s.loginlibao_info([127000, [None]])[4:])
+        # one of two claimed -> still unclaimed (2 rows in the table)
+        self.assertEqual(env[1][2], 1)
+
+    def test_lvlibao_claim_level_gated(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.lvlibao_info([58000, None])[4:]),
+                         ['58000', []])
+        _, rows = cfg.dengjilibao_table()
+        lv10 = next(r for r in rows if str(r.get('levelneed')) == '10')
+        num = str(lv10['number'])
+        # level 1 role cannot claim the Lv.10 pack
+        self.assertEqual(amf3.decode(s.lvlibao_claim(
+            [58001, [num]])[4:]), ['58001', [0]])
+        store.update_character_state(rid, level=10)
+        out = amf3.decode(s.lvlibao_claim([58001, [num]])[4:])
+        self.assertEqual(out, ['58001', [1, num]])
+        env = amf3.decode(s.lvlibao_info([58000, None])[4:])
+        self.assertEqual(env, ['58000', [[num, 1]]])
+
+    def test_email_empty_null_then_crud(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.email_list([63001, None])[4:]),
+                         ['63001', None])
+        mid = store.save_role_email(str(rid), title='hi', content='yo',
+                                    attachment='silver1:1:1')
+        env = amf3.decode(s.email_list([63001, None])[4:])
+        self.assertEqual(env[0], '63001')
+        self.assertEqual(len(env[1]), 1)
+        info = amf3.decode(s.email_info([63002, [str(mid)]])[4:])
+        self.assertEqual(info[0], '63002')
+        self.assertEqual(store.get_role_email(str(rid), str(mid))['is_read'], 1)
+        self.assertEqual(amf3.decode(s.email_delete(
+            [63004, [str(mid)]])[4:]), ['63004', [1, str(mid)]])
+        self.assertEqual(amf3.decode(s.email_list([63001, None])[4:]),
+                         ['63001', None])
+
+    def test_shenjiang_empty_then_live(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.shenjiang_info([41000, None])[4:]),
+                         ['41000', []])
+
+
+class TestLiveRewardInfos2(unittest.TestCase):
+    """De-stubbed slice 2: loginlingjiang, touxian, guangyi, baixian, zhuihui.
+
+    Infos reproduce the captured fresh-role bytes when the DB is empty
+    ([1, []] not the capture's [5, []] for 103000: the day count is the
+    live streak, and 107000 rows carry 0 progress until activity
+    tracking lands). Claim/worship flows validate, move currency/bag
+    state, persist, and guard double-claims. Worship (71001) and
+    recovery (107001) economy mappings are best-effort from
+    BaiXianHuaFei/ziyuanzhuihui column semantics; the oracle diff
+    adjudicates the exact Java mapping.
+    """
+
+    def live(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        rid = store.create_character('hero', 'fu1304', '孫悟空', job='C')
+        cfg = GameConfig(DEFAULT_CONFIG_DIR)
+        s = make_session(store, config=cfg)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return store, rid, s, cfg
+
+    def test_loginlingjiang_info_and_claim(self):
+        store, rid, s, cfg = self.live()
+        env = amf3.decode(s.loginlingjiang_info([103000, None])[4:])
+        self.assertEqual(env, ['103000', [1, []]])
+        out = amf3.decode(s.loginlingjiang_claim([103001, ['1']])[4:])
+        self.assertEqual(out, ['103001', [1, '1']])
+        self.assertEqual(amf3.decode(s.loginlingjiang_claim(
+            [103001, ['1']])[4:]), ['103001', [0]])
+        self.assertEqual(amf3.decode(s.loginlingjiang_claim(
+            [103001, ['2']])[4:]), ['103001', [0]])
+        env = amf3.decode(s.loginlingjiang_info([103000, None])[4:])
+        self.assertEqual(env, ['103000', [1, ['1']]])
+
+    def test_touxian_activate_and_wear(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.touxian_info([104000, None])[4:]),
+                         ['104000', [None, []]])
+        self.assertEqual(amf3.decode(s.touxian_activate(
+            [104001, ['999']])[4:]), ['104001', [0]])
+        tid = next(iter(cfg.touxian_table()))
+        self.assertEqual(amf3.decode(s.touxian_activate(
+            [104001, [tid]])[4:]), ['104001', [1, tid]])
+        self.assertEqual(amf3.decode(s.touxian_activate(
+            [104001, [tid]])[4:]), ['104001', [0]])
+        self.assertEqual(amf3.decode(s.touxian_wear(
+            [104002, ['999']])[4:]), ['104002', [0]])
+        self.assertEqual(amf3.decode(s.touxian_wear(
+            [104002, [tid]])[4:]), ['104002', [1, tid]])
+        self.assertEqual(amf3.decode(s.touxian_info([104000, None])[4:]),
+                         ['104000', [tid, [tid]]])
+
+    def test_guangyi_buy_and_wear(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.guangyi_info([102000, None])[4:]),
+                         ['102000', None])
+        first = cfg.guangyi_table()[0]
+        need_id = str(first.get('needthingsid') or '')
+        need_n = int(first.get('needthingsvalue') or 0)
+        store.insert_role_bag_slot(
+            rid, {'slot_num': 1, 'goods_id': need_id, 'count': need_n,
+                  'bind': 1})
+        self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
+                         ['102002', [1, 1]])
+        self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
+                         ['102002', [0]])
+        env = amf3.decode(s.guangyi_info([102000, None])[4:])
+        self.assertEqual(env[0], '102000')
+        self.assertEqual(env[1][:4], [1, 1, 0, 1])
+        self.assertEqual(env[1][4], [])
+        self.assertEqual(amf3.decode(s.guangyi_wear(
+            [102003, [1]])[4:]), ['102003', [1, 1]])
+
+    def test_guangyi_buy_short_bag_fails(self):
+        store, rid, s, cfg = self.live()
+        self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
+                         ['102002', [0]])
+
+    def test_baixian_info_and_free_worship(self):
+        store, rid, s, cfg = self.live()
+        flat = []
+        for r in cfg.baixian_table():
+            flat.extend([str(r.get('id')), 0])
+        self.assertEqual(amf3.decode(s.baixian_info([71000, None])[4:]),
+                         ['71000', [[flat, 0.0]]])
+        god = str(cfg.baixian_table()[0]['id'])
+        out = amf3.decode(s.baixian_worship([71001, [god]])[4:])
+        self.assertEqual(out, ['71001', [1, god, 1]])
+        env = amf3.decode(s.baixian_info([71000, None])[4:])
+        self.assertEqual(env[1][0][0][1], 1)
+        self.assertEqual(amf3.decode(s.baixian_worship(
+            [71001, ['999']])[4:]), ['71001', [0]])
+
+    def test_zhuihui_info_and_claim(self):
+        store, rid, s, cfg = self.live()
+        env = amf3.decode(s.zhuihui_info([107000, None])[4:])
+        self.assertEqual(env[0], '107000')
+        self.assertEqual(len(env[1][0]), 8)
+        self.assertTrue(all(r[1] == 0 and r[2] == 0 for r in env[1][0]))
+        zid = sorted(cfg.zhuihui_table(), key=int)[0]
+        cost = int(cfg.zhuihui_table()[zid].get('money1') or 0)
+        store.update_character_state(rid, lingshi=cost)
+        tongqian_before = store.get_character(
+            str(rid), 'hero', 'fu1304')['tongqian'] or 0
+        out = amf3.decode(s.zhuihui_claim([107001, [zid]])[4:])
+        self.assertEqual(out, ['107001', [1, zid]])
+        self.assertEqual(amf3.decode(s.zhuihui_claim(
+            [107001, [zid]])[4:]), ['107001', [0]])
+        after = store.get_character(str(rid), 'hero', 'fu1304')
+        self.assertEqual(after['lingshi'], 0)
+        self.assertGreaterEqual(after['tongqian'], tongqian_before)
+        env = amf3.decode(s.zhuihui_info([107000, None])[4:])
+        row = next(r for r in env[1][0] if r[0] == zid)
+        self.assertEqual(row[2], 1)
+
+
+class TestLiveDafuwongXianshibuy(unittest.TestCase):
+    """De-stubbed slice 3: dafuwong board (105000-105002) + timed shop.
+
+    105000 reproduces the captured fresh-role bytes; rolls move coin/gold
+    balances, grant board items, persist counters, and enforce the vip
+    coin-roll cap. Exchange spends grade points or yushi goods. Resets
+    are daily (slot/counters) and weekly (zanshi stamps). The timed shop
+    has no published xianshishop drop, so 119000 stays silent and the
+    buy/clearCd loop runs against a mocked shop table; isBuy windows,
+    server/personal caps, the shared-type cooldown, and both pushes are
+    covered. Broadcasts beyond the buyer's own 119001 push need a bus.
+    """
+
+    SHOP = [{'id': 't1', 'type': 1, 'smax': 5, 'pmax': 2, 'price': 50,
+             'cd': 3600000, 'consume': 10, 'kaifudays': 0, 'startday': 0,
+             'hefustart': 0, 'hefudays': 0, 'start_ms': 0, 'end_ms': 0,
+             'window': ['00:00', '23:59'], 'grants': [('yushi', 2, 1)],
+             'client': {'id': 't1'}}]
+
+    def live(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        rid = store.create_character('hero', 'fu1304', '孫悟空', job='C')
+        cfg = GameConfig(DEFAULT_CONFIG_DIR)
+        s = make_session(store, config=cfg)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        return store, rid, s, cfg
+
+    def decode(self, out):
+        self.assertIsNotNone(out)
+        if isinstance(out, tuple):
+            return [amf3.decode(o[4:]) for o in out]
+        return amf3.decode(out[4:])
+
+    def test_info_fresh_role_matches_capture(self):
+        _, _, s, _ = self.live()
+        self.assertEqual(self.decode(s.dafuwong_info([105000, None])),
+                         ['105000', [0, 0, 0, 0, 0, False]])
+
+    def test_dispatch_routes_live_handlers(self):
+        cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in cleanups])
+        store = temp_store(cleanups)
+        store.create_account('hero', hash_password('pw'))
+        store.create_character('hero', 'fu1304', 'SunWukong', job='C')
+        s = make_session(store, config=GameConfig(DEFAULT_CONFIG_DIR))
+        s.feed(CAPTURED_INITKEY)
+        s.authed_user, s.server_id = 'hero', 'fu1304'
+        out = s.feed(frame(s.cipher.encode(amf3.encode([105000, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]),
+                         ['105000', [0, 0, 0, 0, 0, False]])
+        out = s.feed(frame(s.cipher.encode(amf3.encode([119001, None]))))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(amf3.decode(out[0][4:]), ['119001', [1, []]])
+
+    def test_roll_coin_and_gold_move_balances(self):
+        store, rid, s, _ = self.live()
+        store.update_character_state(rid, tongqian=1000000,
+                                     lingshi=1000000)
+        with mock.patch('game.protocol.random.randint',
+                         return_value=3):
+            env = self.decode(s.dafuwong_roll([105001, [1]]))
+        # slot 3 is a +10 grade stop: price 10000 coin, counters bump
+        self.assertEqual(env, ['105001', [1, 3, 3, 0, 10, False, 1,
+                                          1, None]])
+        char = store.get_character(str(rid), 'hero', 'fu1304')
+        self.assertEqual(char['tongqian'], 990000)
+        row = store.get_role_dafuwong(str(rid))
+        self.assertEqual((row['slot'], row['grade'],
+                          row['tongqian_count']), (3, 10, 1))
+        with mock.patch('game.protocol.random.randint',
+                         return_value=3):
+            env = self.decode(s.dafuwong_roll([105001, [2]]))
+        self.assertEqual(env[1][:6], [1, 3, 6, 0, 20, False])
+        self.assertEqual(env[1][8], None)
+        char = store.get_character(str(rid), 'hero', 'fu1304')
+        self.assertEqual(char['lingshi'], 999990)
+        env = self.decode(s.dafuwong_info([105000, None]))
+        self.assertEqual(env, ['105000', [6, 20, 0, 2, 1, False]])
+
+    def test_roll_guards(self):
+        store, rid, s, _ = self.live()
+        # broke role: coin roll wants tongqian (1003), gold wants gold
+        self.assertEqual(self.decode(s.dafuwong_roll([105001, [1]])),
+                         ['105001', [0, 1003]])
+        self.assertEqual(self.decode(s.dafuwong_roll([105001, [2]])),
+                         ['105001', [0, 1002]])
+        self.assertIsNone(s.dafuwong_roll([105001, [9]]))
+        self.assertIsNone(s.dafuwong_roll([105001, ['x']]))
+        # vip0 allows 10 coin rolls a day; the 11th answers 105001
+        store.update_character_state(rid, tongqian=10000000)
+        store.save_role_dafuwong(str(rid), tongqian_count=10,
+                                 last_roll_ms=int(time.time() * 1000))
+        self.assertEqual(self.decode(s.dafuwong_roll([105001, [1]])),
+                         ['105001', [0, 105001]])
+
+    def test_roll_ten_gold_shape(self):
+        store, rid, s, _ = self.live()
+        store.update_character_state(rid, lingshi=1000000)
+        with mock.patch('game.protocol.random.randint',
+                         return_value=1):
+            env = self.decode(s.dafuwong_roll([105001, [3]]))
+        self.assertEqual(env[0], '105001')
+        body = env[1]
+        self.assertEqual(body[0], 1)
+        self.assertEqual(len(body[8]), 10)
+        char = store.get_character(str(rid), 'hero', 'fu1304')
+        self.assertEqual(char['lingshi'], 999900)
+        row = store.get_role_dafuwong(str(rid))
+        self.assertEqual(row['roll_count'], 10)
+        self.assertEqual(row['tongqian_count'], 0)
+
+    def test_exchange_grade_and_yushi_pages(self):
+        store, rid, s, _ = self.live()
+        self.assertIsNone(s.dafuwong_exchange([105002, ['nope']]))
+        # page 1: 101 costs 10000 grade points
+        self.assertEqual(self.decode(s.dafuwong_exchange(
+            [105002, ['101']])), ['105002', [0, 105000]])
+        store.save_role_dafuwong(str(rid), grade=10000,
+                                 last_roll_ms=int(time.time() * 1000))
+        self.assertEqual(self.decode(s.dafuwong_exchange(
+            [105002, ['101']])), ['105002', [1, '101']])
+        self.assertEqual(self.decode(s.dafuwong_exchange(
+            [105002, ['101']])), ['105002', [0, 105000]])
+        goods = [g.get('goods_id')
+                 for g in store.get_role_bag_slots(str(rid), 1, 150)]
+        self.assertIn('txdihu', goods)
+        # page 2: 187 costs 100 yushi goods
+        self.assertEqual(self.decode(s.dafuwong_exchange(
+            [105002, ['187']])), ['105002', [0, 1005]])
+        store.insert_role_bag_slot(str(rid), {'slot_num': 20,
+                                              'goods_id': 'yushi',
+                                              'count': 100, 'bind': 0})
+        self.assertEqual(self.decode(s.dafuwong_exchange(
+            [105002, ['187']])), ['105002', [1, '187']])
+        goods = [g.get('goods_id')
+                 for g in store.get_role_bag_slots(str(rid), 1, 150)]
+        self.assertIn('sj0210', goods)
+        self.assertNotIn('yushi', goods)
+
+    def test_resets_daily_and_weekly(self):
+        store, rid, s, _ = self.live()
+        eight_days = int(time.time() * 1000) - 8 * 86400000
+        store.save_role_dafuwong(str(rid), slot=7, grade=50, zanshi=5,
+                                 roll_count=3, tongqian_count=4,
+                                 last_roll_ms=eight_days)
+        env = self.decode(s.dafuwong_info([105000, None]))
+        self.assertEqual(env, ['105000', [0, 50, 0, 0, 0, False]])
+        # a different day in the same ISO week keeps the zanshi stamps:
+        # freeze a Tuesday noon, stamp Monday noon
+        tue_noon = time.mktime((2024, 5, 14, 12, 0, 0, 0, 0, -1))
+        with mock.patch('game.protocol.time.time',
+                         return_value=tue_noon):
+            store.save_role_dafuwong(str(rid), slot=7, zanshi=5,
+                                     roll_count=3, tongqian_count=4,
+                                     last_roll_ms=int(
+                                         (tue_noon - 86400) * 1000))
+            env = self.decode(s.dafuwong_info([105000, None]))
+        self.assertEqual(env, ['105000', [0, 50, 5, 0, 0, False]])
+
+    def test_week_helper_edges(self):
+        noon = lambda y, m, d: int(time.mktime((y, m, d, 12, 0, 0, 0, 0,
+                                                -1)) * 1000)
+        changed = Session._dafuwong_week_changed
+        self.assertFalse(changed(noon(2024, 5, 15), noon(2024, 5, 16)))
+        self.assertTrue(changed(noon(2024, 5, 8), noon(2024, 5, 16)))
+
+    def test_xianshibuy_silent_without_drop(self):
+        _, _, s, _ = self.live()
+        self.assertIsNone(s.xianshibuy_client([119000, None]))
+        self.assertEqual(self.decode(s.xianshibuy_info([119001, None])),
+                         ['119001', [1, []]])
+        self.assertIsNone(s.xianshibuy_buy([119002, ['t1']]))
+
+    def test_xianshibuy_buy_and_clearcd_loop(self):
+        store, rid, s, cfg = self.live()
+        shop = [dict(r) for r in self.SHOP]
+        with mock.patch.object(cfg, 'xianshishop_table',
+                                return_value=shop):
+            self.assertEqual(self.decode(s.xianshibuy_info(
+                [119001, None])), ['119001', [1, []]])
+            # broke: gold short
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['t1']])), ['119002', [0, 1002]])
+            store.update_character_state(rid, lingshi=1000)
+            reply, push = self.decode(s.xianshibuy_buy([119002,
+                                                        ['t1']]))
+            self.assertEqual(reply, ['119002', [1, 't1']])
+            self.assertEqual(push[0], '119001')
+            self.assertEqual(push[1][0], 1)
+            entry = push[1][1][0]
+            self.assertEqual(entry[:3], ['t1', 1, 1])
+            self.assertGreater(entry[3], int(time.time() * 1000))
+            sold = store.get_xianshi_buy()
+            self.assertEqual(sold and sold.get('buy_data'), '{"t1": 1}')
+            goods = [g.get('goods_id') for g in
+                     store.get_role_bag_slots(str(rid), 1, 150)]
+            self.assertIn('yushi', goods)
+            # shared-type cooldown blocks the immediate rebuy
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['t1']])), ['119002', [0, 119003]])
+            # clearing the cd (10 gold) reopens the second personal buy
+            cleared = self.decode(s.xianshibuy_clearcd([119003,
+                                                        ['t1']]))
+            self.assertEqual(cleared[0], ['119003', [1, 't1']])
+            self.assertEqual(cleared[1][0], '119001')
+            reply, _ = self.decode(s.xianshibuy_buy([119002, ['t1']]))
+            self.assertEqual(reply, ['119002', [1, 't1']])
+            # the second buy re-arms the cd; clearing it once more
+            # leaves the personal cap as the only block
+            cleared = self.decode(s.xianshibuy_clearcd([119003,
+                                                        ['t1']]))
+            self.assertEqual(cleared[0], ['119003', [1, 't1']])
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['t1']])), ['119002', [0, 119002]])
+            char = store.get_character(str(rid), 'hero', 'fu1304')
+            self.assertEqual(char['lingshi'], 1000 - 50 - 10 - 50 - 10)
+
+    def test_xianshibuy_caps_and_closed(self):
+        store, rid, s, cfg = self.live()
+        closed = [dict(r, id='shut', kaifudays=5,
+                        window=['00:00', '23:59']) for r in self.SHOP]
+        tiny = [dict(r, smax=1, pmax=9) for r in self.SHOP]
+        with mock.patch.object(cfg, 'xianshishop_table',
+                                return_value=closed):
+            store.update_character_state(rid, lingshi=1000)
+            # kaifu window (server boot 2009 + 5 days) long passed
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['shut']])), ['119002', [0, 119000]])
+        with mock.patch.object(cfg, 'xianshishop_table',
+                                return_value=tiny):
+            store.update_character_state(rid, lingshi=1000)
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['t1']]))[0], ['119002', [1, 't1']])
+            self.assertEqual(self.decode(
+                s.xianshibuy_clearcd([119003, ['t1']]))[0],
+                ['119003', [1, 't1']])
+            # server sold 1 of 1: the next buy is sold out
+            self.assertEqual(self.decode(s.xianshibuy_buy(
+                [119002, ['t1']])), ['119002', [0, 119001]])
+        self.assertEqual(self.decode(s.xianshibuy_clearcd(
+            [119003, ['nope']])), ['119003', [0, 119004]])
 
 
 if __name__ == '__main__':

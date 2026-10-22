@@ -15,6 +15,8 @@ end goal is a **downloadable desktop client**.
 | `docs/` | Wire evidence and port tracking: `protocol.md`, `boot-chain.md`, `server-roadmap.md`, `command-ledger.md`, `java-python-parity-audit.md`, `mysql-to-sqlite-migration.md`, `game-data-inventory.md`. |
 | `reference/TonNgoKhong/` | Legacy game distribution (Java jar, bundled JRE, ESSamp Apache/PHP/MySQL). Behavioral oracle; do not modify binaries. |
 | `brain/` | Project memory (decisions, constraints) maintained with the `brain` skills in `skills/` — it tracks development, it is not the project itself. |
+| `skills/` | Agent skills: `brain-*` memory skills plus vendored `ui-ux-pro-max` design intelligence. |
+| `agents.json` | Skill/agent registry: paths, when-to-use, and the brain + ui-ux-pro-max co-use rule. |
 
 ## Quickstart
 

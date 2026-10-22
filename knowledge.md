@@ -8,8 +8,9 @@ A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "Ton
 
 - **Target client:** the original Flash client in the **Adobe Flash Player projector** (Flash 32.0.0.363) at `MKO_Client/flash-projector/flashplayer363.exe` (the path `tools/projector-client.py` uses). Native sockets go straight to the game server on `127.0.0.1:8008`, with no bridge.
 - **`client/` (Vite web client) is not in this checkout.** Do not build workflows around it. The Ruffle/bridge path under `tools/bridge/` is the only web-side piece that remains.
-- **Projector login (settled).** With no positional arguments, `tools/projector-client.py` reads `<username>/<password>` from `MKO_Client/config.json` (gitignored), calls the Python API for a gamesession, and passes only `uid/t/sign/seid/sport/ip` in flashvars. The password never enters a URL. Point it at the new stack with `--api-base http://127.0.0.1:8080 --movie-base http://127.0.0.1:8081/res` (the asset host on 8081 serves `/res`; port 80 does not).
+- **Projector login (settled).** With no positional arguments, `tools/projector-client.py` reads `<username>/<password>` from `MKO_Client/config.json` (gitignored), calls the Python API for a gamesession, and passes only `uid/t/sign/seid/sport/ip` in flashvars. The password never enters a URL. Point it at the new stack with `--api-base http://127.0.0.1:8080 --movie-base http://127.0.0.1:8081/res` (the asset host on 8081 is `python -m http.server` rooted at `MKO_Client/Assets/`; port 80 also serves `/res` via `Alias`, but only 8081's docroot mirrors `gameconfig/`, which the client fetches relative to the movie URL — without that mirror every gameconfig request 404s).
 - **Open blocker:** the client reaches ~99% load but has not yet shown the visual login screen. Socket reachability is intermittent (see `docs/protocol.md`, "Open question").
+- **Client SWFs stay unmodified.** The stock files work with the Java stack, so do not patch them. Encrypted UI SWF decryption is unsolved; see [docs/swf-encryption-notes.md](docs/swf-encryption-notes.md) (session 2026-10-18).
 
 ## Layout
 
@@ -20,10 +21,12 @@ A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "Ton
 | `tools/parse_flashvars.py` | Extracts flashvars from a saved `Gamelogin.php` page. |
 | `tools/bridge/` | Node WebSocket→TCP forwarder (`bridge.js`). Byte-transparent. Not needed for the projector. |
 | `tools/migrate_mysql_to_sqlite.py` | Copies the legacy MySQL rows the server needs into SQLite, scoped to named accounts. Read-only on MySQL. See `docs/mysql-to-sqlite-migration.md`. |
-| `tools/*.py` | Reverse-engineering helpers (`javap.py`, `decode-tap.py`, `tcp-tap.py`, `abc_strings.py`, `dat_strings.py`, `image_inventory.py`, `swf_survey.py`, `game_data_survey.py`, `jar_inventory.py`, `record-session.py`, `login-gui.py`). |
+| `tools/*.py` | Reverse-engineering helpers (`javap.py`, `decode-tap.py`, `tcp-tap.py`, `abc_strings.py`, `dat_strings.py`, `image_inventory.py`, `swf_survey.py`, `game_data_survey.py`, `jar_inventory.py`, `record-session.py`, `login-gui.py`, `oracle-diff.py`). |
 | `docs/` | `protocol.md` (wire evidence), `boot-chain.md` (original client boot sequence), `java-command-map.md` (command id → Java class), `java-python-parity-audit.md` (parity status and security risks), `mysql-to-sqlite-migration.md` (legacy data mapping), `game-data-inventory.md`. |
 | `reference/TonNgoKhong/` | Legacy game distribution (Java jar, bundled JRE, ESSamp Apache/PHP/MySQL). Large binaries; `reference/` is versioned in git. |
 | `reference/NEW-STACK-BOOT.md`, `OLD-STACK-BOOT.md` | Boot notes for the new and legacy stacks. |
+| `skills/` | Agent skills: `brain-*` memory skills plus vendored `ui-ux-pro-max` (upstream `.claude/skills/ui-ux-pro-max`, flagship only). |
+| `agents.json` | Skill/agent registry: paths, when-to-use, and the co-use rule (brain context first, then the ui-ux skill for visual work). |
 | `output/` | Generated artifacts and runtime logs/pid files (surveys, inventories, migration report, `desktop-client/`). The projector executable is not here; it lives in `MKO_Client/`. |
 
 ## Commands

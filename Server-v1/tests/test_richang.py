@@ -12,17 +12,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from auth import hash_password  # noqa: E402
 from db import Store  # noqa: E402
-from game.amf3 import decode  # noqa: E402
+from game.amf3 import decode, encode  # noqa: E402
 from game.config import GameConfig  # noqa: E402
-from game.protocol import (MALL_ERR_YB_NO_ENOUGHT,  # noqa: E402
-                           RICHANG_COST_TISHENG, RICHANG_MIN_LEVEL,
+from game.protocol import (CMD_RICHANG_NOTIFY_LOOP,  # noqa: E402
+                           MALL_ERR_YB_NO_ENOUGHT,
+                           RICHANG_COST_TISHENG, RICHANG_MAX_LOOP,
+                           RICHANG_MIN_LEVEL,
                            RICHANG_THICK_MAX, TASK_ERR_NOT_RICHANG,
-                           TASK_ERR_RICHANG_THICK_MAX, Session)
+                           TASK_ERR_RICHANG_THICK_MAX, Session, frame)
 
 REAL_CONFIG = os.path.join(os.path.dirname(__file__), '..', '..',
                            'reference', 'TonNgoKhong', 'server', 'config',
                            'game')
 HAVE_REAL = os.path.isdir(REAL_CONFIG)
+
+# Live-captured first frame from the original client (see
+# tests/test_protocol.py); the fufei path below goes through dispatch.
+INITKEY_FRAME = bytes.fromhex('00000009060f494e49544b4559')
 
 
 @unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
@@ -169,6 +175,37 @@ class RichangActionTest(unittest.TestCase):
 
     def test_notify_loop_without_fufei_is_silent(self):
         self.assertIsNone(self.sess.richang_notify_loop())
+
+    def test_direct_finish_on_final_loop_emits_stop(self):
+        # Loop 20 paid through 50204 settles the quest and pushes the
+        # 50211 stop frame with the loop reward (no 50210 follows).
+        self.set_reward(thick_is_max=False)
+        self.store.save_task_richang(
+            self.rid, current_loop=RICHANG_MAX_LOOP, task_state=1,
+            fufei_state=0)
+        frames = RichangInfoTest.frames(self.sess.richang_zhijie())
+        self.assertEqual([f[0] for f in frames],
+                         ['50207', '50211', '50204'])
+        row = self.store.get_task_richang(self.rid)
+        self.assertEqual(row['task_state'], 2)
+
+    def test_notify_loop_fufei_pays_and_advances(self):
+        table = self.cfg._richang_reward_assembly()[0]
+        reward = next(r for r in table.values()
+                      if r['jb'] > 0 and r['thick'] != RICHANG_THICK_MAX)
+        self.store.save_task_richang(
+            self.rid, reward_config_id=reward['id'], current_loop=1,
+            task_state=1, fufei_state=1)
+        before = self.role()['tongqian']
+        self.sess.feed(INITKEY_FRAME)
+        out = self.sess.feed(frame(self.sess.cipher.encode(
+            encode([CMD_RICHANG_NOTIFY_LOOP, None]))))
+        frames = [decode(bytes(f)[4:]) for f in out]
+        self.assertEqual([f[0] for f in frames], ['50207', '50210'])
+        row = self.store.get_task_richang(self.rid)
+        self.assertEqual(row['current_loop'], 2)
+        self.assertEqual(row['task_state'], 0)
+        self.assertEqual(self.role()['tongqian'], before + reward['jb'])
 
     def set_reward(self, thick_is_max):
         table = self.cfg._richang_reward_assembly()[0]

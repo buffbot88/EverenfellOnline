@@ -122,12 +122,15 @@ def plan_counts(mysql, users):
              'role_xianjiechenhao': ' ' + role_filter(role_ids),
              'role_meiren': ' ' + role_filter(role_ids),
              'role_zuoqi': ' ' + role_filter(role_ids),
+             'role_pet': ' ' + role_filter(role_ids),
+             'role_pet_zhenfa': ' ' + role_filter(role_ids),
              'role_skill': ' ' + role_filter(role_ids),
              'role_shenjiang': ' ' + role_filter(role_ids),
              'role_bag_slot': ' ' + role_filter(role_ids),
              'role_bag_buyback': ' ' + role_filter(role_ids),
              'role_bag_dummy': ' ' + role_filter(role_ids),
              'role_prop': ' ' + role_filter(role_ids),
+             'role_qiandao': ' ' + role_filter(role_ids),
              'role_skillbook_slot': ' ' + role_filter(role_ids),
              'role_bag_state': ' ' + role_filter(role_ids),
              'role_qq_list': ' ' + role_filter(role_ids),
@@ -143,11 +146,14 @@ def plan_counts(mysql, users):
               'role_xianjiechenhao': ('dntg', 'role_xianjiechenhao'),
               'role_meiren': ('dntg', 'role_meiren'),
               'role_zuoqi': ('dntg', 'role_zuoqi'),
+              'role_pet': ('dntg', 'role_pet'),
+              'role_pet_zhenfa': ('dntg', 'role_pet_zhenfa'),
               'role_skill': ('dntg', 'role_skill'),
               'role_shenjiang': ('dntg', 'role_shenjiang'),               'role_bag_slot': ('dntg', 'role_bag_slot'),
                'role_bag_buyback': ('dntg', 'role_bag_buyback'),
                'role_bag_dummy': ('dntg', 'role_bag_dummy'),
                'role_prop': ('dntg', 'role_prop'),
+               'role_qiandao': ('dntg', 'role_qiandao'),
                'role_skillbook_slot': ('dntg', 'role_skillbook_slot'),
               'role_bag_state': ('dntg', 'role_bag_state'),
               'role_qq_list': ('dntg', 'role_qq_list'),
@@ -167,9 +173,12 @@ def migrate(mysql, db_path, users, dry_run=False):
               'stages_written': 0, 'currency_written': 0,
               'equip_written': 0, 'attr_buffs_written': 0, 'vip_written': 0,
               'xianjiechenhao_written': 0, 'meiren_written': 0,
-              'zuoqi_written': 0, 'skills_written': 0, 'shenjiang_written': 0,
+              'zuoqi_written': 0, 'pets_written': 0,
+              'pet_zhenfa_written': 0,
+              'skills_written': 0, 'shenjiang_written': 0,
               'bag_slots_written': 0, 'buyback_written': 0,
               'role_prop_written': 0,
+              'role_qiandao_written': 0,
               'skillbook_slots_written': 0,
               'bag_state_written': 0,
               'task_main_written': 0,
@@ -211,6 +220,14 @@ def migrate(mysql, db_path, users, dry_run=False):
                                  + ' order by user_role_id,meiren_id')
     zuoqi = mysql.query('dntg', 'select user_role_id,rank,cur_rank'
                                 ' from role_zuoqi ' + role_where)
+    pets = mysql.query('dntg', 'select id,user_role_id,pet_id,pet_lv,'
+                               'pet_lv_exp,pet_rank,pet_rank_exp'
+                               ' from role_pet ' + role_where
+                               + ' order by user_role_id')
+    pet_zhenfa = mysql.query('dntg', 'select user_role_id,zhenfa_id,'
+                                     'pet_chuzhan_id,upgrade_exp,'
+                                     'zhenfa_pet,pet_upgrade_count'
+                                     ' from role_pet_zhenfa ' + role_where)
     skills = mysql.query('dntg', 'select id,user_role_id,skill_category_id,'
                                  'skill_level from role_skill ' + role_where
                                  + ' order by id')
@@ -235,6 +252,11 @@ def migrate(mysql, db_path, users, dry_run=False):
                                      'surplus_value,surplus_time,use_count'
                                      ' from role_prop ' + role_where
                                      + ' order by user_role_id')
+    qiandao = mysql.query('dntg', 'select user_role_id,total_qiandao_count,'
+                                  'month,month_qiandao,total_qiandao_reward,'
+                                  'month_qiandao_reward,week,vip_buqian_count,'
+                                  'qiandao_time,online_time'
+                                  ' from role_qiandao ' + role_where)
     skillbook_slots = mysql.query('dntg', 'select id,slot_num,user_role_id,'
                                           'goods_id,count,bind,expire_time,'
                                           'rare_level,item_level,attributes'
@@ -263,9 +285,12 @@ def migrate(mysql, db_path, users, dry_run=False):
         report['xianjiechenhao_written'] = len(xianjiechenhao)
         report['meiren_written'] = len(meiren)
         report['zuoqi_written'] = len(zuoqi)
+        report['pets_written'] = len(pets)
+        report['pet_zhenfa_written'] = len(pet_zhenfa)
         report['bag_slots_written'] = len(bag_slots)
         report['buyback_written'] = len(buyback)
         report['role_prop_written'] = len(role_props)
+        report['role_qiandao_written'] = len(qiandao)
         report['skillbook_slots_written'] = len(skillbook_slots)
         report['bag_state_written'] = len(bag_state)
         report['task_main_written'] = len(task_main)
@@ -377,7 +402,11 @@ def migrate(mysql, db_path, users, dry_run=False):
         conn.execute('CREATE TABLE IF NOT EXISTS role_shenjiang(role_id INTEGER NOT NULL,'
                      ' shenjiang_key TEXT NOT NULL, shenjiang_id TEXT NOT NULL,'
                      ' jiangxing_id TEXT, jiangxing_rank INTEGER DEFAULT 1,'
-                     ' skills TEXT, PRIMARY KEY(role_id, shenjiang_key))')
+                     ' skills TEXT, jiangxing_state INTEGER DEFAULT 0,'
+                     ' cur_jiangxing_id TEXT, fail_count INTEGER DEFAULT 0,'
+                     ' rank_fail_count INTEGER DEFAULT 0,'
+                     ' rank_lucky INTEGER DEFAULT 0,'
+                     ' PRIMARY KEY(role_id, shenjiang_key))')
         for row in shenjiang:
             shenjiang_key, user_role_id, shenjiang_id, jiangxing_id, rank, skills = \
                 (row + [None] * 6)[:6]
@@ -527,6 +556,39 @@ def migrate(mysql, db_path, users, dry_run=False):
                  as_int(use_stop_time), as_int(surplus_value),
                  as_int(surplus_time), as_int(use_count) or 0))
             report['role_prop_written'] += 1
+        conn.execute('CREATE TABLE IF NOT EXISTS role_qiandao(role_id INTEGER PRIMARY KEY,'
+                     ' total_qiandao_count INTEGER DEFAULT 0, month INTEGER,'
+                     ' month_qiandao TEXT, total_qiandao_reward TEXT,'
+                     ' month_qiandao_reward TEXT, week INTEGER,'
+                     ' vip_buqian_count INTEGER DEFAULT 0,'
+                     ' qiandao_time INTEGER, online_time INTEGER)')
+        for row in qiandao:
+            (user_role_id, total_count, month, month_qiandao, total_reward,
+             month_reward, week, vip_buqian, qiandao_time,
+             online_time) = (row + [None] * 10)[:10]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_qiandao(role_id, total_qiandao_count, month,'
+                ' month_qiandao, total_qiandao_reward, month_qiandao_reward,'
+                ' week, vip_buqian_count, qiandao_time, online_time)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' total_qiandao_count=excluded.total_qiandao_count,'
+                ' month=excluded.month,'
+                ' month_qiandao=excluded.month_qiandao,'
+                ' total_qiandao_reward=excluded.total_qiandao_reward,'
+                ' month_qiandao_reward=excluded.month_qiandao_reward,'
+                ' week=excluded.week,'
+                ' vip_buqian_count=excluded.vip_buqian_count,'
+                ' qiandao_time=excluded.qiandao_time,'
+                ' online_time=excluded.online_time',
+                (local_id, as_int(total_count) or 0, as_int(month),
+                 month_qiandao, total_reward, month_reward, as_int(week),
+                 as_int(vip_buqian) or 0, as_int(qiandao_time),
+                 as_int(online_time)))
+            report['role_qiandao_written'] += 1
         for row in bag_state:
             (user_role_id, bag_capacity, bag_slot_time, bag_update_slot_time,
              storage_capacity, storage_slot_time,
@@ -704,6 +766,61 @@ def migrate(mysql, db_path, users, dry_run=False):
                 ' zuoqi_cur_rank=excluded.zuoqi_cur_rank',
                 (local_id, as_int(rank) or 0, as_int(cur_rank) or 0))
             report['zuoqi_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_pet(id TEXT PRIMARY KEY,'
+                     ' role_id INTEGER NOT NULL, pet_id TEXT,'
+                     ' pet_lv INTEGER DEFAULT 0, pet_lv_exp INTEGER DEFAULT 0,'
+                     ' pet_rank INTEGER DEFAULT 0,'
+                     ' pet_rank_exp INTEGER DEFAULT 0,'
+                     ' pet_rank_fail INTEGER DEFAULT 0,'
+                     ' pet_rank_update_time INTEGER DEFAULT 0,'
+                     ' create_time INTEGER DEFAULT 0)')
+        for row in pets:
+            pid, user_role_id, pet_id, lv, lv_exp, rank, rank_exp = \
+                (row + [None] * 7)[:7]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None or not pet_id:
+                continue
+            conn.execute(
+                'INSERT INTO role_pet(id, role_id, pet_id, pet_lv,'
+                ' pet_lv_exp, pet_rank, pet_rank_exp)'
+                ' VALUES(?,?,?,?,?,?,?)'
+                ' ON CONFLICT(id) DO UPDATE SET'
+                ' pet_lv=excluded.pet_lv,'
+                ' pet_lv_exp=excluded.pet_lv_exp,'
+                ' pet_rank=excluded.pet_rank,'
+                ' pet_rank_exp=excluded.pet_rank_exp',
+                (pid, local_id, pet_id, as_int(lv) or 0,
+                 as_int(lv_exp) or 0, as_int(rank) or 0,
+                 as_int(rank_exp) or 0))
+            report['pets_written'] += 1
+
+        conn.execute('CREATE TABLE IF NOT EXISTS role_pet_zhenfa(role_id INTEGER'
+                     ' PRIMARY KEY, zhenfa_id TEXT, pet_chuzhan_id TEXT,'
+                     ' upgrade_exp INTEGER DEFAULT 0,'
+                     ' jinjie_fail_count INTEGER DEFAULT 0,'
+                     ' jinjie_time INTEGER DEFAULT 0, jinjie_data TEXT,'
+                     ' zhenfa_pet TEXT, pet_upgrade_count INTEGER DEFAULT 0,'
+                     ' pet_upgrade_time INTEGER DEFAULT 0)')
+        for row in pet_zhenfa:
+            user_role_id, zhenfa_id, chuzhan, up_exp, zf_pet, up_count = \
+                (row + [None] * 6)[:6]
+            local_id = legacy_to_local.get(user_role_id)
+            if local_id is None:
+                continue
+            conn.execute(
+                'INSERT INTO role_pet_zhenfa(role_id, zhenfa_id,'
+                ' pet_chuzhan_id, upgrade_exp, zhenfa_pet, pet_upgrade_count)'
+                ' VALUES(?,?,?,?,?,?)'
+                ' ON CONFLICT(role_id) DO UPDATE SET'
+                ' zhenfa_id=excluded.zhenfa_id,'
+                ' pet_chuzhan_id=excluded.pet_chuzhan_id,'
+                ' upgrade_exp=excluded.upgrade_exp,'
+                ' zhenfa_pet=excluded.zhenfa_pet,'
+                ' pet_upgrade_count=excluded.pet_upgrade_count',
+                (local_id, zhenfa_id, chuzhan, as_int(up_exp) or 0,
+                 zf_pet, as_int(up_count) or 0))
+            report['pet_zhenfa_written'] += 1
 
         for user_role_id, tongqian, bind_lingshi in currency:
             local_id = legacy_to_local.get(user_role_id)

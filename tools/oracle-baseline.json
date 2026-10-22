@@ -1,0 +1,14 @@
+{
+  "push": {
+    "ignore": [
+      "42100"
+    ],
+    "baseline": {
+      "12004": "$[1][1]: java=348.0 python=253.0"
+    }
+  },
+  "reply": {
+    "ignore": [],
+    "baseline": {}
+  }
+}

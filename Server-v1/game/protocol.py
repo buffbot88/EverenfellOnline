@@ -29,7 +29,7 @@ Messages (NetIoHandler/LoginAction/InOutput/PublicMsgSender bytecode):
   signError result = [0, '16002']
 Deviations from the original (all logged, to refine against the live client):
   - slot 2 -> "serverId-gsVersion" string (fu0-20140224_213740); TimeZone
-    slot -> anonymous object with rawOffset (ServerInfoVO.decode reads it).
+    slot -> sealed sun.util.calendar.ZoneInfo with rawOffset/ID members.
   - role entries: shape unknown, so only the empty-roles case is served.
 """
 import json
@@ -42,7 +42,7 @@ import threading
 import time
 import uuid
 
-from .amf3 import ByteArray, Obj
+from .amf3 import ByteArray, Obj, SealedObj
 from .attributes import entry_attribute_map
 from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from . import ai as ai_lib
@@ -51,7 +51,7 @@ from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
 from .ratelimit import TokenBucket
 from .amf3 import decode as amf3_decode
-from .config import MALL_PRICE_COLUMNS, equip_vo, fujia_client_map, qh_xingxings_client, richang_condition_interval, richang_loop_interval, richang_reward_interval, xingxing_lv
+from .config import MALL_PRICE_COLUMNS, TASK_ATTRIBUTE_INDEX, convert_index_attribute, equip_vo, fujia_client_map, qh_xingxings_client, richang_condition_interval, richang_loop_interval, richang_reward_interval, xingxing_lv
 from .amf3 import encode as amf3_encode
 from .cipher import SimpleEncrypt, new_key
 
@@ -92,6 +92,83 @@ RECIVE_YB_ERR_OVERFLOW = 424017
 INT64_MAX = 9223372036854775807
 CMD_MALL = 32000
 CMD_MALL_BUY = 32001
+CMD_DAFUWENG = 105003
+CMD_DAFUWONG_INFO = 105000
+CMD_DAFUWONG_ROLL = 105001
+CMD_DAFUWONG_EXCHANGE = 105002
+# Dafuwong errors: jifen short (CODE_105000), coin-roll cap (CODE_105001),
+# empty board (RoleHuodongErrorCode.k792005). Xianshibuy errors are the
+# XianshibuyErrorCode values (equal to their command numbers).
+DAFUWONG_ERR_JIFEN = 105000
+DAFUWONG_ERR_VIPROLLS = 105001
+DAFUWONG_ERR_NOBOARD = 792005
+CMD_XIANSHIBUY_CLIENT = 119000
+CMD_XIANSHIBUY_INFO = 119001
+CMD_XIANSHIBUY_BUY = 119002
+CMD_XIANSHIBUY_CLEARCD = 119003
+XSBUY_ERR_CLOSED = 119000
+XSBUY_ERR_SOLDOUT = 119001
+XSBUY_ERR_PMAX = 119002
+XSBUY_ERR_CD = 119003
+XSBUY_ERR_NOCD = 119004
+CMD_SHENJIANG_INFO = 41023
+CMD_SHENJIANG_ACTIVATE = 41001
+CMD_SHENJIANG_SKILLUP = 41002
+CMD_SHENJIANG_CANJIHUO = 41003
+CMD_SHENJIANG_JIHUO = 41004
+CMD_SHENJIANG_JINJIE = 41021
+# 41005 has no Action (expShare is service-internal); 41010/41011 are
+# stage-side transformation pushes; 41022 needs the wuhun goods mapping
+# (no local source); 41024 needs the slot subsystem. All four deferred.
+# ShenjiangErrorCode ints (jar clinit) and String codes ([0, code]).
+SHENJIANG_ERR_NOSKILLCFG = 420001
+SHENJIANG_ERR_MAXSKILL = 420010
+SHENJIANG_ERR_FRAG = 420011
+SHENJIANG_ERR_LV = 420012
+SHENJIANG_ERR_SKILLLV = 420013
+SHENJIANG_ERR_420015 = 420015
+SHENJIANG_ERR_420016 = 420016
+SHENJIANG_ERR_420017 = 420017
+SHENJIANG_ERR_420018 = 420018
+SHENJIANG_ERR_ACTIVED = '423000'
+SHENJIANG_ERR_BEFORE = '423001'
+SHENJIANG_ERR_MONEY = '423002'
+SHENJIANG_ERR_LVNOTTOP = '423004'
+SHENJIANG_ERR_RANKTOP = '423005'
+SHENJIANG_ERR_LVTOP = '423006'
+# MoneyType intType for jiangxingtu costs (YXB=1, YB=2, BIND_YB=3).
+SHENJIANG_MONEY_NAMES = {1: 'YXB', 2: 'YB', 3: 'BIND_YB'}
+CMD_QIANDAO_INFO = 58011
+CMD_QIANDAO_SIGN = 58012
+CMD_QIANDAO_BUQIAN = 58013
+CMD_QIANDAO_REWARD = 58014
+CMD_QIANDAO_MEIREN = 58015
+CMD_YINGYIN_XIAZAI = 58017
+CMD_YINGYIN_STATE = 58018
+CMD_YINGYIN_REWARD = 58019
+CMD_WEIDAN_STATE = 10060
+CMD_WEIDAN_REWARD = 10061
+CMD_ONLINE_INFO = 58003
+CMD_ONLINE_YAOJIANG = 58004
+CMD_ONLINE_LINGQU = 58005
+CMD_HUSONG_POSITION = 83000
+CMD_HUSONG_INFO = 83001
+CMD_HUSONG_DAJIE = 83008
+# JiangliErrorCodeOutput codes are Strings on the wire ([0, code]).
+WEIDAN_ERR_NOT_MICRO = '592011'
+WEIDAN_ERR_CLAIMED = '592012'
+ONLINE_ERR_BAG_FULL = '592001'
+QIANDAO_ERR_NOT_REPEAT = '592000'
+QIANDAO_ERR_REWARD_REPEAT = '592001'
+QIANDAO_ERR_COUNT_SHORT = '592002'
+QIANDAO_ERR_VIP_CFG_NULL = '592007'
+QIANDAO_ERR_CANNOT_BUQIAN = '592010'
+YINGYIN_ERR_CLAIMED = '592013'
+YINGYIN_ERR_PAST_WINDOW = '592014'
+ONLINE_ERR_NOT_REPEAT = '592003'
+ONLINE_ERR_TIME_SHORT = '592004'
+ONLINE_ERR_MONTH_LIMIT = '592005'
+ONLINE_ERR_NO_BINDYB = '592006'
 # 32002 is declared in MallCommands (SELL_GOODS) but its inbound route lives
 # in BuyBackModuleInit; 32005 is a server push with no inbound route (like
 # the 30104/30105 split pushes).
@@ -238,6 +315,7 @@ CMD_TAOFA_LIST = 50101
 CMD_TAOFA_TUNSHI = 50103
 CMD_ZUOQI_RIDE = 33000
 CMD_ZUOQI_PANEL = 33001
+CMD_ZUOQI_HP = 33022
 CMD_ZUOQI_JINJIE = 33003
 CMD_ZUOQI_CLAIM = 33004
 CMD_ZUOQI_FANHUAN = 33005
@@ -245,12 +323,66 @@ CMD_ZUOQI_MEIREN = 33006
 CMD_ZUOQI_FANHUAN_LIST = 33007
 CMD_ZUOQI_ZHANLI = 33008
 CMD_ZUOQI_AWARD = 33011
+CMD_ZUOQI_FULLHP = 33020
+CMD_ZUOQI_REVIVE = 33021
+CMD_ZUOQI_FREEREVIVE = 33023
+CMD_ZUOQI_DEADINFO = 33024
+# StageErrorCode mount cells (dntg_start.jar clinit values): 82140 not
+# revivable, 82143 short on YB, 82144 already full, 82147 short on YXB.
+ZUOQI_ERR_NEED_REVIVE = 82140
+ZUOQI_ERR_REVIVE_YB = 82143
+ZUOQI_ERR_FULLHP_STATE = 82144
+ZUOQI_ERR_FULLHP_MONEY = 82147
+# Mount pill pushes (RoleZuoQiServiceImpl.useLongHun/useLongLing, reached
+# only through the 30301 prop flow); ZuoQiModuleInit routes neither id, so
+# the ledger tracks them as emitted pushes, like CMD_MEIREN_ADD below.
+CMD_ZUOQI_LONGHUN = 33010
+CMD_ZUOQI_LONGLING = 33012
+# ZuoQiErrorCode cells used by the pill flow (dntg_start.jar clinit
+# values): 520004 rank short, 520011 per-goods cap hit.
+ZUOQI_RANK_CODE = 520004
+ZUOQI_ATT_CAP_CODE = 520011
 # addMeiRen's 82001 push (CreateMeirenOutPut.getMeiRen), emitted by 33006.
 CMD_MEIREN_ADD = 82001
 # Inbound meiren routes (MeirenModuleInit.getInCmd: 82000-82003 only).
 CMD_MEIREN_PANEL = 82000
 CMD_MEIREN_UPGRADE = 82002
 CMD_MEIREN_CHANMIAN = 82003
+# Inbound pet routes (PetModuleInit.getInCmd: 136000-136009).
+CMD_PET_INFO = 136000
+# Inbound email claim routes (EmailModuleInit.getInCmd: 63003/63006/63007/
+# 63008; 63005/63009 are server pushes). EmailErrorCode clinit values:
+# 60001 missing mail, 60002 no attachment, 60005/60006 empty JB/YB
+# purse, 60007 bag full, 60008 expired (validTime, unseeded here).
+EMAIL_ERR_NOT_FOUND = 60001
+EMAIL_ERR_NO_ATTACHMENT = 60002
+EMAIL_ERR_NO_JB = 60005
+EMAIL_ERR_NO_YB = 60006
+EMAIL_ERR_BAG_LESS = 60007
+EMAIL_ERR_EXPIRED = 60008
+# Inbound baoshi routes (BaoShiModuleInit.getInCmd: 37000/37001/37002).
+CMD_BAOSHI_INFO = 37000
+CMD_BAOSHI_JIHUO = 37001
+CMD_BAOSHI_UPGRADE = 37002
+# BaoShiErrorCode (530001-530011; NEED_JIHUO has no use site in the
+# ported flow, and the 530011 broadcast rides no bus, like 11101).
+BAOSHI_ERR_JIHUOED = 530001
+BAOSHI_ERR_CANNOT = 530002
+BAOSHI_ERR_GOODS_J = 530003
+BAOSHI_ERR_ZHENQI_J = 530004
+BAOSHI_ERR_NEED_JIHUO = 530005
+BAOSHI_ERR_TOP = 530006
+BAOSHI_ERR_GOODS_U = 530007
+BAOSHI_ERR_ZHENQI_U = 530008
+BAOSHI_ERR_LEVEL = 530009
+BAOSHI_ERR_GRADE = 530010
+BAOSHI_ERR_NOTIFY = 530011
+# Shared bag checks surfacing through baoshi (BagErroeCodes).
+BAG_ERR_MALL = 430249
+BAG_ERR_TRY = 430250
+# Inbound chengjiu routes (ChengjiuModuleInit.getInCmd: 89000/89005 only).
+CMD_CHENGJIU_PANEL = 89000
+CMD_CHENGJIU_CLAIM = 89005
 CMD_RICHANG_INFO = 50201
 CMD_RICHANG_DECREASE = 50202
 CMD_RICHANG_INCREASE = 50203
@@ -373,7 +505,7 @@ CMD_LIHE_PREVIEW = 30304
 BAG_ERR_BIND_NO_DISCARD = 430218
 # PropStageAction.consumeGoods reply id; the 30104/30105 ids below are
 # server pushes emitted by splitGoods (no inbound route exists for them).
-PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 36, 37])
+PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 33, 35, 36, 37])
 PROP_CONSUME_CATEGORIES = frozenset(
     ['14', '40', '11', '13', '16', '15', '17', '80'])
 PROP_HP_CD_MS = 1500
@@ -389,6 +521,9 @@ GENERAL_JB = 1003
 GENERAL_BINDYB = 1004
 GENERAL_GOODS = 1005
 GENERAL_NOSLOT = 1006
+GENERAL_INEXISTENCE = 1008
+GENERAL_NOT_VIP = 1010
+GENERAL_ROLE_EXP = 1014
 SKILL_ERROR_STUDY = 420007
 SKILL_ERROR_LEVEL = 420008
 SKILL_ERROR_JOB = 420009
@@ -536,6 +671,20 @@ def _fujia_wire(fujia):
     return None if fujia is None else Obj(fujia)
 
 
+def _qiandao_ints(text):
+    """QiandaoOutput.toInteger: comma-joined ints; null or empty gives []."""
+    if text is None or text == '':
+        return []
+    return [int(part) for part in text.split(',')]
+
+
+def _qiandao_strings(text):
+    """QiandaoOutput.toString: comma-split strings; null or empty gives []."""
+    if text is None or text == '':
+        return []
+    return text.split(',')
+
+
 # Per-connection frame budget: sustained frames/s and burst size. A client that
 # exceeds it is disconnected (the handler closes on ValueError).
 FRAME_RATE_PER_S = 50
@@ -554,9 +703,12 @@ class Session:
                  save_role_attr_buffs=None,
                  get_role_vip=None, get_role_xianjiechenhao=None,
                  get_role_meiren=None, save_role_meiren=None,
+                 get_role_baoshi=None, save_role_baoshi=None,
                  get_role_zuoqi=None, save_role_zuoqi=None,
+                 get_role_pets=None, save_role_pet=None,
+                 get_role_pet_zhenfa=None, save_role_pet_zhenfa=None,
                  get_zuoqi_fanhuan=None, save_zuoqi_fanhuan=None,
-                 get_role_skills=None,                  get_role_shenjiang=None, save_role_stage=None,
+                 get_role_skills=None,                  get_role_shenjiang=None, save_role_shenjiang=None, get_role_chengjiu=None, save_role_chengjiu=None, save_role_stage=None,
                  get_role_bag_slots=None, get_role_bag_state=None,
                  get_role_bag_slot=None,                 get_role_bag_slot_by_bag_id=None, save_role_skill=None,
                  get_role_skillbook_slots=None,
@@ -571,6 +723,26 @@ class Session:
                  delete_role_buyback=None,
                  get_role_prop=None,
                  save_role_prop=None,
+                 get_role_loginlibao=None, save_role_loginlibao=None,
+                 get_role_loginlingjiang=None,
+                 save_role_loginlingjiang=None,
+                 get_role_touxian=None, save_role_touxian=None,
+                 get_role_guangyi=None, save_role_guangyi=None,
+                 get_role_baixian=None, save_role_baixian=None,
+                 get_role_kapai=None, save_role_kapai=None,
+                 get_role_zhuihui=None, save_role_zhuihui=None,
+                 get_role_dafuwong=None, save_role_dafuwong=None,
+                 get_role_xianshibuy=None, save_role_xianshibuy=None,
+                 get_xianshi_buy=None, save_xianshi_buy=None,
+                 get_role_lvlibao=None, save_role_lvlibao=None,
+                 list_role_email=None, get_role_email=None,
+                 save_role_email=None, update_role_email=None,
+                 delete_role_email=None,
+                 get_role_qiandao=None, save_role_qiandao=None,
+                 get_role_jiangli_list=None, save_role_jiangli_list=None,
+                 get_role_dengluqi=None, save_role_dengluqi=None,
+                 get_role_online_reward=None, save_role_online_reward=None,
+                 get_role_husong=None, save_role_husong=None,
                  get_role_jianding=None, save_role_jianding=None,
                  save_role_vip=None, get_role_vip_kaifu=None,
                  save_role_vip_kaifu=None,
@@ -618,13 +790,24 @@ class Session:
         self.save_vip_qq = save_vip_qq or (lambda *a, **k: False)
         self.get_role_meiren = get_role_meiren or (lambda role_id: [])
         self.save_role_meiren = save_role_meiren or (lambda *a: False)
+        self.get_role_baoshi = get_role_baoshi or (lambda role_id: [])
+        self.save_role_baoshi = save_role_baoshi or (lambda *a: False)
         self.get_zuoqi_fanhuan = get_zuoqi_fanhuan or (lambda: [])
         self.save_zuoqi_fanhuan = save_zuoqi_fanhuan or (lambda *a: False)
         self.save_role_skill = save_role_skill or (lambda *a, **k: False)
         self.get_role_zuoqi = get_role_zuoqi or (lambda role_id: None)
         self.save_role_zuoqi = save_role_zuoqi or (lambda *a, **k: False)
+        self.get_role_pets = get_role_pets or (lambda role_id: [])
+        self.save_role_pet = save_role_pet or (lambda *a, **k: False)
+        self.get_role_pet_zhenfa = \
+            get_role_pet_zhenfa or (lambda role_id: None)
+        self.save_role_pet_zhenfa = \
+            save_role_pet_zhenfa or (lambda *a, **k: False)
         self.get_role_skills = get_role_skills or (lambda role_id: [])
         self.get_role_shenjiang = get_role_shenjiang or (lambda role_id: [])
+        self.save_role_shenjiang = save_role_shenjiang or (lambda *a, **k: False)
+        self.get_role_chengjiu = get_role_chengjiu or (lambda role_id: [])
+        self.save_role_chengjiu = save_role_chengjiu or (lambda *a, **k: False)
         self.save_role_stage = save_role_stage or (lambda *args, **kwargs: False)
         self.get_role_bag_slots = get_role_bag_slots or (lambda role_id: [])
         self.get_role_bag_state = get_role_bag_state or (lambda role_id: None)
@@ -653,6 +836,61 @@ class Session:
                                     or (lambda r, b: False))
         self.get_role_prop = get_role_prop or (lambda r, g: None)
         self.save_role_prop = save_role_prop or (lambda *a, **k: False)
+        self.get_role_loginlibao = get_role_loginlibao or (lambda r: None)
+        self.save_role_loginlibao = save_role_loginlibao or \
+            (lambda *a, **k: False)
+        self.get_role_loginlingjiang = get_role_loginlingjiang or \
+            (lambda r: None)
+        self.save_role_loginlingjiang = save_role_loginlingjiang or \
+            (lambda *a, **k: False)
+        self.get_role_touxian = get_role_touxian or (lambda r: None)
+        self.save_role_touxian = save_role_touxian or \
+            (lambda *a, **k: False)
+        self.get_role_guangyi = get_role_guangyi or (lambda r: None)
+        self.save_role_guangyi = save_role_guangyi or \
+            (lambda *a, **k: False)
+        self.get_role_baixian = get_role_baixian or (lambda r: None)
+        self.save_role_baixian = save_role_baixian or \
+            (lambda *a, **k: False)
+        self.get_role_kapai = get_role_kapai or (lambda r: None)
+        self.save_role_kapai = save_role_kapai or \
+            (lambda *a, **k: False)
+        self.get_role_zhuihui = get_role_zhuihui or (lambda r: None)
+        self.get_role_dafuwong = get_role_dafuwong or (lambda r: None)
+        self.save_role_dafuwong = save_role_dafuwong or \
+            (lambda *a, **k: False)
+        self.get_role_xianshibuy = get_role_xianshibuy or (lambda r: None)
+        self.save_role_xianshibuy = save_role_xianshibuy or \
+            (lambda *a, **k: False)
+        self.get_xianshi_buy = get_xianshi_buy or (lambda: None)
+        self.save_xianshi_buy = save_xianshi_buy or (lambda *a: False)
+        self.save_role_zhuihui = save_role_zhuihui or \
+            (lambda *a, **k: False)
+        self.get_role_lvlibao = get_role_lvlibao or (lambda r: None)
+        self.save_role_lvlibao = save_role_lvlibao or \
+            (lambda *a, **k: False)
+        self.list_role_email = list_role_email or (lambda r: [])
+        self.get_role_email = get_role_email or (lambda r, m: None)
+        self.save_role_email = save_role_email or (lambda *a, **k: None)
+        self.update_role_email = update_role_email or \
+            (lambda *a, **k: False)
+        self.delete_role_email = delete_role_email or (lambda *a: False)
+        self.get_role_qiandao = get_role_qiandao or (lambda r: None)
+        self.save_role_qiandao = save_role_qiandao or (lambda *a, **k: False)
+        self.get_role_jiangli_list = \
+            get_role_jiangli_list or (lambda r: None)
+        self.save_role_jiangli_list = \
+            save_role_jiangli_list or (lambda *a, **k: False)
+        self.get_role_dengluqi = get_role_dengluqi or (lambda r: None)
+        self.save_role_dengluqi = save_role_dengluqi or \
+            (lambda *a, **k: False)
+        self.get_role_online_reward = get_role_online_reward or \
+            (lambda r: None)
+        self.save_role_online_reward = save_role_online_reward or \
+            (lambda *a, **k: False)
+        self.get_role_husong = get_role_husong or (lambda r: None)
+        self.save_role_husong = save_role_husong or \
+            (lambda *a, **k: False)
         self.update_role_bag_slot = update_role_bag_slot or (lambda *a, **k: False)
         self.delete_role_bag_slot = delete_role_bag_slot or (lambda *a: False)
         self.move_role_bag_slot = move_role_bag_slot or (lambda *a: False)
@@ -710,6 +948,20 @@ class Session:
         self._monster_hp = {}
         self._pet_state = {}
         self._dead = set()
+        # Mount death ledger (ZuoQiBussinessData deadTime/useTime): owner
+        # wire id -> [deadMs, useMs]. Death stamps [now, 0] (ZuoQiPet
+        # syncDeadZuoQiAttribute); revive zeroes it. A dict miss with a
+        # persisted deadTime is a previous session, so the first read
+        # applies RoleStageUtil.decodeZuoQiInfo's rule (dead re-anchors to
+        # now, use keeps the stored elapsed) exactly once per session.
+        self._zuoqi_dead = {}
+        # Live buff instances for BuffServiceImpl.getBuff (42100): entries
+        # [instance_id, buff_id, lasttime_or_None, t0] stashed by
+        # entry_buff_frame, so a query replays the same instance ids with
+        # ticked-down remaining instead of minting new ones. Permanent
+        # buffs carry None (rendered -1.0); expired ones are forgotten and
+        # reported once in the removes slot, like BuffStatistics' flush.
+        self._buff_live = []
         # Monster AI state (Phase 4: AiFightServiceImpl + MonsterEventManager).
         # _monster_reg: fighter id -> {template, map, born:[x,y], pos:[x,y]}
         # (snapshot monsters seed on first sight; respawns register here).
@@ -770,7 +1022,12 @@ class Session:
             del self.buf[:4 + ln]
             if not self.frame_bucket.allow():
                 raise ValueError(f'conn {self.conn_id}: frame rate limit exceeded')
-            reply = self.handle(payload)
+            try:
+                reply = self.handle(payload)
+            except Exception:
+                log.warning('conn %d: handler failed, continuing',
+                            self.conn_id, exc_info=True)
+                continue
             if isinstance(reply, tuple):
                 out.extend(reply)
             elif reply is not None:
@@ -860,7 +1117,12 @@ class Session:
                      self.conn_id, cmd)
             return None
         if cmd_num == CMD_APPLY_STAGE:
-            return self.apply_stage_bootstrap(msg)
+            # Java answers 20000 with the bare [1, mapId, [x, y]] reply
+            # (StageControllOutputWrapper.applyChangeMap). The init burst
+            # and the scene arrive only after the client's own requests:
+            # pushing 21000 unprompted here is what wedged the client
+            # before it ever sent 21000 (session-20261018-040230).
+            return self.apply_stage(msg)
         if cmd_num == CMD_CHANGE_STAGE:
             return self.change_stage(msg)
         if cmd_num == CMD_MONEY:
@@ -972,9 +1234,7 @@ class Session:
         if cmd_num == CMD_MAIN_TASK:
             return self.main_task()
         if cmd_num == CMD_CHAPTERS:
-            # getChapterList's 3-arg overload unconditionally returns
-            # null, so the chapters panel is client-config driven.
-            return frame(amf3_encode(['50001', None]))
+            return self.chapters_info()
         if cmd_num == CMD_SUBCHAPTER:
             return self.subchapter_info(msg)
         if cmd_num == CMD_TASK_INFO:
@@ -1027,6 +1287,14 @@ class Session:
             return self.meiren_upgrade(msg)
         if cmd_num == CMD_MEIREN_CHANMIAN:
             return self.meiren_chanmian(msg)
+        if cmd_num == CMD_PET_INFO:
+            return self.pet_info()
+        if cmd_num == CMD_BAOSHI_INFO:
+            return self.baoshi_info()
+        if cmd_num == CMD_BAOSHI_JIHUO:
+            return self.baoshi_jihuo(msg)
+        if cmd_num == CMD_BAOSHI_UPGRADE:
+            return self.baoshi_upgrade(msg)
         if cmd_num == CMD_BAG_MOVE:
             return self.bag_move(msg)
         if cmd_num == CMD_BAG_SPLIT:
@@ -1042,7 +1310,43 @@ class Session:
         if cmd_num == CMD_PROP_YOUHUI:
             return self.prop_youhui(msg)
         if cmd_num == CMD_PROP_TESHU:
-            return self.prop_teshu_count(msg)
+            return self.prop_teshu_count(self.safe(msg, 1))
+        if cmd_num == CMD_DAFUWENG:
+            return self.dafuweng_info(msg)
+        if cmd_num == CMD_SHENJIANG_INFO:
+            return self.shenjiang_slot_info(msg)
+        if cmd_num == CMD_QIANDAO_INFO:
+            return self.qiandao_info()
+        if cmd_num == CMD_QIANDAO_SIGN:
+            return self.qiandao_sign()
+        if cmd_num == CMD_QIANDAO_BUQIAN:
+            return self.qiandao_buqian(msg)
+        if cmd_num == CMD_QIANDAO_REWARD:
+            return self.qiandao_reward(msg)
+        if cmd_num == CMD_QIANDAO_MEIREN:
+            return self.qiandao_meiren(msg)
+        if cmd_num == CMD_YINGYIN_XIAZAI:
+            return self.yingyin_xiazai()
+        if cmd_num == CMD_YINGYIN_STATE:
+            return self.yingyin_state()
+        if cmd_num == CMD_YINGYIN_REWARD:
+            return self.yingyin_reward()
+        if cmd_num == CMD_WEIDAN_STATE:
+            return self.weidan_state(msg)
+        if cmd_num == CMD_WEIDAN_REWARD:
+            return self.weidan_reward(msg)
+        if cmd_num == CMD_ONLINE_INFO:
+            return self.online_reward_info(msg)
+        if cmd_num == CMD_ONLINE_YAOJIANG:
+            return self.online_yaojiang(msg)
+        if cmd_num == CMD_ONLINE_LINGQU:
+            return self.online_lingqu(msg)
+        if cmd_num == CMD_HUSONG_POSITION:
+            return self.husong_position(msg)
+        if cmd_num == CMD_HUSONG_INFO:
+            return self.husong_info(msg)
+        if cmd_num == CMD_HUSONG_DAJIE:
+            return self.husong_dajie(msg)
         if cmd_num == CMD_MALL:
             return self.mall_info(msg)
         if cmd_num == CMD_MALL_BUY:
@@ -1058,18 +1362,178 @@ class Session:
         if cmd_num == CMD_GONGHUI_MALL_COUNT:
             return self.gonghui_mall_count()
         if cmd_num == CMD_JUQING_AWARD:
-            return frame(amf3_encode(['64010', None]))
+            return self.juqing_award()
         if cmd_num == CMD_JUQING_INFO:
-            return frame(amf3_encode(['64001', [1, [0, None, None, None]]]))
+            return self.juqing_info()
         if cmd_num == CMD_VIP:
             return self.vip_info()
         if cmd_num == CMD_ZUWU:
             return self.zuwu_info()
         if cmd_num == CMD_ZUWUFUBEN:
-            return frame(amf3_encode(['108001', [1, [None, [], None]]]))
+            return self.zuwufuben_info()
+        if cmd_num == CMD_BUFF:
+            return self.buff_query(msg)
+        if cmd_num == CMD_ZUOQI_HP:
+            return self.zuoqi_hp(msg)
+        if cmd_num == CMD_ZUOQI_FULLHP:
+            return self.zuoqi_full_hp(msg)
+        if cmd_num == CMD_ZUOQI_REVIVE:
+            return self.zuoqi_revive(msg)
+        if cmd_num == CMD_ZUOQI_FREEREVIVE:
+            return self.zuoqi_free_revive(msg)
+        if cmd_num == CMD_ZUOQI_DEADINFO:
+            return self.zuoqi_dead_info(msg)
+        if cmd_num == 127000:
+            return self.loginlibao_info(msg)
+        if cmd_num == 127001:
+            return self.loginlibao_claim(msg)
+        if cmd_num == 58000:
+            return self.lvlibao_info(msg)
+        if cmd_num == 58001:
+            return self.lvlibao_claim(msg)
+        if cmd_num == 63001:
+            return self.email_list(msg)
+        if cmd_num == 63002:
+            return self.email_info(msg)
+        if cmd_num == 63003:
+            return self.email_attachment(msg)
+        if cmd_num == 63004:
+            return self.email_delete(msg)
+        if cmd_num == 63006:
+            return self.email_jb(msg)
+        if cmd_num == 63007:
+            return self.email_yb(msg)
+        if cmd_num == 63008:
+            return self.email_onekey(msg)
+        if cmd_num == 41000:
+            return self.shenjiang_info(msg)
+        if cmd_num == CMD_SHENJIANG_ACTIVATE:
+            return self.shenjiang_activate(msg)
+        if cmd_num == CMD_SHENJIANG_SKILLUP:
+            return self.shenjiang_skill_up(msg)
+        if cmd_num == CMD_SHENJIANG_CANJIHUO:
+            return self.shenjiang_can_jihuo(msg)
+        if cmd_num == CMD_SHENJIANG_JIHUO:
+            return self.shenjiang_jihuo(msg)
+        if cmd_num == CMD_SHENJIANG_JINJIE:
+            return self.shenjiang_jinjie(msg)
+        if cmd_num == CMD_CHENGJIU_PANEL:
+            return self.chengjiu_panel()
+        if cmd_num == CMD_CHENGJIU_CLAIM:
+            return self.chengjiu_claim(msg)
+        if cmd_num == 103000:
+            return self.loginlingjiang_info(msg)
+        if cmd_num == 103001:
+            return self.loginlingjiang_claim(msg)
+        if cmd_num == 104000:
+            return self.touxian_info(msg)
+        if cmd_num == 104001:
+            return self.touxian_activate(msg)
+        if cmd_num == 104002:
+            return self.touxian_wear(msg)
+        if cmd_num == 102000:
+            return self.guangyi_info(msg)
+        if cmd_num == 102002:
+            return self.guangyi_buy(msg)
+        if cmd_num == 102003:
+            return self.guangyi_wear(msg)
+        if cmd_num == 71000:
+            return self.baixian_info(msg)
+        if cmd_num == 71001:
+            return self.baixian_worship(msg)
+        if cmd_num == 107000:
+            return self.zhuihui_info(msg)
+        if cmd_num == 107001:
+            return self.zhuihui_claim(msg)
+        if cmd_num == 121000:
+            return self.kapai_client(msg)
+        if cmd_num == 121001:
+            return self.kapai_info(msg)
+        if cmd_num == 120000:
+            return self.qianfu_client(msg)
+        if cmd_num == 122002:
+            return self.tuangou_config(msg)
+        if cmd_num == 109000:
+            return self.guanggao_list(msg)
+        if cmd_num == CMD_DAFUWONG_INFO:
+            return self.dafuwong_info(msg)
+        if cmd_num == CMD_DAFUWONG_ROLL:
+            return self.dafuwong_roll(msg)
+        if cmd_num == CMD_DAFUWONG_EXCHANGE:
+            return self.dafuwong_exchange(msg)
+        if cmd_num == CMD_XIANSHIBUY_CLIENT:
+            return self.xianshibuy_client(msg)
+        if cmd_num == CMD_XIANSHIBUY_INFO:
+            return self.xianshibuy_info(msg)
+        if cmd_num == CMD_XIANSHIBUY_BUY:
+            return self.xianshibuy_buy(msg)
+        if cmd_num == CMD_XIANSHIBUY_CLEARCD:
+            return self.xianshibuy_clearcd(msg)
+        if cmd_num in (35115, 53006, 51000,
+                        82024, 74000,
+                        86000, 85000, 87000, 70500, 91002, 90000,
+                        92015, 93000, 94000, 94002, 94100, 95000, 97001,
+                        114000, 113000,
+                        120100, 124001,
+                        70000):
+            return self.loading_stub(msg, cmd_num)
         log.warning('conn %d: unknown command %r payload=%r (ignored)',
                       self.conn_id, cmd, msg)
         return None
+
+    def loading_stub(self, msg, cmd_num):
+        """Post-21000 loading replies: exact fresh-role Java shapes.
+
+        Captured from session-20261020-072313 (fu0 fresh level 8).
+        Commands with no S>C reply in either Java capture (81000,
+        40600, 53021, 82022, 130000, 101000, 73113, 75004) are
+        fire-and-forget notifies: Java sends nothing, so we return
+        None like Java instead of inventing a reply.
+        """
+        arg = self.safe(msg, 1)
+        if isinstance(arg, list):
+            arg0 = self.safe(arg, 0)
+        else:
+            arg0 = arg
+        if cmd_num == 97001:
+            try:
+                page = int(arg0)
+            except (TypeError, ValueError):
+                page = 1
+            if page not in (1, 2):
+                page = 1
+            return frame(amf3_encode(['97001', [page, 1396324799000.0, 0.0, [0, 0, 0, 0, 0], False, 0, 'xunbaonew.ani']]))
+        if cmd_num == 114000:
+            s = str(arg0)
+            if s == '2':
+                return frame(amf3_encode(['114000', [1, '2', 0, 0, ['jingyanyu02:1:1', 'jingyanyu03:1:1', 'ys010609:1:1:0:0|0:4', 'ys010610:1:1:0:0|0:4', 'zhenqipill_003:2:1', 'ningshendan01:2:1', 'zhenyuan:30:1', 'wuxing2:3:0', 'wuxing3:3:0', 'wuxing3:3:0', 'wuxing4:3:0', 'jingjie:10:1'], []]]))
+            return frame(amf3_encode(['114000', [1, '1', 0, 0, ['xuangui_001:1:0', 'jinjiedan001:1:0', 'jinjiedan001:5:0', 'tongqian004:1:0', 'jinjiedan001:1:0', 'txbawang:1:0', 'xuangui_001:1:0', 'jinjiedan001:1:0', 'jinjiedan001:40:0', 'tongqian004:1:0', 'jinjiedan001:1:0', 'zuoqishuxing3:1:0'], [[1, 2, 20, ''], [10, 2, 190, ''], [50, 2, 900, '']]]]))
+        payload = {
+            35115: [[0.0, 0.0]],
+            53006: [None],
+            51000: [[0, None, [], [], [], []]],
+            82024: [None],
+            74000: [[1, 0]],
+            86000: [[0, 0, [], 0, None]],
+            85000: [None],
+            87000: [None],
+            70500: [[]],
+            91002: [['1', 0.0, '1', [], [['35', False, 0], ['36', 1, 0], ['33', 0, 0], ['34', 0, 0], ['39', 0, 0], ['37', 450], ['38', 0.0, 0.0, 0.0], ['43', False, 0], ['42', None], ['41', 0, 0], ['40', 0, 0], ['67', False, 0], ['66', 0, 0], ['69', False], ['68', 0, 0], ['22', 0, 0], ['23', False, 0], ['24', 0.0, 0], ['25', 1, 0], ['26', 34, 30], ['27', 0.0, 0.0], ['28', 0.0, 0.0, 0.0], ['29', 0, 0], ['3', 0.0, 0.0, 0.0], ['2', 34, 30], ['1', 0], ['7', 0, 0], ['30', 0, 0], ['6', 0, 0], ['5', 0.0, 0.0, 0.0], ['32', 0, 0], ['4', 0.0], ['31', 0.0], ['70', 450], ['71', 0, 0], ['9', False, 0], ['72', 0, 0], ['8', 0, 0], ['59', 0, 0], ['58', 0, 0], ['57', 0, 0], ['56', 0, 0], ['19', 0, 0], ['55', 0.0, 0], ['17', 0, 0], ['18', 0, 0], ['15', 0.0, 0.0, 0.0], ['16', 0, 0], ['13', 0.0, 0.0], ['14', 0.0, 0.0], ['11', False, 0], ['12', False], ['21', 0.0, 0.0, 0.0], ['20', 450], ['64', 0, 0], ['65', 0.0, 0.0], ['62', 450], ['63', 0, 0], ['60', 0, 0], ['61', 0, 0], ['49', 0.0, 0.0], ['48', 0, 0], ['45', 0, 0], ['44', 0.0, 0.0, 0.0], ['47', 0, 0], ['46', 0.0, 0], ['10', 1, 0], ['51', 0.0, 0.0], ['52', 450], ['53', 0, 0], ['54', 0.0, 0.0, 0.0], ['50', None]]]],
+            90000: [[0, [['1', '0'], ['11', 2130]], []]],
+            92015: [[None, [], None]],
+            93000: [None],
+            94000: [None],
+            94002: [None],
+            94100: [None],
+            95000: [None],
+            113000: [None],
+            120100: [['db1a1b532903d4a0964771755d4ca6c6902d057451c42eff9d2ae217a1fc9ae2', [[10, None], [[10, ['fanpaika', 1]], [30, ['fanpaika', 3]], [50, ['fanpaika', 5]], [70, ['fanpaika', 7]], [90, ['fanpaika', 9]]], ['chip_baishu:1:1', 'jinglianshi:1:1', 'bsclbig:1:1', 'sj0208:1:1', 'sj0211:1:1', 'sj0217:1:1', 'zuoqishuxing3:1:1', 'zj0615:1:1:0:0|0:4:8|5,8|5,8|5,8|5,8|5,8|5', 'zj0616:1:1:0:0|0:4:9|5,9|5,9|5,9|5,9|5,9|5', 'ys010602:1:1:0:0|0:4', 'ys010604:1:1:0:0|0:4', 'ys010606:1:1:0:0|0:4', 'ys010608:1:1:0:0|0:4', 'ys010610:1:1:0:0|0:4', 'ys010611:1:1:0:0|0:4', 'ys010612:1:1:0:0|0:4', 'ys010613:1:1:0:0|0:4', 'ys010614:1:1:0:0|0:4'], None, 1394254801000.0, 1394510399000.0]]],
+            124001: [None],
+            70000: [None],
+        }.get(int(cmd_num))
+        if payload is None:
+            return None
+        return frame(amf3_encode([str(cmd_num), payload]))
 
     def create_role(self, msg):
         """Command 10002: reply ['10002', [1, role]] or ['10002', [0, code]].
@@ -1137,32 +1601,18 @@ class Session:
         ok = self.check_sign(user_id, timestamp, verify)
         log.info('conn %d: login user=%r server=%r sign_ok=%s',
                  self.conn_id, user_id, server_id, ok)
-        bootstrap = ()
         if ok:
             self.authed_user = user_id
             self.server_id = server_id
             role_rows = self.get_roles(user_id, server_id)
             roles = [self.role_info(r) for r in role_rows]
-            # The captured Java login stream pushes settings and currency for
-            # the sole role before the client sends its enter-world command.
-            if len(role_rows) == 1:
-                role = role_rows[0]
-                role_id = str(role['id'])
-                settings = self.get_role_settings(role_id, user_id, server_id)
-                setting_values = ([settings.get('quickbar_info'),
-                                   settings.get('panel_config'),
-                                   settings.get('ui_info'),
-                                   settings.get('guaji_info')]
-                                  if settings is not None else [None] * 4)
-                bootstrap = (
-                    frame(amf3_encode(['13000', setting_values])),
-                    self.money_info(role),
-                )
             # Slot 3 is a serialized java.util.TimeZone object, not a string:
-            # ServerInfoVO.decode() reads `.rawOffset` off it. The capture has
-            # exactly {'rawOffset': -18000000, 'ID': 'America/New_York'} and
-            # nothing else (tap-decoded.txt line 2).
-            tz = Obj({'rawOffset': self.tz_raw_offset, 'ID': self.tz_id})
+            # ServerInfoVO.decode() reads `.rawOffset` off it. The capture is
+            # a sealed `sun.util.calendar.ZoneInfo` with members rawOffset/ID
+            # (session-20261018-195420.log); dynamic objects stall the client.
+            tz = SealedObj({'rawOffset': self.tz_raw_offset, 'ID': self.tz_id},
+                           cname='sun.util.calendar.ZoneInfo',
+                           members=('rawOffset', 'ID'))
             # Slot 2 is the String `serverId + "-" + gsVersion` (IOServiceImpl.in
             # builds it from server-info.properties server_id and
             # version.properties; InOutput.success is static, so its first
@@ -1179,8 +1629,12 @@ class Session:
         # referenced solely by AmfRequestDecoder). Encrypting this reply makes
         # the client try to parse ciphertext as AMF3 and abort the socketData
         # event with "Invalid object". Only client->server is enciphered.
-        login_reply = frame(amf3_encode(env))
-        return (login_reply, *bootstrap) if bootstrap else login_reply
+        # The settings/currency bootstrap is NOT sent here: the Java captures
+        # (session-20261018-040230, session-20261020-072313) show the 13000
+        # and 32010 pushes arriving after the client sends 10003, just before
+        # the 10003 reply. Pushing them with the login reply wedges the
+        # client at a black screen (it never sends 21000). See enter_world.
+        return frame(amf3_encode(env))
 
     def enter_world(self, msg):
         """Serve the role's persisted stage and basic role values."""
@@ -1204,14 +1658,45 @@ class Session:
         log.info('conn %d: enter_world role=%r (%s)',
                  self.conn_id, role.get('name'), role_id)
         exp = role.get('exp') if role.get('exp') is not None else 0
-        state = [role.get('face') or '', role.get('level', 1), exp,
+        # StageControllOutputWrapper.login: [face, level, exp, sex, job,
+        # isChenmi, chenmiAddOnlineTime, vipLevel, recharge[day, all],
+        # gmState]. The exp Long serializes as an AMF3 double (1310 ->
+        # 1310.0); vip comes from role_vip (0 when unmigrated); the
+        # recharge pair reads unmigrated recharge rows, so [0.0, 0.0].
+        try:
+            vip = self.get_role_vip(role.get('id'))
+        except Exception:
+            vip = None
+        try:
+            vip_level = int((vip or {}).get('vip_level') or 0)
+        except (TypeError, ValueError):
+            vip_level = 0
+        state = [role.get('face') or '', role.get('level', 1), float(exp),
                  role.get('sex', 0), str(role.get('job', '')),
-                 False, 0, 10, [20000000, 0], 0]
+                 False, 0, vip_level, [0.0, 0.0], 0]
         stage = [str(role.get('map_id') or '0'),
                  role.get('map_x') if role.get('map_x') is not None else 57,
                  role.get('map_y') if role.get('map_y') is not None else 148]
         result = [1, state, stage]
-        return frame(amf3_encode(['10003', result]))
+        # Java pushes the settings (13000) and currency (32010) bootstrap
+        # after the client sends 10003, just before the 10003 reply — never
+        # with the login reply (see login). Both captures agree on the order
+        # [13000, 32010, 10003].
+        bootstrap = ()
+        if len(roles) == 1:
+            role_id = str(role.get('id'))
+            settings = self.get_role_settings(
+                role_id, self.authed_user or '', self.server_id or '')
+            setting_values = ([settings.get('quickbar_info'),
+                               settings.get('panel_config'),
+                               settings.get('ui_info'),
+                               settings.get('guaji_info')]
+                              if settings is not None else [None] * 4)
+            bootstrap = (
+                frame(amf3_encode(['13000', setting_values])),
+                self.money_info(role),
+            )
+        return (*bootstrap, frame(amf3_encode(['10003', result])))
 
     def apply_stage(self, msg):
         role_id = str(self.safe(self.safe(msg, 1, []), 0, '') or '')
@@ -1288,14 +1773,16 @@ class Session:
 
     def role_bags(self, role):
         """No-effect attribute bags for a role: gear, dan, xianjie,
-        chenghao, meiren and zuoqi.
+        chenghao, meiren, baoshi and zuoqi.
 
         Port of RoleFactoryHelper's replace*Attribute sequence over the
         migrated role_equip / role_attribute_buff / role_xianjiechenhao /
         role_meiren / role_zuoqi rows; empty sources yield no bags,
-        exactly Java's clear-and-skip behavior. The ZUOQI_SPEED bag stays
-        empty: it needs rideOrNot, which decodeZuoQiInfo reads false from
-        the stage blob at entry, so Java skips replaceZuoqiSudu too.
+        exactly Java's clear-and-skip behavior. The ZUOQI bag carries
+        the replaceZuoqiAttribute goods loop over the role's
+        attribute-goods map. The ZUOQI_SPEED bag stays empty: it needs
+        rideOrNot, which decodeZuoQiInfo reads false from the stage blob
+        at entry, so Java skips replaceZuoqiSudu too.
         """
         bags = []
         if self.config is None or role is None:
@@ -1331,12 +1818,19 @@ class Session:
         if pairs:
             bags.append(self.config.meiren_attribute_map(pairs))
         try:
+            stones = self.get_role_baoshi(role.get('id')) or []
+        except Exception:
+            stones = []
+        if stones:
+            bags.append(self.config.baoshi_attribute_map(stones))
+        try:
             mount = self.get_role_zuoqi(role.get('id'))
         except Exception:
             mount = None
         if mount is not None:
-            bags.append(self.config.zuoqi_attribute_map(
-                mount.get('zuoqi_rank'), role.get('level')))
+            bags.append(self.config.zuoqi_effect_attribute_map(
+                mount.get('zuoqi_rank'), role.get('level'),
+                self._zuoqi_att_map(mount)))
         return [b for b in bags if b]
 
     def role_effect_slots(self, role):
@@ -1499,7 +1993,11 @@ class Session:
         self.save_role_state(rid, map_id=map_id, map_x=x, map_y=y)
         frames = [frame(amf3_encode(['20000', [1, map_id, [x, y]]])),
                   frame(amf3_encode(['21000', [1, 1, self.map_type_for(map_id)]]))]
-        snapshot = self.monster_snapshot_frame(map_id)
+        if self.config is not None:
+            npc_records = self.config.npc_snapshot(map_id, x, y)
+            if npc_records:
+                frames.append(frame(amf3_encode(['23003', npc_records])))
+        snapshot = self.monster_snapshot_frame(map_id, x, y)
         if snapshot is not None:
             frames.append(snapshot)
         return frames
@@ -1711,14 +2209,30 @@ class Session:
             pet = self._pet_state[fighter['id']]
             pet['hp'] = new_hp
             if str(pet.get('template_id', '')).startswith('zuoqi'):
-                self._persist_mount_hp(pet.get('owner'), new_hp)
+                owner = pet.get('owner')
+                if new_hp <= 0:
+                    # ZuoQiPet deadHandle + syncDeadZuoQiAttribute: the
+                    # death stamps deadTime now and zeroes useTime; the
+                    # ledger feeds the 3302x revive family and the persist.
+                    now = int(time.time() * 1000)
+                    try:
+                        self._zuoqi_dead[str(owner)] = [now, 0]
+                    except Exception:
+                        pass
+                    self._persist_mount_hp(owner, new_hp, now, 0)
+                else:
+                    self._persist_mount_hp(owner, new_hp)
         return new_hp
 
-    def _persist_mount_hp(self, owner_id, hp):
+    def _persist_mount_hp(self, owner_id, hp, dead_ms=None, use_ms=0):
         """Write a mount's HP into its owner's role_stage.zuoqi_info.
 
         The next scene entry reads it back (23009 record, skipped at 0), so a
         hit survives a reconnect. Owners without a stored mount are skipped.
+        dead_ms/use_ms persist raw like ZuoQiBussinessData (the next
+        session's first revive read applies decodeZuoQiInfo's rule); None
+        leaves a previous death record untouched, since only death stamps
+        it and only revive zeroes it.
         """
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = _find_role(roles, owner_id)
@@ -1728,6 +2242,9 @@ class Session:
         if info is None:
             return
         info['hp'] = int(round(hp))
+        if dead_ms is not None:
+            info['deadTime'] = int(dead_ms)
+            info['useTime'] = int(use_ms)
         # role_stage is keyed by the local row id, not the wire id.
         self.save_role_stage(role['id'], zuoqi_info=json.dumps(info))
 
@@ -2436,6 +2953,8 @@ class Session:
             return None
         wire_id = _wire_id(role)
         adds = []
+        live = []
+        t0 = time.time()
         try:
             vip = self.get_role_vip(role.get('id'))
         except Exception:
@@ -2443,8 +2962,9 @@ class Session:
         buff_id = (self.config.vip_buff_id((vip or {}).get('vip_level'))
                    if self.config is not None else None)
         if buff_id is not None:
-            adds.append(timed_buff(self.next_buff_id('buff'), buff_id, None,
-                                   1, wire_id))
+            iid = self.next_buff_id('buff')
+            adds.append(timed_buff(iid, buff_id, None, 1, wire_id))
+            live.append([iid, buff_id, None, t0])
         else:
             log.info('conn %d: no VIP buff for role %r (no vip row/mapping)',
                      self.conn_id, wire_id)
@@ -2454,11 +2974,330 @@ class Session:
             log.info('conn %d: no birthprotect lasttime (no XiaoGuoBiao)',
                      self.conn_id)
         else:
-            adds.append(timed_buff(self.next_buff_id('buff'), 'birthprotect',
-                                   lasttime, 1, wire_id))
+            iid = self.next_buff_id('buff')
+            adds.append(timed_buff(iid, 'birthprotect', lasttime, 1, wire_id))
+            live.append([iid, 'birthprotect', float(lasttime), t0])
+        self._buff_live = live
         if not adds:
             return None
         return frame(amf3_encode(buff_change(wire_id, adds)))
+
+    def buff_query(self, msg):
+        """Command 42100: BuffServiceImpl.getBuff answers the live buffs.
+
+        Replays the instance ids stashed at entry with ticked-down
+        remaining (permanent buffs stay -1.0); buffs whose lifetime ran
+        out are reported once in the removes slot and forgotten, and a
+        quiet session answers [wireId, None, None] — BuffStatistics
+        serializes empty lists as null, never [].
+        """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        if not roles:
+            return None
+        wire_id = _wire_id(roles[0])
+        now = time.time()
+        adds, removes, keep = [], [], []
+        for iid, buff_id, lasttime, t0 in self._buff_live:
+            if lasttime is None:
+                adds.append(timed_buff(iid, buff_id, None, 1, wire_id))
+                keep.append([iid, buff_id, None, t0])
+            else:
+                try:
+                    remaining = float(lasttime) - (now - float(t0)) * 1000.0
+                except (TypeError, ValueError):
+                    remaining = 0.0
+                if remaining > 0:
+                    adds.append(timed_buff(iid, buff_id, remaining, 1,
+                                           wire_id))
+                    keep.append([iid, buff_id, lasttime, t0])
+                else:
+                    removes.append(iid)
+        self._buff_live = keep
+        return frame(amf3_encode(buff_change(wire_id, adds, removes)))
+
+    def zuoqi_hp(self, msg):
+        """Command 33022: StageMeirenServiceImpl.getZuoqiHp, live pet HP.
+
+        The first live zuoqi pet on this session's stage answers
+        [curHp, maxHp] as ints; with no pet staged this is [0, 0],
+        exactly the fresh-role capture.
+        """
+        for pet_id, pet in self._pet_state.items():
+            if pet_id in self._dead:
+                continue
+            if not str(pet.get('template_id', '')).startswith('zuoqi'):
+                continue
+            try:
+                hp = int(pet.get('hp') or 0)
+                max_hp = int(pet.get('max_hp') or 0)
+            except (TypeError, ValueError):
+                continue
+            return frame(amf3_encode(['33022', [[hp, max_hp]]]))
+        return frame(amf3_encode(['33022', [[0, 0]]]))
+
+    def _zuoqi_revive_state(self, role, rid):
+        """Mount revive read for the 33020/33021/33023/33024 family.
+
+        Ports the ZuoQiBussinessData read shared by zuoqiFullHp,
+        zuoqiRevive, zuoqiFreeRevive and getZuoqiDeadInfo: rank from the
+        live staged pet, else the stage copy (role_stage.zuoqi_info id,
+        Java's decodeZuoQiInfo curRank), else the role_zuoqi row; HP from
+        the live pet else the persisted copy; max HP from the pet else
+        the rank's ZuoJiBiao row; dead/use from the session ledger, with
+        RoleStageUtil.decodeZuoQiInfo's reload rule (a persisted deadTime
+        re-anchors to now, keeping the stored elapsed) applied once per
+        session when no live death record exists. None when the role
+        never owned a mount (curRank null) or max HP is unresolvable.
+        """
+        if role is None or self.config is None:
+            return None
+        wire = _wire_id(role)
+        pet_id, pet = None, None
+        for pid, candidate in self._pet_state.items():
+            if candidate.get('owner') != wire:
+                continue
+            if not str(candidate.get('template_id', '')).startswith('zuoqi'):
+                continue
+            pet_id, pet = pid, candidate
+            break
+        info = decode_zuoqi_info(role.get('zuoqi_info'))
+        rank = 0
+        if pet is not None:
+            try:
+                rank = int(str(pet.get('template_id', ''))[len('zuoqi'):])
+            except (TypeError, ValueError):
+                rank = 0
+        if rank <= 0 and info is not None:
+            try:
+                rank = int(info.get('id') or 0)
+            except (TypeError, ValueError):
+                rank = 0
+        if rank <= 0:
+            row = self._zuoqi_row(rid)
+            if row is not None:
+                for key in ('zuoqi_cur_rank', 'zuoqi_rank'):
+                    try:
+                        rank = int(row.get(key) or 0)
+                    except (TypeError, ValueError):
+                        rank = 0
+                    if rank > 0:
+                        break
+        if rank <= 0:
+            return None
+        max_hp, cur_hp = 0, 0
+        if pet is not None:
+            try:
+                max_hp = int(pet.get('max_hp') or 0)
+                cur_hp = int(pet.get('hp') or 0)
+            except (TypeError, ValueError):
+                max_hp, cur_hp = 0, 0
+        else:
+            if info is not None:
+                try:
+                    cur_hp = int(info.get('hp') or 0)
+                except (TypeError, ValueError):
+                    cur_hp = 0
+            found = self.config.zuoqi_pet(rank, role.get('level'))
+            if found is not None:
+                try:
+                    max_hp = int(found[1].get('meinvhp') or 0)
+                except (TypeError, ValueError):
+                    max_hp = 0
+        if max_hp <= 0:
+            return None
+        now = int(time.time() * 1000)
+        try:
+            kept = self._zuoqi_dead.get(wire)
+        except Exception:
+            kept = None
+        if kept is None:
+            stored_dead, stored_use = 0, 0
+            if info is not None:
+                try:
+                    stored_dead = int(info.get('deadTime') or 0)
+                    stored_use = int(info.get('useTime') or 0)
+                except (TypeError, ValueError):
+                    stored_dead, stored_use = 0, 0
+            if stored_dead > 0:
+                kept = [now, stored_use]
+                try:
+                    self._zuoqi_dead[wire] = kept
+                except Exception:
+                    pass
+            else:
+                kept = [0, 0]
+        return {'rank': rank, 'cur': cur_hp, 'max': max_hp,
+                'dead': kept[0], 'use': kept[1], 'pet_id': pet_id}
+
+    def _zuoqi_revive_handle(self, role, rid, wire, st, out):
+        """zuoqiReviveHandle: clear death, top HP, push pet refresh + 33022.
+
+        Java removes the pet DEAD state (unstaged mounts respawn through
+        createZuoQiPetEnterStage instead), zeroes deadTime/useTime, tops
+        both HP copies to max, re-broadcasts the pet enter to surrounding
+        roles (43002) and pushes [maxHp, maxHp] 33022. Ours has no 43002
+        builder and the sprite never left the scene, so the enter
+        rebroadcast is the 12004 HP refresh Java also sends; an unstaged
+        mount restages on the next scene entry, when 23009 reads the
+        persisted full HP back.
+        """
+        max_hp = st['max']
+        try:
+            self._zuoqi_dead[wire] = [0, 0]
+        except Exception:
+            pass
+        self._persist_mount_hp(wire, max_hp, 0, 0)
+        if st['pet_id'] is not None:
+            pet = self._pet_state.get(st['pet_id'])
+            if pet is not None:
+                pet['hp'] = float(max_hp)
+                self._dead.discard(st['pet_id'])
+                out.append(frame(amf3_encode(combat_lib.hp_changed_frame(
+                    st['pet_id'], float(max_hp), float(max_hp), 0.0, 0.0))))
+        out.append(frame(amf3_encode(['33022', [[max_hp, max_hp]]])))
+        return max_hp
+
+    def zuoqi_full_hp(self, msg):
+        """Command 33020: StageMeirenServiceImpl.zuoqiFullHp.
+
+        Heals a hurt mount to full for fullNeedYxb silver: no mount or a
+        full bar answers [0, 82144], short silver [0, 82147], else the
+        12004 refresh plus [1, cost, maxHp]. A dead mount heals without
+        clearing the death (Java leaves DEAD/deadTime alone here).
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        st = self._zuoqi_revive_state(role, rid)
+        if st is None:
+            return frame(amf3_encode(
+                ['33020', [0, ZUOQI_ERR_FULLHP_STATE]]))
+        if st['cur'] >= st['max']:
+            return frame(amf3_encode(
+                ['33020', [0, ZUOQI_ERR_FULLHP_STATE]]))
+        try:
+            cost = int((self.config.zuoqi_revive() or {}).get('fullNeedYxb')
+                       or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        found = self._bag_money_first(role, cost, ['YXB'])
+        if found is None:
+            return frame(amf3_encode(
+                ['33020', [0, ZUOQI_ERR_FULLHP_MONEY]]))
+        self._bag_money_decr(rid, found[0], found[1])
+        out = []
+        if st['pet_id'] is not None:
+            pet = self._pet_state.get(st['pet_id'])
+            if pet is not None:
+                pet['hp'] = float(st['max'])
+                out.append(frame(amf3_encode(combat_lib.hp_changed_frame(
+                    st['pet_id'], float(st['max']), float(st['max']),
+                    0.0, 0.0))))
+        self._persist_mount_hp(_wire_id(role), st['max'])
+        out.append(frame(amf3_encode(
+            ['33020', [1, cost, st['max']]])))
+        return tuple(out)
+
+    def _zuoqi_need_revive(self, st):
+        """checkZuoqiNeedRevive: error code, or None when revival may run.
+
+        No mount answers 82140; a staged pet must carry the DEAD state
+        (ours: the _dead set, fed by the fight loop's kill), while an
+        unstaged mount needs persisted HP at 0, else 82140.
+        """
+        if st is None:
+            return ZUOQI_ERR_NEED_REVIVE
+        if st['pet_id'] is not None:
+            if st['pet_id'] not in self._dead:
+                return ZUOQI_ERR_NEED_REVIVE
+            return None
+        if st['cur'] > 0:
+            return ZUOQI_ERR_NEED_REVIVE
+        return None
+
+    def zuoqi_revive(self, msg):
+        """Command 33021: StageMeirenServiceImpl.zuoqiRevive (paid, YB).
+
+        A mount needing revival costs reviveNeedYb gold: check failures
+        answer [0, check], short gold [0, 82143], else the revive-handle
+        pushes plus [1, cost, curHp].
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        st = self._zuoqi_revive_state(role, rid)
+        check = self._zuoqi_need_revive(st)
+        if check is not None:
+            return frame(amf3_encode(['33021', [0, check]]))
+        try:
+            cost = int((self.config.zuoqi_revive() or {}).get('reviveNeedYb')
+                       or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        found = self._bag_money_first(role, cost, ['YB'])
+        if found is None:
+            return frame(amf3_encode(
+                ['33021', [0, ZUOQI_ERR_REVIVE_YB]]))
+        self._bag_money_decr(rid, found[0], found[1])
+        out = []
+        wire = _wire_id(role)
+        cur_hp = self._zuoqi_revive_handle(role, rid, wire, st, out)
+        out.append(frame(amf3_encode(['33021', [1, cost, cur_hp]])))
+        return tuple(out)
+
+    def zuoqi_free_revive(self, msg):
+        """Command 33023: StageMeirenServiceImpl.zuoqiFreeRevive.
+
+        The free revive opens once reviveNeedTime ms elapse past the
+        death (accumulated across reconnects): before that the reply is
+        [-1, remainingMs]; a mount needing no revival, or one with no
+        recorded death, answers [0, 82140]; else the revive-handle pushes
+        plus [1, curHp].
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        st = self._zuoqi_revive_state(role, rid)
+        check = self._zuoqi_need_revive(st)
+        if check is not None:
+            return frame(amf3_encode(['33023', [0, check]]))
+        if st['dead'] <= 0:
+            return frame(amf3_encode(
+                ['33023', [0, ZUOQI_ERR_NEED_REVIVE]]))
+        try:
+            need = int((self.config.zuoqi_revive() or {}).get(
+                'reviveNeedTime') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        remaining = need - int(time.time() * 1000) + st['dead'] - st['use']
+        if remaining > 0:
+            return frame(amf3_encode(['33023', [-1, remaining]]))
+        out = []
+        cur_hp = self._zuoqi_revive_handle(
+            role, rid, _wire_id(role), st, out)
+        out.append(frame(amf3_encode(['33023', [1, cur_hp]])))
+        return tuple(out)
+
+    def zuoqi_dead_info(self, msg):
+        """Command 33024: StageMeirenServiceImpl.getZuoqiDeadInfo.
+
+        A live mount, a mountless role or one with no recorded death gets
+        null (the fresh-role capture shape); a dead mount gets [rank,
+        nowMs + reviveNeedTime - useTime], the revive countdown's anchor.
+        """
+        if self.config is None:
+            return frame(amf3_encode(['33024', [None]]))
+        role, rid = self._task_role()
+        st = self._zuoqi_revive_state(role, rid)
+        if st is None or st['cur'] > 0 or st['dead'] <= 0:
+            return frame(amf3_encode(['33024', [None]]))
+        try:
+            need = int((self.config.zuoqi_revive() or {}).get(
+                'reviveNeedTime') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        stamp = int(time.time() * 1000) + need - st['use']
+        return frame(amf3_encode(['33024', [st['rank'], stamp]]))
 
     def skill_cd_frame(self, role):
         """42005 entry skill-cooldown [category, dynamicCd].
@@ -2498,35 +3337,46 @@ class Session:
         by tests for the combat-loop phase to call."""
         return frame(amf3_encode(buff_value(owner_id, instance_id, value)))
 
-    def apply_stage_bootstrap(self, msg):
-        """Reply to 20000, then push the scene entry and role HP/MP like Java."""
-        reply = self.apply_stage(msg)
-        if reply is None:
-            return None
-        args = self.safe(msg, 1, [])
-        role_id = str(self.safe(args, 0, '') or '')
-        roles = self.get_roles(self.authed_user or '', self.server_id or '')
-        role = _find_role(roles, role_id)
-        frames = [reply]
-        target = str(self.safe(args, 1, '') or role.get('map_id') or '')
-        # Java always sends this on stage entry, for every map, not just the
-        # ones we have a captured type for.
-        map_type = self.map_type_for(target)
-        frames.append(frame(amf3_encode(['21000', [1, 1, map_type]])))
-        snapshot = self.monster_snapshot_frame(target)
+    def scene_tail_frames(self, role, map_id):
+        """Frames Java pushes after 21000 on scene entry.
+
+        Fresh-capture order (session-20261018-040230, map 2): the 23003
+        NPC enters, then 12004 vitals, 12050 zhenqi+cap, 12005 shanbi,
+        the 12000 attribute map, and the 42100 entry buff flush. The
+        23002 monster snapshot only carries spawns inside the role's AOI
+        box (a map-2 entry carries none), each followed by its born-flag
+        40000 tile; the 23009 mount pet enters only for mounted roles.
+        42005/40501 are NOT entry frames: the old tap shows 42005 on
+        skill-ready and 40501 on a later fight-state change.
+        """
+        frames = []
+        try:
+            x, y = int(role.get('map_x')), int(role.get('map_y'))
+        except (TypeError, ValueError):
+            x = y = None
+        if x is not None and self.config is not None:
+            npc_records = self.config.npc_snapshot(map_id, x, y)
+            if npc_records:
+                frames.append(frame(amf3_encode(['23003', npc_records])))
+        snapshot = self.monster_snapshot_frame(map_id, x, y)
         if snapshot is not None:
             frames.append(snapshot)
-        # Tap order line 9: the mount pet enters the stage right after the
-        # monster snapshot and before the stats pushes.
-        pet = self.zuoqi_pet_frame(role, target)
+        # The mount pet enters the stage right after the AOI snapshot
+        # and before the stats pushes (old tap order).
+        pet = self.zuoqi_pet_frame(role, map_id)
         if pet is not None:
             frames.append(pet)
-        hp = [role.get(k) for k in ('hp', 'max_hp', 'mp', 'max_mp')]
-        if all(v is not None for v in hp):
+        max_hp = role.get('max_hp')
+        max_mp = role.get('max_mp')
+        if max_hp is not None and max_mp is not None:
+            # Java numerics serialize as AMF3 doubles; a role with no
+            # stored vitals enters at full health.
+            hp = role.get('hp')
+            mp = role.get('mp')
             frames.append(frame(amf3_encode(
-                ['12004', [_wire_id(role), *hp]])))
-        # Captured entry order after 12004 (tap lines 11-13): shanbi value,
-        # zhenqi+cap, attribute map. The last two need the level row.
+                ['12004', [_wire_id(role), float(hp if hp is not None else max_hp),
+                           float(max_hp), float(mp if mp is not None else max_mp),
+                           float(max_mp)]])))
         frames.append(frame(amf3_encode(
             ['12005', [int(role.get('shanbi_val') or 0)]])))
         row = (self.config.role_attribute_row(role.get('level'))
@@ -2540,24 +3390,25 @@ class Session:
             attrs = self.role_attribute_map(role)
             if attrs is not None:
                 frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
-        # Captured entry order after 12000 (tap lines 13, 21, 24): the
-        # 42100 buff flush, the 42005 skill cooldown, then 40501. The
-        # fight-state notice needs no config, so it closes every entry;
-        # the buff/cooldown frames skip themselves when their data is
-        # absent (no XiaoGuoBiao/CdBiao rows, no role skill state).
         self._stage_serial += 1
         self._obj_seq = 0
         buff_frame = self.entry_buff_frame(role)
         if buff_frame is not None:
             frames.append(buff_frame)
-        cd_frame = self.skill_cd_frame(role)
-        if cd_frame is not None:
-            frames.append(cd_frame)
-        frames.append(self.fight_state_frame(role))
-        return tuple(frames) if len(frames) > 1 else reply
+        # The scene populates with one born-flag 40000 per snapshot
+        # monster right after the buffs (old tap entry); without tiles
+        # the client has records but no positions and renders no actors.
+        if self.config is not None and x is not None:
+            for rec in self.config.monster_snapshot(map_id, x, y) or []:
+                try:
+                    frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
+                        rec[0], [rec[11], rec[12]], True))))
+                except (IndexError, TypeError, ValueError):
+                    continue
+        return frames
 
     def change_stage(self, msg):
-        """Acknowledge the role's scene entry with line number and map type."""
+        """Acknowledge scene entry, then push the AOI scene like Java."""
         args = self.safe(msg, 1, [])
         role_id = str(self.safe(args, 0, '') or '')
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
@@ -2571,16 +3422,18 @@ class Session:
                                          y=role.get('map_y'))
         map_type = self.map_type_for(map_id)
         frames = [frame(amf3_encode(['21000', [1, 1, map_type]]))]
-        snapshot = self.monster_snapshot_frame(map_id)
-        if snapshot is not None:
-            frames.append(snapshot)
+        frames.extend(self.scene_tail_frames(role, map_id))
         return tuple(frames) if len(frames) > 1 else frames[0]
 
-    def monster_snapshot_frame(self, map_id):
-        """23002 monster snapshot from monster.mm, or None when the map has no spawns."""
+    def monster_snapshot_frame(self, map_id, x=None, y=None):
+        """23002 monster snapshot, or None when no spawn is in range.
+
+        With a role position only the AOI-box spawns are reported, like
+        Java's listener; without one (teleports, tests) the whole map is.
+        """
         if self.config is None:
             return None
-        records = self.config.monster_snapshot(map_id)
+        records = self.config.monster_snapshot(map_id, x, y)
         if not records:
             return None
         log.info('conn %d: map %s snapshot with %d monsters',
@@ -2658,11 +3511,13 @@ class Session:
     def zuoqi_info(self):
         """Command 12102: StageInfoAction.zuoqiInfo -> outpuZuoqiInfo's Object[8].
 
-        [mount, level, skills, clothes, longhun1, longhun0, zhanli,
-        skillBook]. Mount and level come from zuoqi_info and ZuoJiBiao; the
-        rest lives in tables the migration does not carry (role_zuoqi_skill,
-        clothes, zhanli computation), which is exactly what Java returns
-        from those sources when they are empty: null/0.
+        [mount, level, skills, clothes, longhun, longling, zhanli,
+        skillBook]. Mount and level come from zuoqi_info and ZuoJiBiao;
+        longhun/longling are PropUtil.getLonglingLonghunCount over the
+        role's attribute-goods map (skill-33 total, then skill-35 total).
+        The rest lives in tables the migration does not carry
+        (role_zuoqi_skill, clothes, zhanli computation), which is exactly
+        what Java returns from those sources when they are empty: null/0.
         """
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else None
@@ -2678,8 +3533,16 @@ class Session:
                              self.conn_id, mount)
                 else:
                     level = pet[0]
+        hun = ling = 0
+        if role is not None and self.config is not None:
+            try:
+                stored = self.get_role_zuoqi(role.get('id')) or {}
+            except Exception:
+                stored = {}
+            ling, hun = self.config.longling_longhun_counts(
+                self._zuoqi_att_map(stored))
         return frame(amf3_encode(
-            ['12102', [mount, level, None, None, 0, 0, 0, None]]))
+            ['12102', [mount, level, None, None, hun, ling, 0, None]]))
 
     def map_type_for(self, map_id):
         """MapLine maptype for a map; logs and uses DEFAULT_MAP_TYPE when unknown."""
@@ -2726,20 +3589,48 @@ class Session:
         return frame(amf3_encode(['12200', rows]))
 
     def money_info(self, role=None):
+        """Command 32010: CreateAccountOutPut.getMoneyChange.
+
+        [RoleAccount.tongqian, UserAccount.lingshi,
+        RoleAccount.bindLingshi, AccountConstants.NOTIFYORNOT]. The Java
+        Longs serialize as AMF3 doubles and the last slot is the constant
+        1, not the recive flag (that lives on the account row behind
+        35011).
+        """
         if role is None:
             roles = self.get_roles(self.authed_user or '', self.server_id or '')
             role = roles[0] if roles else {}
-        return frame(amf3_encode(['32010', [role.get('tongqian') or 0,
-                                             role.get('lingshi') or 0,
-                                             role.get('bind_lingshi') or 0,
-                                             role.get('recive_yb') or 0]]))
+
+        def _money(value):
+            try:
+                return float(value or 0)
+            except (TypeError, ValueError):
+                return 0.0
+        return frame(amf3_encode(['32010', [_money(role.get('tongqian')),
+                                             _money(role.get('lingshi')),
+                                             _money(role.get('bind_lingshi')),
+                                             1]]))
 
     def role_extra_info(self):
+        """Command 12011: RoleAdditionalDataOutput.info.
+
+        [zuoqiRank, pkVal, isShutUp, remainFreeCount, longhun, longhun,
+        hasYuxi, guozhanZhiwei, binQiId, isGoldEquip, junGonglv]. Sources
+        without migrated rows read as their Java defaults (0/None), which
+        is exactly the fresh-role capture [0,0,0,0,0,0,0,None,None,0,1].
+        """
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else {}
-        values = [1, role.get('hp') or 0, role.get('mp') or 0, 9999,
-                  role.get('zhenqi') or 0, role.get('shengwang') or 0,
-                  0, None, None, 0, 1]
+        info = decode_zuoqi_info(role.get('zuoqi_info'))
+        try:
+            rank = int((info or {}).get('id') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        try:
+            remain_free = int(role.get('free_fly_count') or 0)
+        except (TypeError, ValueError):
+            remain_free = 0
+        values = [rank, 0, 0, remain_free, 0, 0, 0, None, None, 0, 1]
         return frame(amf3_encode(['12011', values]))
 
     def fighting_info(self):
@@ -2757,14 +3648,14 @@ class Session:
         migrated, and Java's int fields default to 0 from empty sources).
         Slot [3] is [zuoqiJichu, zuoqiEquip, longhun]: the base mount
         fight from role_zuoqi.rank, the mount-gear fight over the
-        [-105, -100] equip rows (none exist for any legacy role), and 0
-        for longhun (getlongLingOrLongHun returns 0 on an empty goods
-        map, and attribute_goods_id is NULL for every legacy role).
+        [-105, -100] equip rows (none exist for any legacy role), and
+        the longhun fight over the role's attribute-goods map (0 for
+        every legacy role, whose attribute_goods_id is NULL).
         """
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else None
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
-        zuoqi, zuoqi_equip = 0, 0
+        zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
         if role is not None and self.config is not None:
@@ -2782,6 +3673,12 @@ class Session:
                 mount = {}
             zuoqi = self.config.zuoqi_fight(mount.get('zuoqi_rank'),
                                             role.get('level'))
+            try:
+                longhun = self.config.zuoqi_longhun_fight(
+                    mount.get('zuoqi_rank'), role.get('level'),
+                    self._zuoqi_att_map(mount))
+            except Exception:
+                longhun = 0
             try:
                 skills = self.get_role_skills(role.get('id')) or []
             except Exception:
@@ -2804,11 +3701,16 @@ class Session:
             except Exception:
                 vip_row = None
             vip = self.config.vip_fight((vip_row or {}).get('vip_level'))
+            try:
+                stored = self.get_role_xianjiechenhao(role.get('id'))
+            except Exception:
+                stored = None
+            xianjie = self.config.xianjie_fight(self.xianjie_id_for(stored))
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
-            [zuoqi, zuoqi_equip, 0],
-            [0, 0], vip, shenjiang_slot, 0, 0, dan, [0, 0], 0, 0, 0, 0, 0,
-            [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
+            [zuoqi, zuoqi_equip, longhun],
+            [0, 0], vip, shenjiang_slot, 0, 0, dan, [0, 0], xianjie, 0, 0, 0,
+            0, [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def equip_info(self):
         """Command 31000: RoleEquipSlotServiceImpl.getInfoEquip -> formart1(List).
@@ -6079,9 +6981,10 @@ class Session:
         C> is the bag-row guid string (empty is silent). Unknown rows,
         goods, or skills are silent like Java's null paths; dead roles
         are silent (isDead gate); check failures reply [0, code]. Only
-        skills 1/2/3/5/14/36/37 have portable effects so far (3 is the
-        taofa scroll hook); other known skills stay open and silent
-        pending their systems (documented).
+        skills 1/2/3/5/11/14/33/35/36/37 have portable effects so far
+        (3 is the taofa scroll hook, 33/35 the longhun/longling mount
+        pills); other known skills stay open and silent pending their
+        systems (documented).
         """
         guid = msg if isinstance(msg, str) else self.safe(msg, 1, None)
         if not guid or self.config is None:
@@ -6115,9 +7018,11 @@ class Session:
         err = self._prop_use_check(role, grow, skill)
         if err is not None:
             return frame(amf3_encode([str(CMD_PROP_USE), [0, err]]))
-        # consumePrior default true; HpMp/skillBook/LiHe/TaoFa null (their
-        # services consume internally, so the pipeline never does).
-        prior = skill not in (1, 37, 11, 3)
+        # consumePrior default true, false for HpMp/skillBook/LiHe/TaoFa
+        # (their services consume internally, so the pipeline post-decrs),
+        # and null for LongHun/LongLing (useLongHun/useLongLing decr
+        # inside, so the pipeline never does).
+        prior = None if skill in (33, 35) else skill not in (1, 37, 11, 3)
         if prior and not self._prop_decr(rid, row):
             return None
         frames = self._prop_effect(role, rid, row, grow, skill)
@@ -6127,7 +7032,7 @@ class Session:
         if frames is None:
             return None
         if terminal:
-            if not prior:
+            if prior is False:
                 self._prop_decr(rid, row)
             log.info('conn %d: used %r (events skipped, no bus)',
                      self.conn_id, row.get('goods_id'))
@@ -6184,6 +7089,10 @@ class Session:
             return self._prop_taofa(role, rid, row, grow)
         if skill == 36:
             return self._prop_dan(role, rid, row, grow)
+        if skill == 33:
+            return self._prop_longhun(role, rid, row, grow)
+        if skill == 35:
+            return self._prop_longling(role, rid, row, grow)
         if skill == 2:
             frames = self._prop_exp(role, rid, grow)
         elif skill == 5:
@@ -6325,6 +7234,97 @@ class Session:
                  self.conn_id, goods_id)
         return ([frame(amf3_encode(
             [str(CMD_ATTR_CHANGE), [goods_id, total]]))], True)
+
+    @staticmethod
+    def _zuoqi_att_map(mount):
+        """attribute_goods_id {goods: n} map; bad blobs read as empty."""
+        try:
+            text = mount.get('attribute_goods_id')
+        except AttributeError:
+            return {}
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        out = {}
+        for key, value in data.items():
+            try:
+                out[str(key)] = int(value)
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def _prop_longhun(self, role, rid, row, grow):
+        """Skill 33 LongHun pill: bump the goods count, push 33010."""
+        outcome = self._prop_longdan(role, rid, row, grow, 'xlimit')
+        if outcome is None:
+            return None
+        if outcome[0] == 'err':
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, outcome[1]]]))], False)
+        return ([frame(amf3_encode(
+            [str(CMD_ZUOQI_LONGHUN), outcome[1]]))], True)
+
+    def _prop_longling(self, role, rid, row, grow):
+        """Skill 35 LongLing pill: bump the goods count, push 33012."""
+        outcome = self._prop_longdan(role, rid, row, grow, 'perxlimit')
+        if outcome is None:
+            return None
+        if outcome[0] == 'err':
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, outcome[1]]]))], False)
+        return ([frame(amf3_encode(
+            [str(CMD_ZUOQI_LONGLING), outcome[1]]))], True)
+
+    def _prop_longdan(self, role, rid, row, grow, cap_column):
+        """useLongHun/useLongLing shared body; ('ok', total)/('err', code).
+
+        The two ServiceImpl bodies differ only in the cap column and
+        the push id: GoodsConfig.zuoqiLv above the mount rank answers
+        520004, a missing (rank, clamped level) row answers 520004, and
+        checkAttDan/checkAttLuckyDan answers 520011 once this goods id
+        already fills the row's xlimit/perxlimit cap (an absent id
+        always passes, even when the cap is 0). The decr runs inside
+        (consumePrior is null, so the pipeline never decrs); the map is
+        bumped, persisted, and its new count returned. Events ride no
+        bus, matching the other pill effects.
+        """
+        goods_id = str(row.get('goods_id') or '')
+        if not goods_id:
+            return ('err', GENERAL_INEXISTENCE)
+        mount = self._zuoqi_row(rid)
+        if mount is None:
+            return None
+        try:
+            rank = int(mount.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        try:
+            need = int(grow.get('zuoqilv') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        if need > rank:
+            return ('err', ZUOQI_RANK_CODE)
+        pet = self.config.zuoqi_pet(rank, role.get('level'))
+        if pet is None:
+            return ('err', ZUOQI_RANK_CODE)
+        try:
+            cap = int(pet[1].get(cap_column) or 0)
+        except (TypeError, ValueError):
+            cap = 0
+        counts = self._zuoqi_att_map(mount)
+        if goods_id in counts and counts[goods_id] >= cap:
+            return ('err', ZUOQI_ATT_CAP_CODE)
+        self._prop_decr(rid, row)
+        total = counts.get(goods_id, 0) + 1
+        counts[goods_id] = total
+        mount['attribute_goods_id'] = json.dumps(counts)
+        self._zuoqi_save(rid, mount)
+        return ('ok', total)
 
     def _prop_lihe(self, role, rid, row, grow):
         """LiHe: deterministic gift boxes; lottery/vip boxes stay open."""
@@ -7539,6 +8539,14 @@ class Session:
         return [1, [cfg['id'], pairs, cfg.get('exp') or 0,
                     cfg.get('jb') or 0, cfg.get('bound_ob') or 0,
                     cfg.get('prestige') or 0, cfg.get('zhiqi') or 0]]
+
+    def chapters_info(self):
+        """Command 50001: getChapterList 3-arg overload, always null.
+
+        The chapters panel is client-config driven; Java returns null
+        unconditionally, so this takes no role or table input.
+        """
+        return frame(amf3_encode(['50001', None]))
 
     def _task_notify_chapter(self, row, rid):
         """notifyChapterComplete: 50012 when a subchapter's last quest pays."""
@@ -8787,8 +9795,10 @@ class Session:
         row = dict(row)
         if is_best and row.get('task_state') != 1:
             return None
+        # payTaskRichange: a finished final loop pays once (state 1 ->
+        # loop reward, fufei cleared); an already-settled row pays nothing.
         if row.get('current_loop') == RICHANG_MAX_LOOP and \
-                row.get('task_state') != 2:
+                row.get('task_state') == 2:
             return None
         reward = self.config.richang_reward(row.get('reward_config_id'))
         if reward is None:
@@ -8999,7 +10009,7 @@ class Session:
                'update_time': 0, 'fail_count': 0, 'total_exp': 0,
                'free_jb': 0, 'lucky_goods_id': None,
                'lucky_goods_expire_time': 0, 'add_lucky_value': 0,
-               'kaifu_data': None}
+               'kaifu_data': None, 'attribute_goods_id': None}
         try:
             self.save_role_zuoqi(rid, 0, 0, 0, 0, 0, 0, 0, None, 0, 0, None)
         except Exception:
@@ -9015,7 +10025,8 @@ class Session:
                 row.get('fail_count'), row.get('total_exp'),
                 row.get('free_jb'), row.get('lucky_goods_id'),
                 row.get('lucky_goods_expire_time'),
-                row.get('add_lucky_value'), row.get('kaifu_data'))
+                row.get('add_lucky_value'), row.get('kaifu_data'),
+                row.get('attribute_goods_id'))
         except Exception:
             pass
 
@@ -9363,9 +10374,8 @@ class Session:
 
         Port of sendZhanli over getZuoQiFight: the cached fight-map
         total is jichu + mount-equip + longhun, computed live here.
-        Longhun is 0 (getlongLingOrLongHun over an empty goods map,
-        and attribute_goods_id has no source: 33010 useLongHun is
-        service-internal with no inbound route, see the roadmap).
+        Longhun runs getlongLingOrLongHun over the role's
+        attribute-goods map (0 for legacy roles, whose map is empty).
         """
         if self.config is None:
             return None
@@ -9387,6 +10397,12 @@ class Session:
             total = 0
         try:
             total += self.config.zuoqi_equip_fight(items) or 0
+        except Exception:
+            pass
+        try:
+            total += self.config.zuoqi_longhun_fight(
+                mount.get('zuoqi_rank'), role.get('level'),
+                self._zuoqi_att_map(mount)) or 0
         except Exception:
             pass
         return frame(amf3_encode([str(CMD_ZUOQI_ZHANLI), total]))
@@ -9517,6 +10533,63 @@ class Session:
         if not isinstance(data, str) or not data:
             return None
         return data
+
+    @staticmethod
+    def _pet_zhenfa_entries(zhenfa_pet):
+        """zhenfa_pet fastjson {pos: petId} as [[pos, petId]] or null.
+
+        Mirrors getPetInfo's JSONObject walk: a missing, unparseable or
+        empty map yields null.
+        """
+        if not zhenfa_pet:
+            return None
+        try:
+            data = json.loads(zhenfa_pet)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(data, dict) or not data:
+            return None
+        return [[str(pos), data[pos]] for pos in data]
+
+    def pet_info(self):
+        """Command 136000: [pets, [zhenfaId, upgradeExp, entries],
+        chuzhanId, upgradeCount].
+
+        Port of PetServiceImpl.getPetInfo: one [petId, lv, rank, lvExp,
+        rankExp] per owned RolePet (null when the role owns none), then
+        the RolePetZhenfa row; no formation row is silent like Java's
+        cacheLoad miss (live rows always exist, created at role birth).
+        """
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            pets = self.get_role_pets(rid) or []
+        except Exception:
+            pets = []
+        arr = [[str(p.get('pet_id')), int(p.get('pet_lv') or 0),
+                int(p.get('pet_rank') or 0),
+                int(p.get('pet_lv_exp') or 0),
+                int(p.get('pet_rank_exp') or 0)] for p in pets] or None
+        try:
+            zhenfa = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            zhenfa = None
+        if zhenfa is None:
+            return None
+        entries = self._pet_zhenfa_entries(zhenfa.get('zhenfa_pet'))
+        try:
+            upgrade_exp = int(zhenfa.get('upgrade_exp') or 0)
+        except (TypeError, ValueError):
+            upgrade_exp = 0
+        try:
+            upgrade_count = int(zhenfa.get('pet_upgrade_count') or 0)
+        except (TypeError, ValueError):
+            upgrade_count = 0
+        return frame(amf3_encode(
+            [str(CMD_PET_INFO),
+             [arr, [zhenfa.get('zhenfa_id'), upgrade_exp, entries],
+              zhenfa.get('pet_chuzhan_id'), upgrade_count]]))
 
     def meiren_panel(self):
         """Command 82000: owned [[type, level, heti]] or null when empty."""
@@ -9709,6 +10782,475 @@ class Session:
         except Exception:
             return None
         return frame(amf3_encode(['82003', [1, meiren_type, level, heti + 1]]))
+
+    def _baoshi_rows(self, rid):
+        """Role_baoshi rows for a role as fresh dicts (getRoleBaoShi list)."""
+        try:
+            return [dict(r) for r in self.get_role_baoshi(rid) or []]
+        except Exception:
+            return []
+
+    def _baoshi_save(self, rid, rows):
+        """Persist role_baoshi rows; False keeps the reply silent."""
+        try:
+            return bool(self.save_role_baoshi(rid, rows))
+        except Exception:
+            return False
+
+    def _baoshi_request(self, msg):
+        """BaoShiAction data: [part, grid] or [part, grid, isAuto]."""
+        data = msg[1] if len(msg) > 1 else None
+        if not isinstance(data, (list, tuple)) or len(data) not in (2, 3):
+            return None
+        part, grid = data[0], data[1]
+        for value in (part, grid):
+            if isinstance(value, bool) or not isinstance(value, int):
+                return None
+        auto = False
+        if len(data) == 3:
+            flag = data[2]
+            if isinstance(flag, bool) or not isinstance(flag, int):
+                return None
+            auto = flag == 1
+        return part, grid, auto
+
+    @staticmethod
+    def _baoshi_part_level(rows, part):
+        """Sum of levels on one part (getPartLevelSum)."""
+        total = 0
+        for row in rows or []:
+            try:
+                if int(row.get('part')) != part:
+                    continue
+                total += int(row.get('level') or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _baoshi_find(self, rows, part, grid):
+        """Row for one (part, grid) (getRoleBaoShi), or None."""
+        for row in rows or []:
+            try:
+                if int(row.get('part')) == part and \
+                        int(row.get('grid')) == grid:
+                    return row
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _baoshi_min_row(self, rows, part):
+        """Lowest (level, grid) row on a part (getMinLevelBaoshi)."""
+        best, best_key = None, None
+        for row in rows or []:
+            try:
+                if int(row.get('part')) != part:
+                    continue
+                key = (int(row.get('level') or 0), int(row.get('grid')))
+            except (TypeError, ValueError):
+                continue
+            if best_key is None or key < best_key:
+                best, best_key = row, key
+        return best
+
+    def _baoshi_material_plan(self, rid, role, needs, rank, auto_buy,
+                              short_code):
+        """Bag-plus-mall material check over a {goods: count} map.
+
+        Port of checkGoodsJinJieDanMoneyEnough (upgrade) and
+        checkGoodsMoneyEnough (jihuo): each need fills from its
+        specialtype substitutes in config order (both baoshi materials
+        substitute only themselves), then the remainder is mall-priced
+        (npc 2000, first affordable non-guild type) when auto_buy holds.
+        Returns (decr, mall_money) or (None, code): 430250 with no
+        substitutes, short_code when the bag falls short without
+        auto-buy, 430249 with no mall offer, else the short money's
+        code (1002/1004/1003, defaulting to 1002 like Java).
+        """
+        decr, mall_money = {}, {}
+        for gid, need in (needs or {}).items():
+            try:
+                left = int(need)
+            except (TypeError, ValueError):
+                continue
+            if left <= 0:
+                continue
+            if rank is None:
+                subs = [str(gid)]
+            else:
+                try:
+                    subs = self.config.goods_specialtype_substitutes(
+                        gid, rank)
+                except Exception:
+                    subs = None
+            if not subs:
+                return None, BAG_ERR_TRY
+            for sub in subs:
+                if left <= 0:
+                    break
+                stock = self._task_goods_count(rid, sub)
+                if stock <= 0:
+                    continue
+                take = min(left, stock)
+                decr[sub] = decr.get(sub, 0) + take
+                left -= take
+            if left <= 0:
+                continue
+            if not auto_buy:
+                return None, short_code
+            offer = self.config.mall_offer(str(gid), '2000')
+            if offer is None:
+                return None, BAG_ERR_MALL
+            priced = False
+            for money_type in sorted(offer['costs']):
+                if money_type == 5:
+                    continue
+                name = MALL_MONEY_NAMES.get(money_type)
+                column = BAG_MONEY_COLUMNS.get(name) if name else None
+                if column is None:
+                    continue
+                try:
+                    total = int(offer['costs'][money_type]) * left
+                    balance = int((role or {}).get(column) or 0)
+                except (TypeError, ValueError):
+                    continue
+                if balance >= total:
+                    mall_money[money_type] = \
+                        mall_money.get(money_type, 0) + total
+                    priced = True
+                    break
+            if priced:
+                continue
+            first = next((t for t in sorted(offer['costs']) if t != 5), 2)
+            return None, {2: GENERAL_YB, 3: GENERAL_BINDYB,
+                           1: GENERAL_JB}.get(first, GENERAL_YB)
+        return decr, mall_money
+
+    def _baoshi_consume(self, rid, role, decr, mall_money):
+        """Take planned goods and mall money (decrConsumeGoodMoney)."""
+        for gid, take in (decr or {}).items():
+            self._prop_take(rid, gid, take)
+        for money_type, total in (mall_money or {}).items():
+            name = MALL_MONEY_NAMES.get(money_type)
+            if name is not None and total:
+                self._bag_money_decr(rid, name, total)
+
+    def _baoshi_can_jihuo(self, role, rows, part, grid):
+        """canJiHuo gate code for a (part, grid), or None when open."""
+        detail = self.config.baoshi_detail(part, grid)
+        if detail is None:
+            return BAOSHI_ERR_CANNOT
+        if detail['needlv'] > self._task_role_level(role):
+            return BAOSHI_ERR_LEVEL
+        if detail['gjneedpj'] > self._baoshi_part_level(rows, part):
+            return BAOSHI_ERR_GRADE
+        buwei = self.config.baoshi_buwei().get(part)
+        if buwei is None:
+            return BAOSHI_ERR_CANNOT
+        if grid < buwei['min_grid'] or grid > buwei['max_grid']:
+            return BAOSHI_ERR_CANNOT
+        mine = [r for r in rows
+                if self._baoshi_find([r], part, r.get('grid')) is not None]
+        top = None
+        for row in mine:
+            try:
+                level = int(row.get('level') or 0)
+                cell = int(row.get('grid'))
+            except (TypeError, ValueError):
+                continue
+            if top is None or cell > top[0]:
+                top = (cell, level)
+        if top is not None:
+            if top[0] > grid:
+                return BAOSHI_ERR_JIHUOED
+            if top[0] == grid:
+                if top[1] > 0:
+                    return BAOSHI_ERR_JIHUOED
+            elif top[0] + 1 != grid:
+                return BAOSHI_ERR_CANNOT
+        elif grid != buwei['min_grid']:
+            return BAOSHI_ERR_CANNOT
+        try:
+            zhenqi = int((role or {}).get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        if zhenqi < detail['cost_zhenqi']:
+            return BAOSHI_ERR_ZHENQI_J
+        return None
+
+    @staticmethod
+    def _baoshi_is_success(odds):
+        """Lottery.isSuccess: a uniform roll under the rate."""
+        try:
+            return random.random() < float(odds)
+        except (TypeError, ValueError):
+            return False
+
+    def _baoshi_roll_rates(self, rates):
+        """RateScope.randomZuoqiRate: [type, exp] or None past the total."""
+        roll = random.random()
+        total = 0.0
+        for kind, rate, exp in rates or []:
+            try:
+                total += float(rate)
+            except (TypeError, ValueError):
+                continue
+            if roll < total:
+                return [kind, exp]
+        return None
+
+    def _baoshi_add_exp(self, rid, rows, add, row, upgraded, chained):
+        """addBaoShiExp: feed exp, leveling with overflow chaining.
+
+        Rows mutate in place; upgraded collects leveled rows, chained the
+        overflow targets (yiChu). A null roll or a capped gem ends the
+        feed like Java's early return; the chained row is recorded on
+        entry when a chain is already open.
+        """
+        if add <= 0 or row is None:
+            return
+        try:
+            part = int(row.get('part'))
+            level = int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            return
+        detail = self.config.baoshi_detail(part, row.get('grid'))
+        if detail is None:
+            return
+        cfg = self.config.baoshi_shengji().get(str(detail.get('gemid')))
+        if cfg is None or level >= cfg['max']:
+            return
+        if chained and chained[0]:
+            chained[0] = row
+        lvl = self.config.baoshi_level(detail.get('gemid'), level)
+        if lvl is None:
+            return
+        try:
+            exp = int(row.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        overflow = exp + add - lvl['max_exp']
+        if overflow < 0:
+            row['exp'] = exp + add
+            return
+        upgraded.append(row)
+        row['level'] = level + 1
+        row['exp'] = 0
+        if overflow <= 0:
+            return
+        chained[0] = True
+        nxt = self._baoshi_min_row(rows, part)
+        self._baoshi_add_exp(rid, rows, overflow, nxt, upgraded, chained)
+
+    def baoshi_info(self):
+        """Command 37000: formatAll panel, null when nothing is socketed."""
+        if self.config is None:
+            return None
+        _, rid = self._task_role()
+        if rid is None:
+            return None
+        groups = {}
+        for row in self._baoshi_rows(rid):
+            try:
+                part = int(row.get('part'))
+                cell = [int(row.get('grid')), int(row.get('exp') or 0),
+                        int(row.get('level') or 0)]
+            except (TypeError, ValueError):
+                continue
+            groups.setdefault(part, []).append(cell)
+        if not groups:
+            return frame(amf3_encode([str(CMD_BAOSHI_INFO), None]))
+        flat = []
+        for part in sorted(groups):
+            flat.extend([part, sorted(groups[part])])
+        return frame(amf3_encode([str(CMD_BAOSHI_INFO), flat]))
+
+    def baoshi_jihuo(self, msg):
+        """Command 37001: socket a gem through the pity lottery.
+
+        Gates answer [0, code]; the cost goods (mall-priced when auto)
+        and zhenqi are consumed, then a fresh row (or the failed row's
+        retry) rolls: failCount under minTimes fails, past maxTimes
+        lands, else the odds decide. Success pushes [1, part, grid] at
+        the detail's chushi level, failure pushes [-1] with failCount+1.
+        Goods-check failures answer [0, code] on the wire: Java returns
+        those arrays to an action that drops them, so queuing them here
+        is the observable fix. Events ride no bus.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        req = self._baoshi_request(msg)
+        if req is None:
+            return None
+        part, grid, auto = req
+        rows = self._baoshi_rows(rid)
+        gate = self._baoshi_can_jihuo(role, rows, part, grid)
+        if gate is not None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_JIHUO), [0, gate]]))
+        detail = self.config.baoshi_detail(part, grid)
+        if detail is None:
+            return None
+        needs = detail['cost_goods'] or {}
+        decr, mall_money = self._baoshi_material_plan(
+            rid, role, needs, None, auto, BAOSHI_ERR_GOODS_J) \
+            if needs else ({}, {})
+        if decr is None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_JIHUO), [0, BAOSHI_ERR_GOODS_J]]))
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        self._baoshi_consume(rid, role, decr, mall_money)
+        if detail['cost_zhenqi'] > 0:
+            try:
+                self.save_role_state(
+                    rid, zhenqi=zhenqi - detail['cost_zhenqi'])
+            except Exception:
+                return None
+        row = self._baoshi_find(rows, part, grid)
+        if row is None:
+            row = {'id': f'baoshi{uuid.uuid4().hex[:16]}',
+                   'part': part, 'grid': grid, 'level': 0,
+                   'fail_count': 0, 'exp': 0,
+                   'update_time': int(time.time() * 1000)}
+            rows.append(row)
+        try:
+            fails = int(row.get('fail_count') or 0)
+        except (TypeError, ValueError):
+            fails = 0
+        if fails < detail['mintimes']:
+            success = False
+        elif fails >= detail['maxtimes']:
+            success = True
+        else:
+            success = self._baoshi_is_success(detail['odds'])
+        now = int(time.time() * 1000)
+        if success:
+            row['level'] = int(detail['chushilv'])
+            row['fail_count'] = 0
+            row['update_time'] = now
+            reply = [1, part, grid]
+        else:
+            row['fail_count'] = fails + 1
+            reply = [-1]
+        if not self._baoshi_save(rid, rows):
+            return None
+        return frame(amf3_encode([str(CMD_BAOSHI_JIHUO), reply]))
+
+    def baoshi_upgrade(self, msg):
+        """Command 37002: feed a gem exp, chaining overflow along the part.
+
+        Gates answer [0, code]; consumed materials answer [0, code] and
+        the RateScope roll pays exp with level-ups (overflow recurses
+        into the part's lowest gem, whose formatOne rides slot 7).
+        Success pushes [1, part, grid, level, exp, roll0, roll1]; a stone
+        that canUpgrade no more with a notice detail also emits the
+        11101 [530011, ...] broadcast. Events ride no bus.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        req = self._baoshi_request(msg)
+        if req is None:
+            return None
+        part, grid, auto = req
+        rows = self._baoshi_rows(rid)
+        row = self._baoshi_find(rows, part, grid)
+        if row is None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        try:
+            level = int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        if level <= 0:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        detail = self.config.baoshi_detail(part, grid)
+        if detail is None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        cfg = self.config.baoshi_shengji().get(str(detail.get('gemid')))
+        if cfg is None or level >= cfg['max']:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_TOP]]))
+        low = self._baoshi_min_row(rows, part)
+        try:
+            low_grid = int(low.get('grid')) if low is not None else None
+        except (TypeError, ValueError):
+            low_grid = None
+        if low_grid != grid:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        lvl = self.config.baoshi_level(detail.get('gemid'), level)
+        if lvl is None or not lvl['can_upgrade']:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_CANNOT]]))
+        if lvl['cost_zhenqi'] > 0:
+            try:
+                zhenqi = int((role or {}).get('zhenqi') or 0)
+            except (TypeError, ValueError):
+                zhenqi = 0
+            if zhenqi < lvl['cost_zhenqi']:
+                return frame(amf3_encode(
+                    [str(CMD_BAOSHI_UPGRADE), [0, BAOSHI_ERR_ZHENQI_U]]))
+        decr, mall_money = self._baoshi_material_plan(
+            rid, role, lvl['cost_goods'] or {}, level, auto, GENERAL_GOODS)
+        if decr is None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, mall_money]]))
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        self._baoshi_consume(rid, role, decr, mall_money)
+        if detail['cost_zhenqi'] > 0:
+            try:
+                self.save_role_state(
+                    rid, zhenqi=zhenqi - detail['cost_zhenqi'])
+            except Exception:
+                return None
+        roll = self._baoshi_roll_rates(lvl['rates'])
+        if roll is None:
+            return frame(amf3_encode(
+                [str(CMD_BAOSHI_UPGRADE), [0, BAG_ERR_TRY]]))
+        upgraded, chained = [], [False]
+        self._baoshi_add_exp(rid, rows, roll[1], row, upgraded, chained)
+        if not self._baoshi_save(rid, rows):
+            return None
+        try:
+            exp = int(row.get('exp') or 0)
+            level = int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            exp, level = 0, 0
+        reply = [1, part, grid, level, exp, roll[0], roll[1]]
+        if chained[0] and isinstance(chained[0], dict):
+            try:
+                chained_cell = [int(chained[0].get('grid')),
+                                int(chained[0].get('exp') or 0),
+                                int(chained[0].get('level') or 0)]
+            except (TypeError, ValueError):
+                chained_cell = None
+            if chained_cell is not None:
+                reply.append(chained_cell)
+        frames = []
+        if upgraded and detail['notice']:
+            top_lvl = self.config.baoshi_level(detail.get('gemid'), level)
+            if top_lvl is not None and not top_lvl['can_upgrade']:
+                frames.append(frame(amf3_encode(
+                    [str(CMD_NOTICE_ALL),
+                     [BAOSHI_ERR_NOTIFY,
+                      [str(role.get('name')), '{bodyPart|%d}' % part,
+                       top_lvl['name']]]]))) 
+        frames.append(frame(amf3_encode([str(CMD_BAOSHI_UPGRADE), reply])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
 
     def zuoqi_jiangli_meiren(self):
         """Command 33006: grant the kaifu meiren, pushing 82001 first.
@@ -10231,20 +11773,3481 @@ class Session:
             int(vip.get('tody_prop_value') or 0)]]))
 
     def mall_info(self, msg):
-        """Command 32000: MallServiceImpl.shopList [1, None, items].
+        """Command 32000: MallServiceImpl.shopList [1, sign, items].
 
         The request is [sign, category]; Java answers nothing when the
-        category is empty, else the raw WuPinChuShouBiao rows of the
-        category. The sign is always null (see GameConfig.mall_sign), so
-        the [-1, echo] branch in bytecode is unreachable.
+        category is empty, [-1, category] when the client's sign matches
+        (the client then uses its cache), else the sign plus the raw
+        WuPinChuShouBiao rows of the category.
         """
         args = self.safe(msg, 1, [])
+        sign = self.safe(args, 0)
         category = self.safe(args, 1)
         if not category:
             return None
+        mall_sign = self.config.mall_sign() if self.config is not None else None
+        if sign is not None and sign == mall_sign:
+            return frame(amf3_encode(['32000', [-1, category]]))
         items = (self.config.mall_shop_list(category)
                  if self.config is not None else [])
-        return frame(amf3_encode(['32000', [1, None, items]]))
+        return frame(amf3_encode(['32000', [1, mall_sign, items]]))
+
+    def dafuweng_info(self, msg):
+        """105003: the dafuweng sign and its three config tables (no role state)."""
+        reply = self.config.dafuweng_reply() if self.config is not None else None
+        if reply is None:
+            return None
+        return frame(amf3_encode(['105003', reply]))
+
+    def _dafuwong_row(self, rid):
+        """RoleDafuwong row: online() creates, clear() resets daily/weekly.
+
+        A missing row starts at zeros with today's stamp. Otherwise a new
+        day zeroes slot and both roll counters, a new ISO week zeroes the
+        zanshi stamps, and tongqianCount always resets for the new day,
+        mirroring clear(). The stamp always advances to now.
+        """
+        now = int(time.time() * 1000)
+        try:
+            row = self.get_role_dafuwong(rid)
+        except Exception:
+            row = None
+        if not row:
+            row = {'slot': 0, 'grade': 0, 'zanshi': 0, 'roll_count': 0,
+                   'tongqian_count': 0, 'last_roll_ms': now}
+            try:
+                self.save_role_dafuwong(rid, **row)
+            except Exception:
+                pass
+            return dict(row)
+        row = dict(row)
+        try:
+            last = int(row.get('last_roll_ms') or 0)
+        except (TypeError, ValueError):
+            last = 0
+        if self._same_day_ms(now, last):
+            for key in ('slot', 'grade', 'zanshi', 'roll_count',
+                        'tongqian_count'):
+                try:
+                    row[key] = int(row.get(key) or 0)
+                except (TypeError, ValueError):
+                    row[key] = 0
+            return row
+        row['slot'] = 0
+        row['roll_count'] = 0
+        row['tongqian_count'] = 0
+        if self._dafuwong_week_changed(last, now):
+            row['zanshi'] = 0
+        else:
+            try:
+                row['zanshi'] = int(row.get('zanshi') or 0)
+            except (TypeError, ValueError):
+                row['zanshi'] = 0
+        try:
+            row['grade'] = int(row.get('grade') or 0)
+        except (TypeError, ValueError):
+            row['grade'] = 0
+        row['last_roll_ms'] = now
+        try:
+            self.save_role_dafuwong(rid, **row)
+        except Exception:
+            pass
+        return row
+
+    @staticmethod
+    def _dafuwong_week_changed(last_ms, now_ms):
+        """Approximate DatatimeUtil.dayIsToWeek with the ISO week
+        (server-local); Java's Calendar week may differ at year edges."""
+        try:
+            old = time.localtime(int(last_ms or 0) / 1000)
+            new = time.localtime(int(now_ms or 0) / 1000)
+        except (TypeError, ValueError, OverflowError):
+            return True
+        if old.tm_year != new.tm_year:
+            return True
+        try:
+            return time.strftime('%V', old) != time.strftime('%V', new)
+        except (TypeError, ValueError):
+            return True
+
+    def dafuwong_info(self, msg):
+        """105000: getDaFuWongInfo [slot, grade, zanshi, count,
+        tongqianCount, isChongZhi].
+
+        The recharge flag has no local ledger (like vipqq's charge_total),
+        so it answers False.
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        row = self._dafuwong_row(role.get('id'))
+        return frame(amf3_encode([str(CMD_DAFUWONG_INFO), [
+            row['slot'], row['grade'], row['zanshi'], row['roll_count'],
+            row['tongqian_count'], False]]))
+
+    def _dafuwong_lottery(self, rid, row, roll_type, zhubiao):
+        """One lottery() draw: [dice, slot, zanshiBull, [[id, count]]].
+
+        A d7 moves the piece, capped at the last board slot (lapping
+        resets to 0). Type 1 banks grade points, type 2 grants the slot's
+        item list, type 3 banks zanshi stamps and converts full sets into
+        the zanshi gift. Returns None when the landing slot has no row.
+        """
+        try:
+            slot = int(row.get('slot') or 0)
+        except (TypeError, ValueError):
+            slot = 0
+        try:
+            top = max(zhubiao)
+        except (TypeError, ValueError):
+            return None
+        dice = random.randint(1, 7)
+        if slot + dice > top:
+            dice = top - slot
+            slot = top
+        else:
+            slot += dice
+        cfg = zhubiao.get(slot)
+        if cfg is None:
+            return None
+        try:
+            kind = int(cfg.get('itemtype') or 0)
+        except (TypeError, ValueError):
+            kind = 0
+        items, bull = [], False
+        if kind == 1:
+            try:
+                row['grade'] = int(row.get('grade') or 0) + \
+                    int(cfg.get('item') or 0)
+            except (TypeError, ValueError):
+                pass
+        elif kind == 2:
+            for gid, count, _bind in self.config.parse_goods_string(
+                    cfg.get('item')):
+                items.append([gid, count])
+            self._task_grant(rid, [{
+                'goods_id': gid, 'count': count, 'bind': bind}
+                for gid, count, bind in self.config.parse_goods_string(
+                    cfg.get('item'))])
+        elif kind == 3:
+            try:
+                row['zanshi'] = int(row.get('zanshi') or 0) + \
+                    int(cfg.get('item') or 0)
+            except (TypeError, ValueError):
+                pass
+            bull = self._dafuwong_zuanshi(rid, row)
+        if roll_type == 1:
+            row['tongqian_count'] = int(row.get('tongqian_count') or 0) + 1
+        row['roll_count'] = int(row.get('roll_count') or 0) + 1
+        row['slot'] = 0 if slot >= top else slot
+        shown = top if (roll_type == 3 and row['slot'] == 0) else slot
+        return [dice, shown, bull, items]
+
+    def _dafuwong_zuanshi(self, rid, row):
+        """Trade full zanshi sets for the zanshi gift; True if any traded."""
+        if self.config is None:
+            return False
+        need, goods = self.config.dafuweng_zuanshi()
+        if need <= 0 or not goods:
+            return False
+        parcels = self.config.parse_pipe_goods_string(goods)
+        if not parcels:
+            return False
+        traded = False
+        try:
+            have = int(row.get('zanshi') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        while have >= need:
+            have -= need
+            traded = True
+        if not traded:
+            return False
+        row['zanshi'] = have
+        self._task_grant(rid, [{
+            'goods_id': gid, 'count': count, 'bind': bind}
+            for gid, count, bind in parcels])
+        return True
+
+    def dafuwong_roll(self, msg):
+        """105001: yaoJiang(type) dice roll (1 coin, 2 gold, 3 ten-gold).
+
+        Prices come from the jiage drop (coin rolls also need enough free
+        rolls left for the vip level); short funds answer the General
+        errors, an empty board 792005. Single rolls reply [1, dice, slot,
+        zanshi, grade, zanshiBull, count, tongqianCount, null]; the
+        ten-roll replies the same shape with the last draw plus the ten
+        landing slots. A bad type is silent like Java's null.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        try:
+            roll_type = int(str(self.safe(self.safe(msg, 1, []), 0)))
+        except (TypeError, ValueError):
+            return None
+        if roll_type not in (1, 2, 3):
+            return None
+        rid = role.get('id')
+        zhubiao = self.config.dafuweng_zhubiao()
+        if not zhubiao:
+            return frame(amf3_encode(
+                [str(CMD_DAFUWONG_ROLL), [0, DAFUWONG_ERR_NOBOARD]]))
+        row = self._dafuwong_row(rid)
+        if roll_type == 1:
+            try:
+                level = int((self.get_role_vip(rid) or {}).get('vip_level')
+                            or 0)
+            except Exception:
+                level = 0
+            if int(row.get('tongqian_count') or 0) >= \
+                    self.config.vip_dafuwong_rolls(level):
+                return frame(amf3_encode(
+                    [str(CMD_DAFUWONG_ROLL),
+                     [0, DAFUWONG_ERR_VIPROLLS]]))
+            money = 'YXB'
+            price = self.config.dafuweng_roll_price(
+                1, int(row.get('tongqian_count') or 0) + 1)
+        elif roll_type == 2:
+            money = 'YB'
+            price = self.config.dafuweng_roll_price(
+                2, int(row.get('roll_count') or 0) + 1)
+        else:
+            money, price = 'YB', 100
+        if price is None:
+            return None
+        if not self._bag_money_check(role, money, price):
+            return frame(amf3_encode(
+                [str(CMD_DAFUWONG_ROLL),
+                 [0, GENERAL_JB if money == 'YXB' else GENERAL_YB]]))
+        self._bag_money_decr(rid, money, price)
+        if roll_type in (1, 2):
+            draw = self._dafuwong_lottery(rid, row, roll_type, zhubiao)
+            if draw is None:
+                return None
+            dice, slot, bull, items = draw
+            extra = None
+        else:
+            slots, bull, dice = [], False, 0
+            for _ in range(10):
+                draw = self._dafuwong_lottery(rid, row, roll_type, zhubiao)
+                if draw is None:
+                    return None
+                dice, slot, bull, _items = draw
+                slots.append(slot)
+            extra = slots
+        row['last_roll_ms'] = int(time.time() * 1000)
+        try:
+            self.save_role_dafuwong(
+                rid, slot=row['slot'], grade=row['grade'],
+                zanshi=row['zanshi'], roll_count=row['roll_count'],
+                tongqian_count=row['tongqian_count'],
+                last_roll_ms=row['last_roll_ms'])
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_DAFUWONG_ROLL), [
+            1, dice, row['slot'], row['zanshi'], row['grade'], bull,
+            row['roll_count'], row['tongqian_count'], extra]]))
+
+    def _bag_goods_count(self, rid, goods_id):
+        """Total count of one goods id across bag slots."""
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return 0
+        have = 0
+        for s in slots:
+            try:
+                if str(s.get('goods_id')) == str(goods_id):
+                    have += int(s.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        return have
+
+    def dafuwong_exchange(self, msg):
+        """105002: duiHuan(id) swaps grade points (page 1) or yushi goods
+        (page 2) for the exchange-list item.
+
+        Short points answer 105000, short goods 1005, a full bag 1006, and
+        success [1, id]. An unknown id is silent like Java's loadById
+        null. Events need a bus.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        try:
+            did = str(self.safe(self.safe(msg, 1, []), 0))
+        except (TypeError, ValueError):
+            return None
+        entry = self.config.dafuweng_duihuan(did)
+        if entry is None:
+            return None
+        jifen, decr_map, grants = entry
+        rid = role.get('id')
+        row = self._dafuwong_row(rid)
+        if int(row.get('grade') or 0) < jifen:
+            return frame(amf3_encode(
+                [str(CMD_DAFUWONG_EXCHANGE), [0, DAFUWONG_ERR_JIFEN]]))
+        for gid, count in decr_map.items():
+            if self._bag_goods_count(rid, gid) < count:
+                return frame(amf3_encode(
+                    [str(CMD_DAFUWONG_EXCHANGE), [0, GENERAL_GOODS]]))
+        for gid, count, bind in grants:
+            if not self._prop_fits(rid, {'goods': gid, 'count': count},
+                                   bind):
+                return frame(amf3_encode(
+                    [str(CMD_DAFUWONG_EXCHANGE), [0, GENERAL_NOSLOT]]))
+        try:
+            self.save_role_dafuwong(
+                rid, grade=int(row.get('grade') or 0) - jifen)
+        except Exception:
+            return frame(amf3_encode(
+                [str(CMD_DAFUWONG_EXCHANGE), [0, GENERAL_GOODS]]))
+        for gid, count in decr_map.items():
+            self._bag_decr(rid, gid, count)
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in grants])
+        return frame(amf3_encode([str(CMD_DAFUWONG_EXCHANGE), [1, did]]))
+
+    @staticmethod
+    def _xsbuy_today():
+        """Server-local day stamp for the xianshibuy daily reset."""
+        return time.strftime('%Y-%m-%d', time.localtime())
+
+    def _xianshibuy_data(self, rid):
+        """Role buy map {id: [count, lastMs, cdMs]}: online() + clear().
+
+        A missing row starts empty; a stale day resets the map. Like
+        Java's online(), every surviving entry's last-buy stamp refreshes
+        to now on read.
+        """
+        now = int(time.time() * 1000)
+        try:
+            row = self.get_role_xianshibuy(rid)
+        except Exception:
+            row = None
+        data = {}
+        if row:
+            if (row.get('buy_day') or '') != self._xsbuy_today():
+                try:
+                    self.save_role_xianshibuy(
+                        rid, buy_data='{}', buy_day=self._xsbuy_today())
+                except Exception:
+                    pass
+                return {}
+            try:
+                parsed = json.loads(row.get('buy_data') or '{}')
+            except (TypeError, ValueError):
+                parsed = {}
+            if isinstance(parsed, dict):
+                for key, val in parsed.items():
+                    if isinstance(val, list) and len(val) >= 3:
+                        try:
+                            data[str(key)] = [int(val[0]), now,
+                                             int(val[2])]
+                        except (TypeError, ValueError):
+                            continue
+        else:
+            try:
+                self.save_role_xianshibuy(rid, buy_data='{}',
+                                         buy_day=self._xsbuy_today())
+            except Exception:
+                pass
+        return data
+
+    def _xianshibuy_save(self, rid, data):
+        """Persist the role buy map."""
+        try:
+            self.save_role_xianshibuy(
+                rid, buy_data=json.dumps(data),
+                buy_day=self._xsbuy_today())
+        except Exception:
+            pass
+
+    def _xsbuy_sold(self):
+        """Server-wide {id: sold} map (the XianshiBuy singleton row)."""
+        try:
+            row = self.get_xianshi_buy()
+        except Exception:
+            row = None
+        try:
+            parsed = json.loads((row or {}).get('buy_data') or '{}')
+        except (TypeError, ValueError):
+            parsed = {}
+        sold = {}
+        if isinstance(parsed, dict):
+            for key, val in parsed.items():
+                try:
+                    sold[str(key)] = int(val)
+                except (TypeError, ValueError):
+                    continue
+        return sold
+
+    def _xsbuy_add_sold(self, sid):
+        """Bump the server-wide sold count for one shop id."""
+        sold = self._xsbuy_sold()
+        try:
+            sold[str(sid)] = int(sold.get(str(sid)) or 0) + 1
+        except (TypeError, ValueError):
+            sold[str(sid)] = 1
+        try:
+            self.save_xianshi_buy(json.dumps(sold))
+        except Exception:
+            pass
+        return sold
+
+    @staticmethod
+    def _xsbuy_day_end_ms(base_ms, days):
+        """Local midnight after base-day plus days (Calendar +24:00)."""
+        try:
+            local = time.localtime(int(base_ms or 0) / 1000)
+        except (TypeError, ValueError, OverflowError):
+            return 0
+        try:
+            midnight = time.mktime((local.tm_year, local.tm_mon,
+                                    local.tm_mday, 0, 0, 0, 0, 0, -1))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+        return int((midnight + (int(days) + 1) * 86400) * 1000)
+
+    def _xsbuy_check_time(self, cfg, ts_ms, days, start):
+        """XianShiBuyConfig.checkTime against a server/hefu start stamp."""
+        try:
+            ts = int(ts_ms or 0)
+        except (TypeError, ValueError):
+            ts = 0
+        if cfg['hefudays'] == 0 and cfg['kaifudays'] == 0 and \
+                cfg['start_ms'] == 0 and cfg['end_ms'] == 0 and \
+                cfg['hefustart'] == 0 and cfg['startday'] == 0:
+            return True
+        now = int(time.time() * 1000)
+        if days > 0 and \
+                now <= self._xsbuy_day_end_ms(ts, days):
+            return True
+        if start > 0:
+            low = self._xsbuy_day_end_ms(ts, start)
+            return now <= cfg['end_ms'] and now >= cfg['start_ms'] \
+                and now >= low
+        if start != 0:
+            return False
+        if cfg['start_ms'] > 0 and cfg['end_ms'] > 0:
+            return cfg['start_ms'] <= now <= cfg['end_ms']
+        return False
+
+    @staticmethod
+    def _xsbuy_hm_ge(first, second):
+        """XianShiBuyConfig.compare: HH:mm first at or after second."""
+        try:
+            h1, m1 = [int(x) for x in str(first).split(':')[:2]]
+            h2, m2 = [int(x) for x in str(second).split(':')[:2]]
+        except (TypeError, ValueError):
+            return False
+        return h1 > h2 or (h1 == h2 and m1 >= m2)
+
+    def _xsbuy_is_buy(self, cfg):
+        """XianShiBuyConfig.isBuy: open window and inside the HH:mm slot."""
+        try:
+            server_ms = int(self.server_start_ms or 0) or None
+        except (TypeError, ValueError):
+            server_ms = None
+        window_ok = (server_ms is not None and self._xsbuy_check_time(
+            cfg, server_ms, cfg['kaifudays'], cfg['startday']))
+        if not window_ok:
+            return False
+        window = cfg.get('window') or []
+        if len(window) != 2:
+            return False
+        now_hm = time.strftime('%H:%M', time.localtime())
+        return self._xsbuy_hm_ge(now_hm, window[0]) and \
+            self._xsbuy_hm_ge(window[1], now_hm)
+
+    def _xsbuy_role_cd(self, data, sid):
+        """Remaining personal cooldown ms for one shop id."""
+        try:
+            entry = data.get(str(sid))
+        except (TypeError, ValueError):
+            return 0
+        if not isinstance(entry, list) or len(entry) < 3:
+            return 0
+        try:
+            return max(0, int(entry[2]) -
+                       (int(time.time() * 1000) - int(entry[1])))
+        except (TypeError, ValueError):
+            return 0
+
+    def _xsbuy_type_cd(self, data, shop_type):
+        """Remaining cooldown of the first same-type entry with a cd."""
+        for key in data:
+            cfg = self.config.xianshishop_row(key) \
+                if self.config is not None else None
+            if cfg is None or int(cfg.get('type') or 0) != shop_type:
+                continue
+            try:
+                cd = int((data.get(key) or [0, 0, 0])[2])
+            except (TypeError, ValueError):
+                continue
+            if cd > 0 and self._xsbuy_role_cd(data, key) > 0:
+                return self._xsbuy_role_cd(data, key)
+        return 0
+
+    def xianshibuy_client(self, msg):
+        """119000: XianshibuyServiceImpl.getClientData (raw shop rows).
+
+        Silent when no xianshishop drop is published, like the other
+        published-table families.
+        """
+        if self.config is None:
+            return None
+        rows = self.config.xianshishop_table()
+        if not rows:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_XIANSHIBUY_CLIENT),
+             [r.get('client') for r in rows]]))
+
+    def _xianshibuy_entry(self, sid, sold, data):
+        """One 119001 row: [id, serverSold, roleCount, cdExpiryMs]."""
+        try:
+            count = int((data.get(str(sid)) or [0])[0])
+        except (TypeError, ValueError):
+            count = 0
+        return [str(sid), int(sold.get(str(sid)) or 0), count,
+                int(time.time() * 1000) + self._xsbuy_role_cd(data, sid)]
+
+    def xianshibuy_info(self, msg):
+        """119001: getInfo [1, [[id, serverSold, roleCount, cdMs]...]].
+
+        Ids union the role's bought ids with the server-sold ids, like
+        getIds().
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        data = self._xianshibuy_data(role.get('id'))
+        sold = self._xsbuy_sold()
+        ids = list(data)
+        for key in sold:
+            if key not in data:
+                ids.append(key)
+        return frame(amf3_encode([str(CMD_XIANSHIBUY_INFO),
+                                  [1, [self._xianshibuy_entry(sid, sold,
+                                                             data)
+                                       for sid in ids]]]))
+
+    def xianshibuy_buy(self, msg):
+        """119002: buy(id) for the timed shop.
+
+        Closed window answers 119000, server cap 119001, personal cap
+        119002, shared-type cooldown 119003, a full bag 1006 and short
+        gold 1002. Success grants the first itmeid parcel, bumps both
+        counters and replies [1, id] plus the buyer's own 119001 push;
+        the server-wide 119001 broadcast needs a bus.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        try:
+            sid = str(self.safe(self.safe(msg, 1, []), 0))
+        except (TypeError, ValueError):
+            return None
+        cfg = self.config.xianshishop_row(sid)
+        if cfg is None:
+            return None
+        if not self._xsbuy_is_buy(cfg):
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, XSBUY_ERR_CLOSED]]))
+        sold = self._xsbuy_sold()
+        if int(sold.get(sid) or 0) >= cfg['smax']:
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, XSBUY_ERR_SOLDOUT]]))
+        rid = role.get('id')
+        data = self._xianshibuy_data(rid)
+        try:
+            bought = int((data.get(sid) or [0])[0])
+        except (TypeError, ValueError):
+            bought = 0
+        if bought >= cfg['pmax']:
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, XSBUY_ERR_PMAX]]))
+        if self._xsbuy_type_cd(data, int(cfg.get('type') or 0)) != 0:
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, XSBUY_ERR_CD]]))
+        if not cfg.get('grants'):
+            return None
+        gid, count, bind = cfg['grants'][0]
+        if not self._prop_fits(rid, {'goods': gid, 'count': count}, bind):
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, GENERAL_NOSLOT]]))
+        if not self._bag_money_check(role, 'YB', cfg['price']):
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_BUY), [0, GENERAL_YB]]))
+        self._bag_money_decr(rid, 'YB', cfg['price'])
+        now = int(time.time() * 1000)
+        data[sid] = [bought + 1, now, cfg['cd']]
+        self._xianshibuy_save(rid, data)
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                               'bind': bind}])
+        sold = self._xsbuy_add_sold(sid)
+        push = frame(amf3_encode([str(CMD_XIANSHIBUY_INFO),
+                                  [1, [self._xianshibuy_entry(
+                                      sid, sold, data)]]]))
+        return (frame(amf3_encode([str(CMD_XIANSHIBUY_BUY), [1, sid]])),
+                push)
+
+    def xianshibuy_clearcd(self, msg):
+        """119003: clearCd(id) wipes the personal cooldown for gold.
+
+        Unknown or cooldown-free ids answer 119004, short gold 1002.
+        Success replies [1, id] plus the buyer's own 119001 push.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        try:
+            sid = str(self.safe(self.safe(msg, 1, []), 0))
+        except (TypeError, ValueError):
+            return None
+        rid = role.get('id')
+        data = self._xianshibuy_data(rid)
+        if sid not in data or self._xsbuy_role_cd(data, sid) == 0:
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_CLEARCD), [0, XSBUY_ERR_NOCD]]))
+        cfg = self.config.xianshishop_row(sid)
+        if cfg is None:
+            return None
+        if not self._bag_money_check(role, 'YB', cfg['consume']):
+            return frame(amf3_encode(
+                [str(CMD_XIANSHIBUY_CLEARCD), [0, GENERAL_YB]]))
+        self._bag_money_decr(rid, 'YB', cfg['consume'])
+        try:
+            count = int((data.get(sid) or [0])[0])
+        except (TypeError, ValueError):
+            count = 0
+        data[sid] = [count, int(time.time() * 1000), 0]
+        self._xianshibuy_save(rid, data)
+        sold = self._xsbuy_sold()
+        push = frame(amf3_encode([str(CMD_XIANSHIBUY_INFO),
+                                  [1, [self._xianshibuy_entry(
+                                      sid, sold, data)]]]))
+        return (frame(amf3_encode([str(CMD_XIANSHIBUY_CLEARCD),
+                                   [1, sid]])),
+                push)
+
+    def shenjiang_slot_info(self, msg):
+        """Command 41023: ShenJiangSlotServiceImpl.getInfo answers [1, id, slots].
+
+        Slots come from role_shenjiang_slot, which the legacy data leaves
+        empty (its MYD is 0 bytes) and Python never writes, so the slot list
+        is always null, as Java answers for a role without slot rows. A
+        non-string id is silent, like Java's String cast.
+        """
+        data = self.safe(msg, 1)
+        if data is not None and not isinstance(data, str):
+            return None
+        return frame(amf3_encode([str(CMD_SHENJIANG_INFO), [1, data, None]]))
+
+    def qiandao_info(self):
+        """Command 58011: JiangliServiceImpl.getQiandaoInfo answers the sign-in row.
+
+        A missing RoleQiandao answers Java's fixed [1, null, 0, null, null];
+        a row returns its month days and both reward strings, comma-split by
+        QiandaoOutput.toInteger/toString.
+        """
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        row = None
+        if role is not None:
+            try:
+                row = self.get_role_qiandao(role.get('id'))
+            except Exception:
+                row = None
+        if row is None:
+            return frame(amf3_encode([str(CMD_QIANDAO_INFO),
+                                      [1, None, 0, None, None]]))
+        return frame(amf3_encode([
+            str(CMD_QIANDAO_INFO),
+            [1, _qiandao_ints(row.get('month_qiandao')),
+             row.get('total_qiandao_count'),
+             _qiandao_strings(row.get('month_qiandao_reward')),
+             _qiandao_strings(row.get('total_qiandao_reward'))]]))
+
+    @staticmethod
+    def _qiandao_today():
+        """Calendar.DAY_OF_MONTH for the sign-in day clocks."""
+        return time.localtime().tm_mday
+
+    @staticmethod
+    def _qiandao_weekday(day=None):
+        """Calendar.DAY_OF_WEEK - 1 (Sunday 0) for today or a month day."""
+        now = time.localtime()
+        if day is None:
+            return (now.tm_wday + 1) % 7
+        try:
+            stamp = time.mktime((now.tm_year, now.tm_mon, int(day),
+                                 0, 0, 0, 0, 0, -1))
+        except (TypeError, ValueError, OverflowError):
+            return -1
+        return (time.localtime(stamp).tm_wday + 1) % 7
+
+    @staticmethod
+    def _qiandao_has(ids_text, token):
+        """checkIds: comma membership; a null/empty list never matches."""
+        if not ids_text:
+            return False
+        return str(token) in [s for s in str(ids_text).split(',')
+                              if s != '']
+
+    @staticmethod
+    def _qiandao_mark(ids_text, token):
+        """setIds: append the token to the comma list."""
+        if not ids_text:
+            return str(token)
+        return str(ids_text) + ',' + str(token)
+
+    @staticmethod
+    def _qiandao_same_day(stamp_ms):
+        """DateUtils.isSameDay over the stored qiandao_time."""
+        try:
+            when = time.localtime(int(stamp_ms or 0) // 1000)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        now = time.localtime()
+        return (when.tm_year, when.tm_mon, when.tm_mday) == \
+            (now.tm_year, now.tm_mon, now.tm_mday)
+
+    def _qiandao_vip_config(self, vip_level):
+        """First category-3 qiandao config with the role's vip level."""
+        if self.config is None:
+            return None
+        try:
+            configs = self.config.qiandao_tables().get(3, {})
+        except Exception:
+            return None
+        for cfg in configs.values():
+            if cfg.get('vip_level') == vip_level:
+                return cfg
+        return None
+
+    def _qiandao_grant_weekend(self, rid, cfg, weekday):
+        """Weekend vip sign-in goods via putInBagOrEmail's bag half.
+
+        The mail fallback has no bus here, so overflow only logs like the
+        quest-grant path; the weekend event tail is logged, not published.
+        """
+        if cfg is None or weekday not in (cfg.get('week1'),
+                                          cfg.get('week2')):
+            return
+        rewards = cfg.get('rewards') or []
+        if not rewards:
+            return
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in rewards])
+        log.info('conn %d: qiandao weekend vip goods %r (mail skipped)',
+                 self.conn_id, cfg.get('id'))
+
+    def qiandao_sign(self):
+        """Command 58012: JiangliServiceImpl.qiandao signs today in.
+
+        A missing row is created at total 1; a same-day row answers
+        [0, '592000']. Otherwise the total bumps, today marks, vip
+        weekend goods grant, and the reply is QiandaoOutput.qiandao [1].
+        Both Jiangli events have no bus here, so that tail is logged.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_qiandao(rid)
+        except Exception:
+            row = None
+        today = self._qiandao_today()
+        now_ms = self._online_now_ms()
+        if row is None:
+            fields = {'total_qiandao_count': 1,
+                      'month': time.localtime().tm_mon,
+                      'month_qiandao': str(today),
+                      'total_qiandao_reward': '',
+                      'month_qiandao_reward': '', 'week': today,
+                      'qiandao_time': now_ms}
+            try:
+                self.save_role_qiandao(rid, **fields)
+            except Exception:
+                return None
+            row = dict(fields)
+        else:
+            if self._qiandao_same_day((row or {}).get('qiandao_time')):
+                return frame(amf3_encode(
+                    [str(CMD_QIANDAO_SIGN),
+                     [0, QIANDAO_ERR_NOT_REPEAT]]))
+            row = dict(row or {})
+            try:
+                total = int(row.get('total_qiandao_count') or 0) + 1
+            except (TypeError, ValueError):
+                total = 1
+            fields = {'total_qiandao_count': total,
+                      'qiandao_time': now_ms,
+                      'month_qiandao': self._qiandao_mark(
+                          row.get('month_qiandao'), today)}
+            try:
+                self.save_role_qiandao(rid, **fields)
+            except Exception:
+                return None
+            row.update(fields)
+        vip_level = self._role_vip_level(rid)
+        if vip_level:
+            self._qiandao_grant_weekend(
+                rid, self._qiandao_vip_config(vip_level),
+                self._qiandao_weekday())
+        log.info('conn %d: qiandao sign total %r (events skipped, no bus)',
+                 self.conn_id, row.get('total_qiandao_count'))
+        return frame(amf3_encode([str(CMD_QIANDAO_SIGN), [1]]))
+
+    def qiandao_buqian(self, msg):
+        """Command 58013: JiangliServiceImpl.buQian retro-signs a past day.
+
+        A non-int day stays silent like Java's cast; a future day answers
+        nothing (the null result is never sent). Vip 0 answers [0, 1010],
+        a missing vip config [0, '592007'], an already-signed day
+        [0, '592010']; success marks, bumps, grants weekend vip goods for
+        that day's weekday, and replies [1, day].
+        """
+        day = self.safe(msg, 1)
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None or isinstance(day, bool) or \
+                not isinstance(day, int):
+            return None
+        if day > self._qiandao_today():
+            return None
+        try:
+            row = self.get_role_qiandao(rid)
+        except Exception:
+            row = None
+        if row is None:
+            try:
+                self.save_role_qiandao(
+                    rid, total_qiandao_count=0,
+                    month=time.localtime().tm_mon, month_qiandao='',
+                    total_qiandao_reward='', month_qiandao_reward='',
+                    week=self._qiandao_today(), qiandao_time=0)
+                row = self.get_role_qiandao(rid)
+            except Exception:
+                row = None
+            if row is None:
+                return None
+        if not self._role_vip_level(rid):
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_BUQIAN), [0, GENERAL_NOT_VIP]]))
+        cfg = self._qiandao_vip_config(self._role_vip_level(rid))
+        if cfg is None:
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_BUQIAN),
+                 [0, QIANDAO_ERR_VIP_CFG_NULL]]))
+        if self._qiandao_has((row or {}).get('month_qiandao'), day):
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_BUQIAN),
+                 [0, QIANDAO_ERR_CANNOT_BUQIAN]]))
+        row = dict(row or {})
+        try:
+            total = int(row.get('total_qiandao_count') or 0) + 1
+        except (TypeError, ValueError):
+            total = 1
+        try:
+            self.save_role_qiandao(
+                rid, total_qiandao_count=total,
+                month_qiandao=self._qiandao_mark(row.get('month_qiandao'),
+                                                day))
+        except Exception:
+            return None
+        self._qiandao_grant_weekend(rid, cfg, self._qiandao_weekday(day))
+        log.info('conn %d: qiandao buqian day %r (events skipped, no bus)',
+                 self.conn_id, day)
+        return frame(amf3_encode([str(CMD_QIANDAO_BUQIAN), [1, day]]))
+
+    def qiandao_reward(self, msg):
+        """Command 58014: lingquQiandaoReward claims a total-count reward.
+
+        A bad id type stays silent; a missing row answers null. An unknown
+        reward id answers [0, '592002'], a repeat [0, '592001'], a full bag
+        [0, 1006]; success marks the month list, grants, and replies
+        [1, id]. The GetQiandaoGoodsEvent has no bus here, so it is logged.
+        """
+        reward_id = self.safe(msg, 1)
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None or not isinstance(reward_id, str):
+            return None
+        cfg = self.config.qiandao_config(1, reward_id)
+        try:
+            row = self.get_role_qiandao(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode([str(CMD_QIANDAO_REWARD), None]))
+        if cfg is None:
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_REWARD),
+                 [0, QIANDAO_ERR_COUNT_SHORT]]))
+        if self._qiandao_has(row.get('month_qiandao_reward'), reward_id):
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_REWARD),
+                 [0, QIANDAO_ERR_REWARD_REPEAT]]))
+        for gid, count, bind in cfg.get('rewards') or []:
+            if not self._prop_fits(rid, {'goods': gid, 'count': count},
+                                   bind):
+                return frame(amf3_encode(
+                    [str(CMD_QIANDAO_REWARD), [0, GENERAL_NOSLOT]]))
+        try:
+            self.save_role_qiandao(
+                rid, month_qiandao_reward=self._qiandao_mark(
+                    row.get('month_qiandao_reward'), reward_id))
+        except Exception:
+            return None
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in cfg.get('rewards')
+                               or []])
+        log.info('conn %d: qiandao reward %r (event skipped, no bus)',
+                 self.conn_id, reward_id)
+        return frame(amf3_encode([str(CMD_QIANDAO_REWARD), [1, reward_id]]))
+
+    def qiandao_meiren(self, msg):
+        """Command 58015: lingquQiandaoMeiren grants a count-tier meiren.
+
+        A bad id type, a missing row, or an unknown reward id stays silent
+        (the action only sends non-null results). A short lifetime total
+        answers [0, '592002'], a repeat [0, '592001']; success grants via
+        addMeiRen (pushing 82001 like 33006 when it inserts) and replies
+        [1, id] either way, since the service discards addMeiRen's result.
+        """
+        reward_id = self.safe(msg, 1)
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None or not isinstance(reward_id, str):
+            return None
+        cfg = self.config.qiandao_config(2, reward_id)
+        if cfg is None:
+            return None
+        try:
+            row = self.get_role_qiandao(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        try:
+            total = int(row.get('total_qiandao_count') or 0)
+        except (TypeError, ValueError):
+            total = 0
+        if cfg.get('count') > total:
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_MEIREN),
+                 [0, QIANDAO_ERR_COUNT_SHORT]]))
+        if self._qiandao_has(row.get('total_qiandao_reward'), reward_id):
+            return frame(amf3_encode(
+                [str(CMD_QIANDAO_MEIREN),
+                 [0, QIANDAO_ERR_REWARD_REPEAT]]))
+        frames = []
+        if self._zuoqi_grant_meiren(rid, cfg.get('meiren_id')):
+            frames.append(frame(amf3_encode(
+                [str(CMD_MEIREN_ADD),
+                 [1, cfg.get('meiren_id'), 1]])))
+        frames.append(frame(amf3_encode(
+            [str(CMD_QIANDAO_MEIREN), [1, reward_id]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def _yingyin_row(self, rid):
+        """loginYingYin: create the flags row, or reset a stale day flag.
+
+        The download flag is one-time (only the daily flag resets), so a
+        same-day row passes through untouched.
+        """
+        try:
+            row = self.get_role_jiangli_list(rid)
+        except Exception:
+            row = None
+        now_ms = self._online_now_ms()
+        if row is None:
+            fields = {'baidu_yingyin': 0, 'baidu_yingyin_xiazai': 0,
+                      'baidu_yingyin_time': now_ms}
+            try:
+                self.save_role_jiangli_list(rid, **fields)
+            except Exception:
+                return None
+            return dict(fields)
+        row = dict(row)
+        if not self._qiandao_same_day(row.get('baidu_yingyin_time')):
+            try:
+                self.save_role_jiangli_list(rid, baidu_yingyin=0,
+                                            baidu_yingyin_time=now_ms)
+            except Exception:
+                return None
+            row.update(baidu_yingyin=0, baidu_yingyin_time=now_ms)
+        return row
+
+    def _yingyin_claim(self, rid, cmd, row, cfg, goods, flag):
+        """Shared xiazai/dayReward claim: [0, code] gates, or granted."""
+        try:
+            if int(row.get(flag) or 0) == 1:
+                return frame(amf3_encode(
+                    [str(cmd), [0, YINGYIN_ERR_CLAIMED]]))
+        except (TypeError, ValueError):
+            pass
+        if self._vip_kaifu_days() > cfg.get('time'):
+            return frame(amf3_encode(
+                [str(cmd), [0, YINGYIN_ERR_PAST_WINDOW]]))
+        for gid, count, bind in goods:
+            if not self._prop_fits(rid, {'goods': gid, 'count': count},
+                                   bind):
+                return frame(amf3_encode(
+                    [str(cmd), [0, GENERAL_NOSLOT]]))
+        return None
+
+    def _yingyin_pay(self, rid, goods, flag, cmd, pairs):
+        """Grant the goods, stamp the flag, and build the success reply."""
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in goods])
+        fields = {flag: 1}
+        if pairs:
+            fields['baidu_yingyin_time'] = self._online_now_ms()
+        try:
+            self.save_role_jiangli_list(rid, **fields)
+        except Exception:
+            return None
+        log.info('conn %d: yingyin %s claimed (event skipped, no bus)',
+                 self.conn_id, cmd)
+        if pairs:
+            return frame(amf3_encode(
+                [str(cmd), [1, [[gid, count]
+                                for gid, count, _ in goods]]]))
+        return frame(amf3_encode([str(cmd), [1]]))
+
+    def yingyin_xiazai(self):
+        """Command 58017: yingyinXiaZaiReward claims the download goods.
+
+        A repeat answers [0, '592013'], a server past the day window
+        [0, '592014'], a full bag [0, 1006]; success stamps the one-time
+        flag, grants, and replies [1]. The reward event has no bus here.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._yingyin_row(rid)
+        cfg = self.config.yingyin_config() if row is not None else None
+        if row is None or cfg is None:
+            return None
+        gate = self._yingyin_claim(rid, CMD_YINGYIN_XIAZAI, row, cfg,
+                                   cfg.get('first_goods') or [],
+                                   'baidu_yingyin_xiazai')
+        if gate is not None:
+            return gate
+        return self._yingyin_pay(rid, cfg.get('first_goods') or [],
+                                 'baidu_yingyin_xiazai',
+                                 CMD_YINGYIN_XIAZAI, False)
+
+    def yingyin_state(self):
+        """Command 58018: getYingYinState answers [download, daily] flags."""
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._yingyin_row(rid)
+        if row is None:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_YINGYIN_STATE),
+             [row.get('baidu_yingyin_xiazai') or 0,
+              row.get('baidu_yingyin') or 0]]))
+
+    def yingyin_reward(self):
+        """Command 58019: yingyinreward claims the daily voice goods.
+
+        Same gates as the download claim; success stamps the daily flag
+        with now and replies [1, [[goodsId, count]]] like itemParamVo2GoodsArray.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._yingyin_row(rid)
+        cfg = self.config.yingyin_config() if row is not None else None
+        if row is None or cfg is None:
+            return None
+        gate = self._yingyin_claim(rid, CMD_YINGYIN_REWARD, row, cfg,
+                                   cfg.get('day_goods') or [],
+                                   'baidu_yingyin')
+        if gate is not None:
+            return gate
+        return self._yingyin_pay(rid, cfg.get('day_goods') or [],
+                                 'baidu_yingyin', CMD_YINGYIN_REWARD, True)
+
+    def _online_now_ms(self):
+        """System.currentTimeMillis for the jiangli online clocks."""
+        return int(time.time() * 1000)
+
+    def _online_kaifu_months(self):
+        """ServerInfoExportService.getKaifuMonths, capped like JiangliServiceImpl."""
+        try:
+            start = time.localtime(int(self.server_start_ms or 0) / 1000)
+            now = time.localtime()
+            months = (now.tm_year - start.tm_year) * 12 + \
+                (now.tm_mon - start.tm_mon)
+        except (TypeError, ValueError, OverflowError):
+            months = 0
+        if months > 3:
+            months = 3
+        if months == 0:
+            months = 1
+        return months
+
+    @staticmethod
+    def _online_has_id(text, day):
+        """checkIds(int, String): the comma list already holds the tier id."""
+        for part in str(text or '').split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                if int(part) == day:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    @staticmethod
+    def _online_add_id(text, day):
+        """setIds(int, String): append the tier id to the comma list."""
+        if text is None or text == '':
+            return str(day)
+        return '%s,%s' % (text, day)
+
+    @staticmethod
+    def _micro_end_login(rid):
+        """MicroEndExportService.isMicroEndLogin: no micro-end login channel
+
+        exists here, so the stored login type is never 1 and this is always
+        False — getWeiDanReward answers 592011 exactly like Java does for
+        every non-micro-end session.
+        """
+        return False
+
+    def _dengluqi_row(self, rid):
+        """initDengLuQi: create the missing row, reset it past its day."""
+        now = self._online_now_ms()
+        try:
+            row = self.get_role_dengluqi(rid)
+        except Exception:
+            row = None
+        if row is None:
+            try:
+                self.save_role_dengluqi(rid, lingqu_state=0,
+                                        lingqu_time=now)
+            except Exception:
+                pass
+            return {'lingqu_state': 0, 'lingqu_time': now}
+        if not self._same_day_ms(row.get('lingqu_time'), now):
+            try:
+                self.save_role_dengluqi(rid, lingqu_state=0,
+                                        lingqu_time=now)
+            except Exception:
+                pass
+            row = dict(row, lingqu_state=0, lingqu_time=now)
+        return row
+
+    def _online_bind_yb(self, ms, configs, kaifu):
+        """getOnlineRewardBindYb: whole hours times the month's bindGold."""
+        hours = int(ms) // 1000 // 60 // 60
+        for cfg in configs:
+            if cfg.get('month') == kaifu:
+                try:
+                    return int(hours * float(cfg.get('bindGold') or 0))
+                except (TypeError, ValueError):
+                    return 0
+        return 0
+
+    def _online_row(self, rid):
+        """createRoleOnlineReward plus the loginOnlineReward rollovers.
+
+        Java runs these at login; without a login hook here the handlers
+        run them lazily instead, which settles to the same stored state.
+        """
+        now = self._online_now_ms()
+        try:
+            row = self.get_role_online_reward(rid)
+        except Exception:
+            row = None
+        if row is None:
+            row = {'month': time.localtime().tm_mon, 'online_time': 0,
+                   'month_online_time': 0, 'refresh_time': now,
+                   'online_reward': '', 'is_lingqu_reward': 0,
+                   'month_bind_yb': 0, 'role_online_time': now}
+            try:
+                self.save_role_online_reward(rid, **row)
+            except Exception:
+                pass
+            return dict(row)
+        row = dict(row)
+        changed = {}
+        if self.config is not None:
+            try:
+                cats = self.config.online_reward_tables()
+            except Exception:
+                cats = {1: [], 2: []}
+            kaifu = self._online_kaifu_months()
+            monthly = cats.get(2, [])
+            if any(c.get('month') == kaifu for c in monthly):
+                try:
+                    cur = time.localtime().tm_mon
+                except (TypeError, ValueError, OverflowError):
+                    cur = None
+                if cur is not None and cur != (row.get('month') or 0):
+                    carry = int(row.get('month_online_time') or 0)
+                    if carry > 0:
+                        changed['month_bind_yb'] = \
+                            int(row.get('month_bind_yb') or 0) + \
+                            self._online_bind_yb(carry, monthly, kaifu)
+                    changed['month_online_time'] = 0
+                    changed['month'] = cur
+                    changed['is_lingqu_reward'] = 0
+        if not self._same_day_ms(row.get('refresh_time'), now):
+            changed['refresh_time'] = now
+            changed['online_time'] = 0
+            changed['online_reward'] = ''
+        if changed:
+            try:
+                self.save_role_online_reward(rid, **changed)
+            except Exception:
+                pass
+            row.update(changed)
+        return row
+
+    @staticmethod
+    def _online_totals(row, now):
+        """Read-time totals: stored ms plus the open session's delta."""
+        try:
+            anchor = int(row.get('role_online_time') or 0)
+        except (TypeError, ValueError):
+            anchor = 0
+        delta = now - anchor if anchor > 0 else 0
+        try:
+            total = int(row.get('online_time') or 0) + delta
+        except (TypeError, ValueError):
+            total = delta
+        try:
+            month_total = int(row.get('month_online_time') or 0) + delta
+        except (TypeError, ValueError):
+            month_total = delta
+        return total, month_total
+
+    def weidan_state(self, msg):
+        """Command 10060: getWeiDanState answers the claim state.
+
+        The tunnel wraps Java's bare Integer, so the wire shape is [state]
+        as captured — state 0 fresh or past its day, 1 once claimed.
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        row = self._dengluqi_row(role.get('id'))
+        try:
+            state = int(row.get('lingqu_state') or 0)
+        except (TypeError, ValueError):
+            state = 0
+        return frame(amf3_encode([str(CMD_WEIDAN_STATE), [state]]))
+
+    def weidan_reward(self, msg):
+        """Command 10061: getWeiDanReward claims the micro-client parcel.
+
+        Non-micro-end sessions answer [0, 592011] and claimed ones [0,
+        592012]; a fresh grant replies [1] after the dengluqijiangli pool
+        lands (short bag [0, 1006]). A missing pool stays silent like Java's
+        null-WeiDuan branch.
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        row = self._dengluqi_row(rid)
+        try:
+            claimed = int(row.get('lingqu_state') or 0) == 1
+        except (TypeError, ValueError):
+            claimed = False
+        if not self._micro_end_login(rid):
+            return frame(amf3_encode([str(CMD_WEIDAN_REWARD),
+                                      [0, WEIDAN_ERR_NOT_MICRO]]))
+        if claimed:
+            return frame(amf3_encode([str(CMD_WEIDAN_REWARD),
+                                      [0, WEIDAN_ERR_CLAIMED]]))
+        items = self.config.weiduan_items() \
+            if self.config is not None else []
+        if not items:
+            return None
+        if not self._vip_fits_list(rid, items):
+            return frame(amf3_encode([str(CMD_WEIDAN_REWARD),
+                                      [0, GENERAL_NOSLOT]]))
+        self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                'bind': bind}
+                               for gid, count, bind in items])
+        try:
+            self.save_role_dengluqi(rid, lingqu_state=1,
+                                    lingqu_time=self._online_now_ms())
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_WEIDAN_REWARD), [1]]))
+
+    def online_reward_info(self, msg):
+        """Command 58003: getOnlineRewardInfo totals plus the claim state.
+
+        Java Longs ride the wire as doubles, so the two ms totals go out
+        as floats; the claimed tiers split like QiandaoOutput.toInteger.
+        State 1 means the month's bind-yb is claimable today, else 2.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        now = self._online_now_ms()
+        row = self._online_row(rid)
+        total, month_total = self._online_totals(row, now)
+        try:
+            bind_yb = int(row.get('month_bind_yb') or 0)
+        except (TypeError, ValueError):
+            bind_yb = 0
+        claimed = _qiandao_ints(row.get('online_reward'))
+        kaifu = self._online_kaifu_months()
+        try:
+            monthly = self.config.online_reward_tables().get(2, [])
+        except Exception:
+            monthly = []
+        cfg = next((c for c in monthly if c.get('month') == kaifu), None)
+        state = 2
+        if cfg is not None:
+            try:
+                open_day = time.localtime().tm_mday in \
+                    (cfg.get('dayLimit') or [])
+            except (TypeError, ValueError, OverflowError):
+                open_day = False
+            if open_day:
+                state = 1 if bind_yb > 0 else 2
+        return frame(amf3_encode([
+            str(CMD_ONLINE_INFO),
+            [[float(total), float(month_total), bind_yb, claimed,
+              state]]]))
+
+    def _online_check_yaojiang(self, row, claimed, configs, total):
+        """checkYaojiang: repeat and eligible-tier guards for 58004."""
+        if claimed:
+            if len(str(claimed).split(',')) == len(configs):
+                return [0, ONLINE_ERR_NOT_REPEAT]
+        eligible = []
+        for cfg in configs:
+            try:
+                threshold = int(cfg.get('monthTime') or 0)
+            except (TypeError, ValueError):
+                threshold = 0
+            if total < threshold:
+                continue
+            if self._online_has_id(claimed, cfg.get('count')):
+                continue
+            eligible.append(cfg.get('count'))
+        if not eligible:
+            return [0, ONLINE_ERR_TIME_SHORT]
+        if claimed:
+            parts = [p for p in str(claimed).split(',') if p.strip()]
+            if len(parts) > 1:
+                try:
+                    ids = [int(p) for p in parts]
+                except (TypeError, ValueError):
+                    return None
+                if all(v in eligible for v in ids):
+                    return [0, ONLINE_ERR_TIME_SHORT]
+        return None
+
+    def online_yaojiang(self, msg):
+        """Command 58004: yaoJiang rolls the open daily tiers.
+
+        Each unclaimed tier whose raw threshold the ms total reaches draws
+        one weighted prize (Java compares the ms total against the seconds
+        config directly); the reply pairs [tier, prizeIndex] per draw and
+        [1, pairs] overall. A full bag answers [0, 592001]; with nothing
+        to draw the guard above answers instead. Null stays silent.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        now = self._online_now_ms()
+        row = self._online_row(rid)
+        claimed = row.get('online_reward') or ''
+        try:
+            configs = self.config.online_reward_tables().get(1, [])
+        except Exception:
+            configs = []
+        total, _ = self._online_totals(row, now)
+        err = self._online_check_yaojiang(row, claimed, configs, total)
+        if err is not None:
+            return frame(amf3_encode([str(CMD_ONLINE_YAOJIANG), err]))
+        pairs, grant, mark = [], [], []
+        for cfg in configs:
+            try:
+                threshold = int(cfg.get('time') or 0)
+            except (TypeError, ValueError):
+                continue
+            if total < threshold:
+                continue
+            if self._online_has_id(claimed, cfg.get('count')):
+                continue
+            weights = {}
+            for pos, reward in enumerate(cfg.get('rewards') or []):
+                try:
+                    weights[pos] = float(reward[3])
+                except (TypeError, ValueError, IndexError):
+                    continue
+            pick = self._lottery_weighted_key(weights)
+            if pick is None:
+                continue
+            try:
+                gid, count, bind, _, index = \
+                    (cfg.get('rewards') or [])[pick]
+            except (TypeError, ValueError, IndexError):
+                continue
+            pairs.append([cfg.get('count'), index])
+            grant.append((gid, count, bind))
+            mark.append(cfg.get('count'))
+        if grant:
+            if not self._vip_fits_list(rid, grant):
+                return frame(amf3_encode([str(CMD_ONLINE_YAOJIANG),
+                                          [0, ONLINE_ERR_BAG_FULL]]))
+            self._task_grant(rid, [{'goods_id': gid, 'count': count,
+                                    'bind': bind}
+                                   for gid, count, bind in grant])
+        for tier in mark:
+            claimed = self._online_add_id(claimed, tier)
+        try:
+            self.save_role_online_reward(rid, online_reward=claimed)
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_ONLINE_YAOJIANG),
+                                  [1, pairs]]))
+
+    def online_lingqu(self, msg):
+        """Command 58005: lingquOnlineRewardBindYb claims the month's bind-yb.
+
+        The kaifu-month tier must be open today with an unclaimed accrual;
+        success zeroes it, credits bind_lingshi and replies [1, granted].
+        A null result stays silent like Java.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        row = self._online_row(rid)
+        kaifu = self._online_kaifu_months()
+        try:
+            monthly = self.config.online_reward_tables().get(2, [])
+        except Exception:
+            monthly = []
+        cfg = next((c for c in monthly if c.get('month') == kaifu), None)
+        if cfg is None:
+            return frame(amf3_encode([str(CMD_ONLINE_LINGQU),
+                                      [0, ONLINE_ERR_MONTH_LIMIT]]))
+        try:
+            bind_yb = int(row.get('month_bind_yb') or 0)
+        except (TypeError, ValueError):
+            bind_yb = 0
+        if bind_yb == 0:
+            return frame(amf3_encode([str(CMD_ONLINE_LINGQU),
+                                      [0, ONLINE_ERR_NO_BINDYB]]))
+        try:
+            open_day = time.localtime().tm_mday in \
+                (cfg.get('dayLimit') or [])
+        except (TypeError, ValueError, OverflowError):
+            open_day = False
+        if not open_day:
+            return frame(amf3_encode([str(CMD_ONLINE_LINGQU),
+                                      [0, ONLINE_ERR_MONTH_LIMIT]]))
+        try:
+            done = int(row.get('is_lingqu_reward') or 0) == 1
+        except (TypeError, ValueError):
+            done = False
+        if done:
+            return frame(amf3_encode([str(CMD_ONLINE_LINGQU),
+                                      [0, ONLINE_ERR_NOT_REPEAT]]))
+        try:
+            self.save_role_online_reward(rid, is_lingqu_reward=1,
+                                         month_bind_yb=0)
+        except Exception:
+            pass
+        try:
+            total = int(role.get('bind_lingshi') or 0) + bind_yb
+        except (TypeError, ValueError):
+            total = bind_yb
+        try:
+            self.save_role_state(rid, bind_lingshi=total)
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_ONLINE_LINGQU),
+                                  [1, bind_yb]]))
+
+    def _role_vip_level(self, rid):
+        """VipService.getRoleVipLevel: the RoleVip tier, 0 when absent."""
+        try:
+            vip = self.get_role_vip(rid) or {}
+        except Exception:
+            return 0
+        try:
+            return int(vip.get('vip_level') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _husong_row(self, rid):
+        """checkRefreshData plus createRoleHusong: reset a stale day, else
+
+        create the row (first MeiQi id, zero counts, now stamps) like Java.
+        """
+        now = self._online_now_ms()
+        try:
+            row = self.get_role_husong(rid)
+        except Exception:
+            row = None
+        if row is not None:
+            if not self._same_day_ms(row.get('refresh_time'), now):
+                try:
+                    self.save_role_husong(rid, husong_times=0,
+                                         refresh_time=now)
+                except Exception:
+                    pass
+                row = dict(row, husong_times=0, refresh_time=now)
+            return row
+        first = self.config.husong_first_id() \
+            if self.config is not None else None
+        row = {'mei_qi_id': first, 'husong_times': 0,
+               'refresh_time': now, 'dajie_cishu': 0, 'dajie_time': now}
+        try:
+            self.save_role_husong(rid, **row)
+        except Exception:
+            pass
+        return dict(row)
+
+    def husong_position(self, msg):
+        """Command 83000: meiQiPosition pushes the escort beauty's spot.
+
+        With no escort running Java pushes null (no HuSongManager, or a
+        manager with no MeiQi); this server never runs escorts, so the
+        reply is always [None] as captured.
+        """
+        role = self._equip_role()
+        if role is None:
+            return None
+        return frame(amf3_encode([str(CMD_HUSONG_POSITION), [None]]))
+
+    def husong_info(self, msg):
+        """Command 83001: huSongInfo answers [meiQiId, remaining escorts].
+
+        The remainder is the vip husongsishu quota minus today's count,
+        [['1', 3]] for a fresh role as captured.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        row = self._husong_row(rid)
+        try:
+            used = int(row.get('husong_times') or 0)
+        except (TypeError, ValueError):
+            used = 0
+        remaining = self.config.vip_husong_count(
+            self._role_vip_level(rid)) - used
+        return frame(amf3_encode([str(CMD_HUSONG_INFO),
+                                  [[row.get('mei_qi_id'), remaining]]]))
+
+    def husong_dajie(self, msg):
+        """Command 83008: getDaJieCount answers [remaining rob chances].
+
+        The vip jiebiao quota minus robbed count ([[10]] fresh); a missing
+        row answers [[0]] like Java's null branch.
+        """
+        role = self._equip_role()
+        if role is None or self.config is None:
+            return None
+        rid = role.get('id')
+        try:
+            row = self.get_role_husong(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode([str(CMD_HUSONG_DAJIE), [[0]]]))
+        try:
+            used = int(row.get('dajie_cishu') or 0)
+        except (TypeError, ValueError):
+            used = 0
+        remaining = self.config.vip_dajie(
+            self._role_vip_level(rid)) - used
+        return frame(amf3_encode([str(CMD_HUSONG_DAJIE), [[remaining]]]))
+
+    def loginlibao_info(self, msg):
+        """127000: LoginlibaoServiceImpl.getConfig [sign, configs?, unclaimed]."""
+        if self.config is None:
+            return None
+        client_sign = None
+        try:
+            client_sign = str(self.safe(self.safe(msg, 1, []), 0) or '')
+        except Exception:
+            client_sign = None
+        sign, rows = self.config.denglulibao_table()
+        role = self._equip_role()
+        claimed = {}
+        if role is not None:
+            try:
+                row = self.get_role_loginlibao(role.get('id'))
+            except Exception:
+                row = None
+            if row and row.get('lingqujson'):
+                try:
+                    import json as _json
+                    claimed = _json.loads(row.get('lingqujson')) or {}
+                except Exception:
+                    claimed = {}
+        unclaimed = 0
+        for r in rows:
+            if str(r.get('id')) not in claimed:
+                unclaimed = 1
+                break
+        configs = None if (client_sign and client_sign == sign) else \
+            [dict(r) for r in rows]
+        return frame(amf3_encode(['127000', [sign, configs, unclaimed]]))
+
+    def loginlibao_claim(self, msg):
+        """127001: lingqu(id) grants prizegoods, marks claimed."""
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            gid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['127001', [0]]))
+        _, rows = self.config.denglulibao_table()
+        cfg = next((r for r in rows if str(r.get('id')) == gid), None)
+        if cfg is None:
+            return frame(amf3_encode(['127001', [0]]))
+        try:
+            row = self.get_role_loginlibao(rid)
+        except Exception:
+            row = None
+        claimed = {}
+        if row and row.get('lingqujson'):
+            try:
+                import json as _json
+                claimed = _json.loads(row.get('lingqujson')) or {}
+            except Exception:
+                claimed = {}
+        if str(gid) in claimed:
+            return frame(amf3_encode(['127001', [0]]))
+        items = self.config.parse_goods_string(cfg.get('prizegoods'))
+        if not self._vip_fits_list(
+                rid, [(g, c, b) for g, c, b in items]):
+            return frame(amf3_encode(['127001', [0]]))
+        self._task_grant(rid, [{'goods_id': g, 'count': c, 'bind': b}
+                               for g, c, b in items])
+        claimed[str(gid)] = 1
+        try:
+            import json as _json, time as _time
+            self.save_role_loginlibao(
+                rid, lingqujson=_json.dumps(claimed),
+                lingqu_time=int(_time.time() * 1000))
+        except Exception:
+            pass
+        return frame(amf3_encode(['127001', [1, gid]]))
+
+    def lvlibao_info(self, msg):
+        """58000: LvlibaoServiceImpl.laQuLvLiBao [[id, state]...]."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_lvlibao(role.get('id'))
+        except Exception:
+            row = None
+        pairs = []
+        if row and row.get('state'):
+            try:
+                import json as _json
+                state = _json.loads(row.get('state')) or {}
+            except Exception:
+                state = {}
+            for k, v in state.items():
+                try:
+                    pairs.append([str(k), int(v)])
+                except (TypeError, ValueError):
+                    continue
+        return frame(amf3_encode(['58000', pairs]))
+
+    def lvlibao_claim(self, msg):
+        """58001: lingQuLvLiBao(number) level-gated grant."""
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            number = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['58001', [0]]))
+        _, rows = self.config.dengjilibao_table()
+        cfg = next((r for r in rows if str(r.get('number')) == number),
+                   None)
+        if cfg is None:
+            return frame(amf3_encode(['58001', [0]]))
+        try:
+            need = int(cfg.get('levelneed') or 0)
+        except (TypeError, ValueError):
+            need = 0
+        try:
+            lv = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            lv = 0
+        if lv < need:
+            return frame(amf3_encode(['58001', [0]]))
+        try:
+            row = self.get_role_lvlibao(rid)
+        except Exception:
+            row = None
+        state = {}
+        if row and row.get('state'):
+            try:
+                import json as _json
+                state = _json.loads(row.get('state')) or {}
+            except Exception:
+                state = {}
+        if int(state.get(number) or 0) == 1:
+            return frame(amf3_encode(['58001', [0]]))
+        items = self.config.parse_goods_string(cfg.get('goods'))
+        if not self._vip_fits_list(
+                rid, [(g, c, b) for g, c, b in items]):
+            return frame(amf3_encode(['58001', [0]]))
+        self._task_grant(rid, [{'goods_id': g, 'count': c, 'bind': b}
+                               for g, c, b in items])
+        state[str(number)] = 1
+        try:
+            import json as _json
+            self.save_role_lvlibao(rid, state=_json.dumps(state))
+        except Exception:
+            pass
+        return frame(amf3_encode(['58001', [1, number]]))
+
+    def loginlingjiang_info(self, msg):
+        """103000: LoginlingjaingServiceImpl.getInfo [dayNumber, claimed]."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            row = self.get_role_loginlingjiang(rid)
+        except Exception:
+            row = None
+        if row is None:
+            try:
+                self.save_role_loginlingjiang(rid, day_number=1,
+                                              lingqujson='{}')
+            except Exception:
+                pass
+            return frame(amf3_encode(['103000', [1, []]]))
+        try:
+            days = int(row.get('day_number') or 1)
+        except (TypeError, ValueError):
+            days = 1
+        claimed = self._json_ids(row.get('lingqujson'))
+        return frame(amf3_encode(['103000', [days, claimed]]))
+
+    def loginlingjiang_claim(self, msg):
+        """103001: lingQu(day) grants the dengluqijiangli pool."""
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            day = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['103001', [0]]))
+        try:
+            row = self.get_role_loginlingjiang(rid)
+        except Exception:
+            row = None
+        try:
+            days = int((row or {}).get('day_number') or 1)
+        except (TypeError, ValueError):
+            days = 1
+        try:
+            day_no = int(day)
+        except (TypeError, ValueError):
+            return frame(amf3_encode(['103001', [0]]))
+        if day_no < 1 or day_no > days:
+            return frame(amf3_encode(['103001', [0]]))
+        claimed = self._json_ids((row or {}).get('lingqujson'))
+        if day in claimed or str(day_no) in claimed:
+            return frame(amf3_encode(['103001', [0]]))
+        items = self.config.parse_goods_string(
+            self.config.loginlingjiang_items())
+        if not items:
+            return frame(amf3_encode(['103001', [0]]))
+        if not self._vip_fits_list(
+                rid, [(g, c, b) for g, c, b in items]):
+            return frame(amf3_encode(['103001', [0]]))
+        self._task_grant(rid, [{'goods_id': g, 'count': c, 'bind': b}
+                               for g, c, b in items])
+        claimed.append(str(day_no))
+        try:
+            import json as _json
+            self.save_role_loginlingjiang(
+                rid, lingqujson=_json.dumps(claimed))
+        except Exception:
+            pass
+        return frame(amf3_encode(['103001', [1, str(day_no)]]))
+
+    @staticmethod
+    def _json_ids(text):
+        """Fastjson claim mark (list or {id:1} map) to string ids."""
+        if not text:
+            return []
+        try:
+            import json as _json
+            data = _json.loads(text)
+        except Exception:
+            return []
+        if isinstance(data, dict):
+            return [str(k) for k in data]
+        if isinstance(data, list):
+            return [str(x) for x in data]
+        return []
+
+    def touxian_info(self, msg):
+        """104000: TouxianServiceImpl.getTouXianInfo [worn, owned]."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_touxian(role.get('id'))
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(['104000', [None, []]]))
+        owned = self._json_ids(row.get('jihuoids'))
+        return frame(amf3_encode(
+            ['104000', [row.get('peidai_id'), owned]]))
+
+    def touxian_activate(self, msg):
+        """104001: jiHuoTouXian(id) owns the title.
+
+        The shipped touxianbiao.jat rows carry no decr-goods column, so
+        activation is own-and-persist (like Java when decrGoods is
+        empty); titles with a cost table would fail closed here.
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            tid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['104001', [0]]))
+        if tid not in self.config.touxian_table():
+            return frame(amf3_encode(['104001', [0]]))
+        try:
+            row = self.get_role_touxian(rid)
+        except Exception:
+            row = None
+        owned = self._json_ids((row or {}).get('jihuoids'))
+        if tid in owned:
+            return frame(amf3_encode(['104001', [0]]))
+        owned.append(tid)
+        try:
+            import json as _json
+            self.save_role_touxian(
+                rid, jihuoids=_json.dumps(owned),
+                peidai_id=(row or {}).get('peidai_id'))
+        except Exception:
+            pass
+        return frame(amf3_encode(['104001', [1, tid]]))
+
+    def touxian_wear(self, msg):
+        """104002: changeTouXian(id) wears an owned title."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            tid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['104002', [0]]))
+        try:
+            row = self.get_role_touxian(rid)
+        except Exception:
+            row = None
+        if tid not in self._json_ids((row or {}).get('jihuoids')):
+            return frame(amf3_encode(['104002', [0]]))
+        try:
+            self.save_role_touxian(rid, peidai_id=tid)
+        except Exception:
+            pass
+        return frame(amf3_encode(['104002', [1, tid]]))
+
+    def guangyi_info(self, msg):
+        """102000: GuangyiServiceImpl.guangyiInfo; null with no row."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_guangyi(role.get('id'))
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(['102000', None]))
+        return frame(amf3_encode(['102000', [
+            row.get('peidai_id') or 0, row.get('level') or 1,
+            row.get('lucky') or 0, row.get('ispeidai') or 0,
+            self._json_pairs(row.get('attr_dan'))]]))
+
+    @staticmethod
+    def _json_pairs(text):
+        """Fastjson {k: v} map to [[k, v]...] pairs."""
+        if not text:
+            return []
+        try:
+            import json as _json
+            data = _json.loads(text) or {}
+        except Exception:
+            return []
+        if not isinstance(data, dict):
+            return []
+        return [[str(k), v] for k, v in data.items()]
+
+    def guangyi_buy(self, msg):
+        """102002: buyGuangYi creates the level-1 row.
+
+        Cost is needthingsid x needthingsvalue from guangyi.jat (the
+        first row's pair), paid from the bag; missing goods fail [0].
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            if self.get_role_guangyi(rid) is not None:
+                return frame(amf3_encode(['102002', [0]]))
+        except Exception:
+            pass
+        rows = self.config.guangyi_table()
+        if not rows:
+            return frame(amf3_encode(['102002', [0]]))
+        first = rows[0]
+        need_id = str(first.get('needthingsid') or '')
+        try:
+            need_n = int(first.get('needthingsvalue') or 0)
+        except (TypeError, ValueError):
+            need_n = 0
+        if need_id and need_n > 0 and not self._bag_decr(rid, need_id,
+                                                         need_n):
+            return frame(amf3_encode(['102002', [0]]))
+        try:
+            self.save_role_guangyi(rid, peidai_id=1, level=1, lucky=0,
+                                   ispeidai=1, attr_dan='{}')
+        except Exception:
+            return frame(amf3_encode(['102002', [0]]))
+        return frame(amf3_encode(['102002', [1, 1]]))
+
+    def _bag_decr(self, rid, goods_id, count):
+        """Decr count of goods_id across bag slots; False if short."""
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return False
+        have = 0
+        for s in slots:
+            try:
+                if str(s.get('goods_id')) == str(goods_id):
+                    have += int(s.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        if have < count:
+            return False
+        left = count
+        for s in sorted(slots, key=lambda x: x.get('slot_num') or 0):
+            if left <= 0:
+                break
+            try:
+                if str(s.get('goods_id')) != str(goods_id):
+                    continue
+                n = int(s.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            if n <= 0:
+                continue
+            take = min(n, left)
+            left -= take
+            try:
+                if n - take <= 0:
+                    self.delete_role_bag_slot(rid, s.get('slot_num'))
+                else:
+                    self.update_role_bag_slot(rid, s.get('slot_num'),
+                                              count=n - take)
+            except Exception:
+                return False
+        return left <= 0
+
+    def guangyi_wear(self, msg):
+        """102003: qiehuan(id) wears the wing (no cost, like change)."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            gid = int(self.safe(self.safe(msg, 1, []), 0))
+        except (TypeError, ValueError):
+            return frame(amf3_encode(['102003', [0]]))
+        try:
+            row = self.get_role_guangyi(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(['102003', [0]]))
+        try:
+            self.save_role_guangyi(rid, peidai_id=gid, ispeidai=1)
+        except Exception:
+            pass
+        return frame(amf3_encode(['102003', [1, gid]]))
+
+    def baixian_info(self, msg):
+        """71000: RoleBaixianServiceImpl.getInfo [[id,count]..., cost]."""
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        counts = self._baixian_counts(role.get('id'))
+        flat = []
+        for r in self.config.baixian_table():
+            flat.extend([str(r.get('id')), int(counts.get(str(r.get('id')), 0))])
+        return frame(amf3_encode(['71000', [[flat, 0.0]]]))
+
+    def _baixian_counts(self, rid):
+        """Today's worship counts; a stale day resets like todayChuli."""
+        import time as _time
+        today = _time.strftime('%Y-%m-%d')
+        try:
+            row = self.get_role_baixian(rid)
+        except Exception:
+            row = None
+        if row is None or row.get('last_day') != today:
+            return {}
+        try:
+            import json as _json
+            data = _json.loads(row.get('counts')) or {}
+        except Exception:
+            return {}
+        return {str(k): int(v) for k, v in data.items()}
+
+    def baixian_worship(self, msg):
+        """71001: baixian(god) spends lingshi past the free worship.
+
+        Cost/reward mapping is best-effort from BaiXianHuaFei.jat column
+        semantics (xNgold = YB cost for god N at this count; god1 gets
+        coinxs11 tongqian, god2 zhenqi22 zhenqi, god3 exp23 exp; the
+        first worship of each god per day is free). The oracle diff
+        adjudicates the exact Java mapping.
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            god = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['71001', [0]]))
+        gods = [str(r.get('id')) for r in self.config.baixian_table()]
+        if god not in gods:
+            return frame(amf3_encode(['71001', [0]]))
+        import time as _time
+        today = _time.strftime('%Y-%m-%d')
+        counts = self._baixian_counts(rid)
+        n = int(counts.get(god, 0)) + 1
+        cost = 0
+        reward_tongqian, reward_zhenqi, reward_exp = 0, 0, 0
+        fee = self.config.baixian_huafei(n) or {}
+        if n > 1:
+            try:
+                cost = int(fee.get(f'x{god}gold') or 0)
+            except (TypeError, ValueError):
+                cost = 0
+        try:
+            reward_tongqian = int(fee.get('coinxs11') or 0) if god == gods[0] \
+                else 0
+            reward_zhenqi = int(fee.get('zhenqi22') or 0) if god == gods[1] \
+                else 0
+            reward_exp = int(fee.get('exp23') or 0) if god == gods[2] else 0
+        except (TypeError, ValueError):
+            pass
+        try:
+            lingshi = int(role.get('lingshi') or 0)
+        except (TypeError, ValueError):
+            lingshi = 0
+        if cost > lingshi:
+            return frame(amf3_encode(['71001', [0]]))
+        if cost:
+            try:
+                self.save_role_state(rid, lingshi=lingshi - cost)
+            except Exception:
+                return frame(amf3_encode(['71001', [0]]))
+        if reward_tongqian or reward_zhenqi or reward_exp:
+            try:
+                fresh = self.get_roles(self.authed_user or '',
+                                       self.server_id or '')
+                cur = fresh[0] if fresh else role
+                self.save_role_state(
+                    rid,
+                    tongqian=int(cur.get('tongqian') or 0) + reward_tongqian,
+                    zhenqi=int(cur.get('zhenqi') or 0) + reward_zhenqi,
+                    exp=int(cur.get('exp') or 0) + reward_exp)
+            except Exception:
+                pass
+        counts[god] = n
+        try:
+            import json as _json
+            self.save_role_baixian(rid, counts=_json.dumps(counts),
+                                   last_day=today)
+        except Exception:
+            pass
+        return frame(amf3_encode(['71001', [1, god, n]]))
+
+    def zhuihui_info(self, msg):
+        """107000: ZyzhuihuiServiceImpl.getinfo 8 recovery rows."""
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        claimed = self._zhuihui_claimed(role.get('id'))
+        out = []
+        for rid_key in sorted(self.config.zhuihui_table(),
+                              key=lambda x: int(x)):
+            out.append([rid_key, 0, 1 if rid_key in claimed else 0])
+        return frame(amf3_encode(['107000', [out]]))
+
+    def _zhuihui_claimed(self, rid):
+        try:
+            row = self.get_role_zhuihui(rid)
+        except Exception:
+            return set()
+        return set(self._json_ids((row or {}).get('state')))
+
+    def zhuihui_claim(self, msg):
+        """107001: zhuiHui(id) spends lingshi, grants exp/tongqian.
+
+        Best-effort flat mapping (money1 lingshi cost; exp1 exp and
+        tongqian1 tongqian grants; lingqi/banggong have no character
+        columns and are skipped). Java scales by level via
+        ZiYuanZhuiHuiConfig math; that scaling is a follow-up once
+        the Config class is decompiled.
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        try:
+            zid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return frame(amf3_encode(['107001', [0]]))
+        cfg = self.config.zhuihui_table().get(zid)
+        if cfg is None:
+            return frame(amf3_encode(['107001', [0]]))
+        if zid in self._zhuihui_claimed(rid):
+            return frame(amf3_encode(['107001', [0]]))
+        try:
+            cost = int(cfg.get('money1') or 0)
+            grant_exp = int(cfg.get('exp1') or 0)
+            grant_coin = int(cfg.get('tongqian1') or 0)
+        except (TypeError, ValueError):
+            return frame(amf3_encode(['107001', [0]]))
+        try:
+            lingshi = int(role.get('lingshi') or 0)
+        except (TypeError, ValueError):
+            lingshi = 0
+        if cost > lingshi:
+            return frame(amf3_encode(['107001', [0]]))
+        try:
+            fresh = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            cur = fresh[0] if fresh else role
+            self.save_role_state(
+                rid, lingshi=lingshi - cost,
+                exp=int(cur.get('exp') or 0) + grant_exp,
+                tongqian=int(cur.get('tongqian') or 0) + grant_coin)
+        except Exception:
+            return frame(amf3_encode(['107001', [0]]))
+        claimed = self._zhuihui_claimed(rid) | {zid}
+        try:
+            import json as _json
+            self.save_role_zhuihui(rid,
+                                   state=_json.dumps(sorted(claimed)))
+        except Exception:
+            pass
+        return frame(amf3_encode(['107001', [1, zid]]))
+
+    def kapai_client(self, msg):
+        """121000: KapaiServiceImpl.getClientConfig [sign, entries, recycle].
+
+        Sign is the newest kapaibiao drop's md5; recycle rows come from
+        the newest kapaiduihuanbiao drop. Silent when no drop is
+        published, like the other published-table families.
+        """
+        if self.config is None:
+            return None
+        sign, entries, recycle = self.config.kapai_tables()
+        if sign is None or not entries:
+            return None
+        return frame(amf3_encode(['121000', [sign, entries, recycle]]))
+
+    def kapai_info(self, msg):
+        """121001: KapaiServiceImpl.getInfo [flag, cardCounts, rewards].
+
+        Card counts read the role_bag_dummy counts per kapai id (like
+        Java's bagdummy getCount); reward states read role_kapai and
+        default to [0, 0], which is byte-exact for a fresh role.
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        _, entries, recycle = self.config.kapai_tables()
+        if not entries:
+            return None
+        try:
+            dummy = self.get_role_bag_dummy(role.get('id')) or []
+        except Exception:
+            dummy = []
+        counts = {}
+        for row in dummy:
+            try:
+                counts[str(row.get('goods_id'))] = counts.get(
+                    str(row.get('goods_id')), 0) + int(row.get('goods_count')
+                                                     or 0)
+            except (TypeError, ValueError):
+                continue
+        card_ids = [str(r.get('kapai1', '').split(':')[0])
+                    for r in entries]
+        _seen, ordered = set(), []
+        for cid in card_ids:
+            if cid and cid not in _seen:
+                _seen.add(cid)
+                ordered.append(cid)
+        if not ordered:
+            ordered = [str(r.get('id')) for r in recycle
+                       if r.get('id')]
+        states = {}
+        try:
+            krow = self.get_role_kapai(role.get('id'))
+        except Exception:
+            krow = None
+        if krow and krow.get('state'):
+            try:
+                import json as _json
+                states = _json.loads(krow.get('state')) or {}
+            except Exception:
+                states = {}
+        entry_ids = [str(r.get('ID') if r.get('ID') is not None
+                         else r.get('id'))
+                     for r in entries]
+        rewards = []
+        for eid in entry_ids:
+            got, can = 0, 0
+            try:
+                got, can = (states.get(eid) or [0, 0])[:2]
+            except (TypeError, ValueError):
+                pass
+            rewards.append([eid, int(got), int(can)])
+        return frame(amf3_encode(
+            ['121001', [0, [[c, int(counts.get(c, 0))] for c in ordered],
+                         rewards]]))
+
+    def qianfu_client(self, msg):
+        """120000: QianfuhuodongServiceImpl.getClientConfig.
+
+        [sign, rows, startMs]; startMs is the earliest row kaiqitime
+        parsed server-local (see drop_millis). Silent with no drop.
+        """
+        if self.config is None:
+            return None
+        sign, rows = self.config.qianfu_table()
+        if sign is None or not rows:
+            return None
+        starts = [self.config.drop_millis(r.get('kaiqitime')) for r in rows]
+        starts = [s for s in starts if s > 0]
+        start = min(starts) if starts else 0
+        return frame(amf3_encode(['120000', [sign, rows, float(start)]]))
+
+    def tuangou_config(self, msg):
+        """122002: XianshituangouServiceImpl.getConfig.
+
+        [sign, rows, [startMs, endMs]]; a matching client sign is
+        silent (Java returns null), like the loginlibao sign rule.
+        """
+        if self.config is None:
+            return None
+        client_sign = None
+        try:
+            client_sign = str(self.safe(self.safe(msg, 1, []), 0) or '')
+        except Exception:
+            client_sign = None
+        sign, rows, start, end = self.config.tuangou_table()
+        if sign is None:
+            return None
+        if client_sign and client_sign == sign:
+            return None
+        return frame(amf3_encode(
+            ['122002', [sign, rows, [float(start), float(end)]]]))
+
+    def guanggao_list(self, msg):
+        """109000: newest dengluguanggao rows (login ads)."""
+        if self.config is None:
+            return None
+        try:
+            rows = self.config.guanggao_table()
+        except Exception:
+            rows = []
+        return frame(amf3_encode(['109000', [rows]]))
+
+    def email_list(self, msg):
+        """63001: RoleEmailServiceImpl.list; null when no mail."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            rows = self.list_role_email(role.get('id')) or []
+        except Exception:
+            rows = []
+        if not rows:
+            return frame(amf3_encode(['63001', None]))
+        out = [[str(r.get('id')), r.get('title') or '',
+                r.get('content') or '', r.get('attachment') or '',
+                int(r.get('is_read') or 0), int(r.get('is_claimed') or 0)]
+               for r in rows]
+        return frame(amf3_encode(['63001', out]))
+
+    def email_info(self, msg):
+        """63002: open(id) marks read, answers the mail row."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            mid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return None
+        try:
+            row = self.get_role_email(role.get('id'), mid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        try:
+            self.update_role_email(role.get('id'), mid, is_read=1)
+        except Exception:
+            pass
+        return frame(amf3_encode(
+            ['63002', [str(row.get('id')), row.get('title') or '',
+                       row.get('content') or '',
+                       row.get('attachment') or '']]))
+
+    def _email_items(self, text):
+        """Parse an email attachment JSON array to ItemModel dicts.
+
+        GoodsConvertUtil.json2ItemModel reads goodsId/goodsCount (+bind /
+        attributes); anything unparsable yields []."""
+        try:
+            import json as _json
+            raw = _json.loads(text or '[]')
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        items = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            gid = str(entry.get('goodsId') or '')
+            try:
+                count = int(entry.get('goodsCount') or 0)
+            except (TypeError, ValueError):
+                count = 0
+            if not gid or count <= 0:
+                continue
+            try:
+                bind = int(entry.get('bind') or 0)
+            except (TypeError, ValueError):
+                bind = 0
+            items.append({'goods_id': gid, 'count': count, 'bind': bind,
+                          'expire': entry.get('expireTime') or None})
+        return items
+
+    def _email_fail(self, cmd, code):
+        """lingqu*/onekey gate reply: [0, EmailErrorCode]."""
+        return frame(amf3_encode([str(cmd), [0, code]]))
+
+    def email_attachment(self, msg):
+        """63003: lingquAttachment(emailId, index) grants one item.
+
+        Gates mirror RoleEmailServiceImpl: missing row -> 60001, no
+        attachments -> 60002, bad index -> 60002, bag full -> 60007.
+        Success removes that index from the JSON array and replies
+        [1, emailId, index]."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            data = self.safe(msg, 1, [])
+            mid, index = str(self.safe(data, 0)), str(self.safe(data, 1))
+        except Exception:
+            return None
+        if not mid:
+            return None
+        try:
+            row = self.get_role_email(role.get('id'), mid)
+        except Exception:
+            row = None
+        if row is None:
+            return self._email_fail(63003, EMAIL_ERR_NOT_FOUND)
+        items = self._email_items(row.get('attachment'))
+        if not items:
+            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+        try:
+            pos = int(index)
+        except (TypeError, ValueError):
+            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+        if pos < 0 or pos >= len(items):
+            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+        item = items[pos]
+        try:
+            fits = self._prop_fits(role.get('id'),
+                                   {'goods': item['goods_id'],
+                                    'count': item['count']}, item['bind'])
+        except Exception:
+            fits = False
+        if not fits:
+            return self._email_fail(63003, EMAIL_ERR_BAG_LESS)
+        try:
+            self._task_grant(role.get('id'), [item])
+        except Exception:
+            return self._email_fail(63003, EMAIL_ERR_BAG_LESS)
+        import json as _json
+        rest = [e for n, e in enumerate(items) if n != pos]
+        kept = []
+        try:
+            raw = _json.loads(row.get('attachment') or '[]')
+            kept = [e for n, e in enumerate(raw) if n != pos]
+        except (TypeError, ValueError):
+            kept = [{'goodsId': e['goods_id'], 'goodsCount': e['count']}
+                    for e in rest]
+        try:
+            self.update_role_email(role.get('id'), mid,
+                                   attachment=_json.dumps(kept))
+        except Exception:
+            pass
+        return frame(amf3_encode(['63003', [1, mid, index]]))
+
+    def _email_money(self, cmd, msg, kind, column, empty_code):
+        """63006/63007: lingquJb/lingquYb move the mail purse on-role."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            mid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return None
+        if not mid:
+            return None
+        try:
+            row = self.get_role_email(role.get('id'), mid)
+        except Exception:
+            row = None
+        if row is None:
+            return self._email_fail(cmd, EMAIL_ERR_NOT_FOUND)
+        try:
+            amount = int(row.get(kind) or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return self._email_fail(cmd, empty_code)
+        rid = role.get('id')
+        try:
+            balance = int((role or {}).get(column) or 0)
+        except (TypeError, ValueError):
+            balance = 0
+        try:
+            self.save_role_state(rid, **{column: balance + amount})
+        except Exception:
+            pass
+        try:
+            self.update_role_email(rid, mid, **{kind: 0})
+        except Exception:
+            pass
+        return frame(amf3_encode([str(cmd), [1, amount]]))
+
+    def email_jb(self, msg):
+        """63006: lingquJb moves mail JB into tongqian."""
+        return self._email_money(63006, msg, 'jb', 'tongqian',
+                                 EMAIL_ERR_NO_JB)
+
+    def email_yb(self, msg):
+        """63007: lingquYb moves mail YB into lingshi."""
+        return self._email_money(63007, msg, 'yb', 'lingshi',
+                                 EMAIL_ERR_NO_YB)
+
+    def email_onekey(self, msg):
+        """63008: onekey(emailId) sweeps one mail's items, JB and YB.
+
+        Bag-full aborts with [0, 60007] before anything moves; success
+        zeroes all three stores and replies [1, jb, yb, [[id, count]]]."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            mid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return None
+        if not mid:
+            return None
+        try:
+            row = self.get_role_email(role.get('id'), mid)
+        except Exception:
+            row = None
+        if row is None:
+            return self._email_fail(63008, EMAIL_ERR_NOT_FOUND)
+        items = self._email_items(row.get('attachment'))
+        try:
+            for item in items:
+                if not self._prop_fits(
+                        role.get('id'), {'goods': item['goods_id'],
+                                       'count': item['count']}, item['bind']):
+                    return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+        except Exception:
+            return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+        if items:
+            try:
+                self._task_grant(role.get('id'), items)
+            except Exception:
+                return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+        rid = role.get('id')
+        try:
+            jb = int(row.get('jb') or 0)
+        except (TypeError, ValueError):
+            jb = 0
+        try:
+            yb = int(row.get('yb') or 0)
+        except (TypeError, ValueError):
+            yb = 0
+        if jb > 0:
+            try:
+                tongqian = int((role or {}).get('tongqian') or 0)
+            except (TypeError, ValueError):
+                tongqian = 0
+            try:
+                self.save_role_state(rid, tongqian=tongqian + jb)
+            except Exception:
+                pass
+        if yb > 0:
+            try:
+                lingshi = int((role or {}).get('lingshi') or 0)
+            except (TypeError, ValueError):
+                lingshi = 0
+            try:
+                self.save_role_state(rid, lingshi=lingshi + yb)
+            except Exception:
+                pass
+        try:
+            import json as _json
+            self.update_role_email(rid, mid, attachment=_json.dumps([]),
+                                   jb=0, yb=0)
+        except Exception:
+            pass
+        return frame(amf3_encode(
+            ['63008', [1, jb, yb,
+                       [[i['goods_id'], i['count']] for i in items]]]))
+
+    def email_delete(self, msg):
+        """63004: delete(id) removes the row."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            mid = str(self.safe(self.safe(msg, 1, []), 0))
+        except Exception:
+            return None
+        try:
+            self.delete_role_email(role.get('id'), mid)
+        except Exception:
+            pass
+        return frame(amf3_encode(['63004', [1, mid]]))
+
+    @staticmethod
+    def _shenjiang_pairs(text):
+        """'id:count[;...]' goods map (partquatity/needthingsid cells)."""
+        pairs = []
+        for cell in str(text or '').split(';'):
+            if ':' not in cell:
+                continue
+            gid, _, count = cell.partition(':')
+            gid = gid.strip()
+            if not gid:
+                continue
+            try:
+                pairs.append((gid, int(count)))
+            except (TypeError, ValueError):
+                continue
+        return pairs
+
+    def _shenjiang_owned(self, rid, sj_id):
+        """First owned shenjiang row for an id, like ShenjiangIdFilter."""
+        try:
+            rows = self.get_role_shenjiang(rid) or []
+        except Exception:
+            return None
+        return next((dict(r) for r in rows
+                     if str(r.get('shenjiang_id')) == str(sj_id)), None)
+
+    def _shenjiang_money(self, role, rid, money, amount):
+        """Check-then-decr one MoneyType column (account decr port)."""
+        if amount <= 0:
+            return True
+        if not self._bag_money_check(role, money, amount):
+            return False
+        try:
+            balance = int((role or {}).get(
+                BAG_MONEY_COLUMNS[money]) or 0)
+        except (TypeError, ValueError):
+            return False
+        try:
+            self.save_role_state(rid, **{BAG_MONEY_COLUMNS[money]:
+                                          balance - amount})
+        except Exception:
+            pass
+        return True
+
+    def shenjiang_activate(self, msg):
+        """Command 41001: fragment-synthesis activation (suiPianHeCheng).
+
+        C> shenjiang id. Gates in order: unknown id or owned id stays
+        silent, fragment short answers [0, 420011], zhenqi short [0, 1001].
+        Costs burn, a zeroed row is inserted, and the reply is [1, id].
+        """
+        sj_id = str(self.safe(msg, 1) or '')
+        role = self._equip_role()
+        if role is None or not sj_id or self.config is None:
+            return None
+        rid = role.get('id')
+        tier = self.config.shenjiang_tier(sj_id, 0)
+        if tier is None:
+            return None
+        if self._shenjiang_owned(rid, sj_id) is not None:
+            return None
+        pairs = self._shenjiang_pairs(tier.get('partquatity'))
+        for gid, count in pairs:
+            if self._bag_goods_count(rid, gid) < count:
+                return frame(amf3_encode(
+                    [str(CMD_SHENJIANG_ACTIVATE), [0, SHENJIANG_ERR_FRAG]]))
+        try:
+            need_zhenqi = int(tier.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            need_zhenqi = 0
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        if zhenqi < need_zhenqi:
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_ACTIVATE), [0, GENERAL_ZHENQI]]))
+        for gid, count in pairs:
+            try:
+                self._bag_decr(rid, gid, count)
+            except Exception:
+                pass
+        try:
+            self.save_role_state(rid, zhenqi=zhenqi - need_zhenqi)
+        except Exception:
+            pass
+        import json as _json
+        skills = {}
+        for name in str(tier.get('skill') or '').split(';'):
+            name = name.strip()
+            if name:
+                skills[name] = 0
+        try:
+            self.save_role_shenjiang(rid, sj_id, jiangxing_id='',
+                                     jiangxing_rank=0,
+                                     skills=_json.dumps(skills))
+        except Exception:
+            pass
+        return frame(amf3_encode([str(CMD_SHENJIANG_ACTIVATE), [1, sj_id]]))
+
+    def shenjiang_skill_up(self, msg):
+        """Command 41002: shenjiang skill upgrade (skillUpgrade).
+
+        C> [shenjiang id, skill id]. Gates in order: no owned row or no
+        (id, rank) tier stays silent, skill at maxLv answers [0, 420010],
+        skill at/over level 100 the same, a skill missing from the owned
+        JSON stays silent.        checkSkillUpgrade then gates: no skill row [0, 420001], role
+        level short [0, 1000], zhenqi short [0, 1001], exp short [0, 1014],
+        YXB short [0, 1003], fragment short [0, 1005]. (The shenjiang
+        id/rank lookups have no local source, so the 420012 arm stays
+        silent like a null getShengjiangId.)
+        Costs burn, the learn roll decides, and the reply is [1, id, skill,
+        newLevel] or [0, id, skill, level]. The additionSjid chain has no
+        local source, so it is logged, not followed.
+        """
+        data = self.safe(msg, 1, [])
+        sj_id = str(self.safe(data, 0) or '')
+        skill_id = str(self.safe(data, 1) or '')
+        role = self._equip_role()
+        if role is None or not sj_id or not skill_id or \
+                self.config is None:
+            return None
+        rid = role.get('id')
+        row = self._shenjiang_owned(rid, sj_id)
+        if row is None:
+            return None
+        import json as _json
+        try:
+            skills = _json.loads(row.get('skills') or '{}') or {}
+        except Exception:
+            skills = {}
+        if skill_id not in skills:
+            return None
+        try:
+            rank = int(row.get('jiangxing_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        tier = self.config.shenjiang_tier(sj_id, rank)
+        if tier is None:
+            return None
+        try:
+            level = int(skills.get(skill_id) or 0)
+        except (TypeError, ValueError):
+            level = 0
+        try:
+            max_lv = int(tier.get('maxlv') or 0)
+        except (TypeError, ValueError):
+            max_lv = 0
+        if level + 1 > max_lv or level >= 100:
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_SKILLUP),
+                 [0, SHENJIANG_ERR_MAXSKILL]]))
+        info = self.config.skill_info(skill_id, level)
+        if info is None:
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_SKILLUP),
+                 [0, SHENJIANG_ERR_NOSKILLCFG]]))
+        err = self._shenjiang_skill_gates(role, info)
+        if err is not None:
+            return frame(amf3_encode([str(CMD_SHENJIANG_SKILLUP), err]))
+        self._shenjiang_skill_pay(role, rid, info)
+        if not self._lottery_roll(info.get('learnodds')):
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_SKILLUP), [0, sj_id, skill_id, level]]))
+        skills[skill_id] = level + 1
+        try:
+            self.save_role_shenjiang(rid, sj_id,
+                                     skills=_json.dumps(skills))
+        except Exception:
+            pass
+        try:
+            self.save_role_skill(rid, skill_id, level + 1)
+        except Exception:
+            pass
+        log.info('conn %d: shenjiang %r addition chain skipped (no source)',
+                 self.conn_id, sj_id)
+        return frame(amf3_encode(
+            [str(CMD_SHENJIANG_SKILLUP), [1, sj_id, skill_id, level + 1]]))
+
+    def _shenjiang_skill_gates(self, role, info):
+        """checkSkillUpgrade gates, or None when the upgrade may proceed.
+
+        The shenjiangId/shengjiangRank columns are absent from the local
+        JiNengBiao rows, so those two gates are skipped like a null
+        getShengjiangId; everything else follows the bytecode order.
+        """
+        try:
+            role_level = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            role_level = 0
+        try:
+            need_level = int(info.get('levelneed') or 0)
+        except (TypeError, ValueError):
+            need_level = 0
+        if need_level > role_level:
+            return [0, GENERAL_LEVEL]
+        try:
+            need_zhenqi = int(info.get('zhenqineed') or 0)
+        except (TypeError, ValueError):
+            need_zhenqi = 0
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        if need_zhenqi > zhenqi:
+            return [0, GENERAL_ZHENQI]
+        try:
+            need_exp = int(info.get('expneed') or 0)
+        except (TypeError, ValueError):
+            need_exp = 0
+        try:
+            exp = int(role.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        if need_exp > 0 and exp < need_exp:
+            return [0, GENERAL_ROLE_EXP]
+        try:
+            need_yxb = int(info.get('goldneed') or 0)
+        except (TypeError, ValueError):
+            need_yxb = 0
+        if need_yxb > 0 and not self._bag_money_check(role, 'YXB', need_yxb):
+            return [0, GENERAL_JB]
+        item = str(info.get('itemneed') or '')
+        if item:
+            gid, _, count = item.partition('|')
+            try:
+                need = int(count)
+            except (TypeError, ValueError):
+                need = 0
+            if gid and need > 0 and \
+                    self._bag_goods_count(role.get('id'), gid) < need:
+                return [0, GENERAL_GOODS]
+        return None
+
+    def _shenjiang_skill_pay(self, role, rid, info):
+        """Burn the skillUpgrade costs (zhenqi/exp/YXB/goods), best effort."""
+        try:
+            zhenqi = int(role.get('zhenqi') or 0)
+            exp = int(role.get('exp') or 0)
+        except (TypeError, ValueError):
+            zhenqi, exp = 0, 0
+        try:
+            self.save_role_state(
+                rid, zhenqi=zhenqi - int(info.get('zhenqineed') or 0),
+                exp=exp - int(info.get('expneed') or 0))
+        except Exception:
+            pass
+        try:
+            need_yxb = int(info.get('goldneed') or 0)
+        except (TypeError, ValueError):
+            need_yxb = 0
+        if need_yxb > 0:
+            try:
+                balance = int(role.get('tongqian') or 0)
+            except (TypeError, ValueError):
+                balance = 0
+            try:
+                self.save_role_state(rid, tongqian=balance - need_yxb)
+            except Exception:
+                pass
+        item = str(info.get('itemneed') or '')
+        if item:
+            gid, _, count = item.partition('|')
+            try:
+                self._bag_decr(rid, gid, int(count))
+            except Exception:
+                pass
+
+    def shenjiang_can_jihuo(self, msg):
+        """Command 41003: star-chart pre-check (canJihuoJiangxingtu).
+
+        C> [shenjiang id, chart id]. Gates mirror checkCanJihuoJiangxingtu:
+        unknown chart, no owned row, unmet skill, already-lit chart,
+        short role level [0, 1000], short zhenqi [0, 1001], broken chain
+        [0, '423001'], short rank [0, '423006'], short money [0, '423002'].
+        Passing burns zhenqi + money, arms the chart, and answers
+        [1, maxTimes, moneyType, costValue, chart id].
+        """
+        data = self.safe(msg, 1, [])
+        sj_id = str(self.safe(data, 0) or '')
+        dwid = str(self.safe(data, 1) or '')
+        role = self._equip_role()
+        if role is None or not sj_id or not dwid or self.config is None:
+            return None
+        rid = role.get('id')
+        cfg = self.config.jiangxingtu_config(dwid)
+        if cfg is None:
+            return None
+        row = self._shenjiang_owned(rid, sj_id)
+        if row is None:
+            return None
+        err = self._shenjiang_jihuo_gates(role, row, cfg, dwid)
+        if err is not None:
+            return frame(amf3_encode([str(CMD_SHENJIANG_CANJIHUO), err]))
+        try:
+            cost_zhenqi = int(cfg.get('costzhenqi') or 0)
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            cost_zhenqi, zhenqi = 0, 0
+        try:
+            self.save_role_state(rid, zhenqi=zhenqi - cost_zhenqi)
+        except Exception:
+            pass
+        money = SHENJIANG_MONEY_NAMES.get(int(cfg.get('costtype') or 0))
+        try:
+            cost_value = int(cfg.get('costvalue') or 0)
+        except (TypeError, ValueError):
+            cost_value = 0
+        if money is not None and cost_value > 0:
+            self._shenjiang_money(role, rid, money, cost_value)
+        try:
+            self.save_role_shenjiang(rid, sj_id, cur_jiangxing_id=dwid,
+                                     jiangxing_state=1)
+        except Exception:
+            pass
+        log.info('conn %d: CanJihuoJiangxingtuEvent skipped (no bus)',
+                 self.conn_id)
+        try:
+            max_times = int(cfg.get('needmaxtime') or 0)
+        except (TypeError, ValueError):
+            max_times = 0
+        return frame(amf3_encode(
+            [str(CMD_SHENJIANG_CANJIHUO),
+             [1, max_times, int(cfg.get('costtype') or 0), cost_value,
+              dwid]]))
+
+    def _shenjiang_jihuo_gates(self, role, row, cfg, dwid):
+        """checkCanJihuoJiangxingtu gates, or None when lighting may start."""
+        import json as _json
+        need = str(cfg.get('jinengneed') or '')
+        if need:
+            sk, _, lv = need.partition(':')
+            try:
+                skills = _json.loads(row.get('skills') or '{}') or {}
+            except Exception:
+                skills = {}
+            try:
+                have = int(skills.get(sk.strip()) or 0)
+                want = int(lv)
+            except (TypeError, ValueError):
+                have, want = 0, 1
+            if have < want:
+                return [0, SHENJIANG_ERR_SKILLLV]
+        cur = str(row.get('cur_jiangxing_id') or '')
+        if not cur:
+            cur = str(row.get('jiangxing_id') or '')
+        if cur and (cur == dwid or self._shenjiang_before(dwid, cur)):
+            return [0, SHENJIANG_ERR_ACTIVED]
+        try:
+            role_level = int(role.get('level') or 0)
+            need_level = int(cfg.get('needlv') or 0)
+        except (TypeError, ValueError):
+            role_level, need_level = 0, 0
+        if need_level > role_level:
+            return [0, GENERAL_LEVEL]
+        try:
+            cost_zhenqi = int(cfg.get('costzhenqi') or 0)
+            zhenqi = int(role.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            cost_zhenqi, zhenqi = 0, 0
+        if cost_zhenqi > zhenqi:
+            return [0, GENERAL_ZHENQI]
+        before = str(cfg.get('abovedw') or '')
+        if before and cur and cur != before and \
+                not self._shenjiang_before(before, cur):
+            return [0, SHENJIANG_ERR_BEFORE]
+        try:
+            rank = int(row.get('jiangxing_rank') or 0)
+            dw_level = int(cfg.get('dwlv') or 0)
+        except (TypeError, ValueError):
+            rank, dw_level = 0, 0
+        if rank < dw_level:
+            return [0, SHENJIANG_ERR_LVTOP]
+        money = SHENJIANG_MONEY_NAMES.get(int(cfg.get('costtype') or 0))
+        try:
+            cost_value = int(cfg.get('costvalue') or 0)
+        except (TypeError, ValueError):
+            cost_value = 0
+        if money is None:
+            return None if cost_value <= 0 else [0, SHENJIANG_ERR_MONEY]
+        if cost_value > 0 and \
+                not self._bag_money_check(role, money, cost_value):
+            return [0, SHENJIANG_ERR_MONEY]
+        return None
+
+    def _shenjiang_before(self, first, second):
+        """dwId1BeforedwId2: chart `first` precedes `second` in one chain."""
+        if not first or not second or first == second:
+            return first == second
+        try:
+            a = self.config.jiangxingtu_config(first)
+            b = self.config.jiangxingtu_config(second)
+        except Exception:
+            return False
+        if a is None or b is None:
+            return False
+        if str(a.get('dalei') or '') != str(b.get('dalei') or ''):
+            return False
+        try:
+            return (int(a.get('dwstratum') or 0),
+                    int(a.get('dwlv') or 0)) < \
+                   (int(b.get('dwstratum') or 0), int(b.get('dwlv') or 0))
+        except (TypeError, ValueError):
+            return False
+
+    def shenjiang_jihuo(self, msg):
+        """Command 41004: light the armed star chart (jihuoJiangxingtu).
+
+        C> shenjiang id; the chart is the row's armed curJiangxingId and the
+        boolean is hardcoded false, exactly like the Action call. Gates:
+        no owned row, no armed chart, or an unmet skill requirement stay
+        silent. Failure grants failAddExp and answers [0, exp]; success
+        grants successAddExp, auto-learns the chart skill, and answers
+        [1, chart id, attr map, skill ids, exp]. Notices have no bus here.
+        """
+        sj_id = str(self.safe(msg, 1) or '')
+        role = self._equip_role()
+        if role is None or not sj_id or self.config is None:
+            return None
+        rid = role.get('id')
+        row = self._shenjiang_owned(rid, sj_id)
+        if row is None:
+            return None
+        dwid = str(row.get('cur_jiangxing_id') or '')
+        if not dwid:
+            return None
+        cfg = self.config.jiangxingtu_config(dwid)
+        if cfg is None:
+            return None
+        if not self._shenjiang_skill_need(row, cfg):
+            return None
+        try:
+            fail_count = int(row.get('fail_count') or 0)
+        except (TypeError, ValueError):
+            fail_count = 0
+        if self._shenjiang_jihuo_roll(fail_count, cfg):
+            return self._shenjiang_jihuo_success(role, rid, sj_id, row,
+                                                 cfg, dwid)
+        return self._shenjiang_jihuo_fail(rid, sj_id, row, cfg, dwid,
+                                          fail_count)
+
+    def _shenjiang_skill_need(self, row, cfg):
+        """Jihuo's jinengneed gate (skill id at a level), best effort."""
+        import json as _json
+        need = str(cfg.get('jinengneed') or '')
+        if not need:
+            return True
+        sk, _, lv = need.partition(':')
+        try:
+            skills = _json.loads(row.get('skills') or '{}') or {}
+            have = int(skills.get(sk.strip()) or 0)
+            return have >= int(lv)
+        except (TypeError, ValueError):
+            return False
+
+    def _shenjiang_jihuo_roll(self, fail_count, cfg):
+        """computeIsSuccess: pity window shrinks with kaifu days.
+
+        need = max(0, minTimes - kaifuDays/kaifuJianmian); below need the
+        roll always fails, at maxTimes it always succeeds, otherwise a
+        float roll against successOdds decides. kaifuJianmian has no column
+        in JiangXingTu.jat, so the row's jolt is used (mostly 1).
+        """
+        try:
+            min_times = int(cfg.get('needmintime') or 0)
+            max_times = int(cfg.get('needmaxtime') or 0)
+            odds = float(cfg.get('successodds') or 0)
+            jianmian = float(cfg.get('jolt') or 1) or 1
+        except (TypeError, ValueError):
+            return False
+        try:
+            days = self._vip_kaifu_days()
+        except Exception:
+            days = 0
+        need = max(0, min_times - int(days / jianmian))
+        if fail_count < need:
+            return False
+        if fail_count >= max_times:
+            return True
+        return self._lottery_success(odds)
+
+    def _shenjiang_grant_exp(self, rid, amount):
+        """incrExp, returning the granted amount (roles carry exp)."""
+        try:
+            amount = int(amount or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return 0
+        role = self._equip_role()
+        try:
+            exp = int((role or {}).get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        try:
+            self.save_role_state(rid, exp=exp + amount)
+        except Exception:
+            pass
+        return amount
+
+    def _shenjiang_jihuo_fail(self, rid, sj_id, row, cfg, dwid, fail_count):
+        """Failed lighting: fail count +1, failAddExp, [0, exp] reply."""
+        try:
+            granted = self._shenjiang_grant_exp(
+                rid, int(cfg.get('failaddexp') or 0))
+        except (TypeError, ValueError):
+            granted = 0
+        try:
+            self.save_role_shenjiang(rid, sj_id,
+                                     cur_jiangxing_id='',
+                                     fail_count=fail_count + 1)
+        except Exception:
+            pass
+        log.info('conn %d: JihuoJiangxingtuFailEvent skipped (no bus)',
+                 self.conn_id)
+        return frame(amf3_encode([str(CMD_SHENJIANG_JIHUO), [0, granted]]))
+
+    def _shenjiang_jihuo_success(self, role, rid, sj_id, row, cfg, dwid):
+        """Successful lighting: chart id set, skill learned, full reply."""
+        try:
+            granted = self._shenjiang_grant_exp(
+                rid, int(cfg.get('successaddexp') or 0))
+        except (TypeError, ValueError):
+            granted = 0
+        skill_ids = [s for s in (str(cfg.get('successskillid') or ''),
+                                 str(cfg.get('prizeskillid') or ''))
+                     if s]
+        for sk in skill_ids:
+            try:
+                self.save_role_skill(rid, sk, 1)
+            except Exception:
+                pass
+        try:
+            self.save_role_shenjiang(rid, sj_id, jiangxing_id=dwid,
+                                     cur_jiangxing_id='', fail_count=0)
+        except Exception:
+            pass
+        log.info('conn %d: JihuoJiangxingtuEvent+notice skipped (no bus)',
+                 self.conn_id)
+        import json as _json
+        attrs = {}
+        for name in ('hitpoints', 'physicdamage', 'physicdefence', 'mana',
+                     'volt', 'attackrate', 'velocity', 'critical'):
+            if cfg.get(name) not in ('', None):
+                attrs[name] = cfg.get(name)
+        return frame(amf3_encode(
+            [str(CMD_SHENJIANG_JIHUO),
+             [1, dwid, convert_index_attribute(attrs, TASK_ATTRIBUTE_INDEX),
+              skill_ids, granted]]))
+
+    def shenjiang_jinjie(self, msg):
+        """Command 41021: breakthrough the star-chart rank (jiangxingtuJinjie).
+
+        C> [shenjiang id, auto-mall boolean]. Gates: no owned row stays
+        silent, a tier that forbids breakthrough answers [0, '423005'], an
+        unlit chart [0, '423004'], short YXB coin [0, 1003], and (without
+        auto-mall) short goods [0, 1005]. Auto-mall YB cover has no local
+        price source, so it fails closed with the same goods error. Costs
+        burn; a full blessing bar or a won odds roll ranks up ([1, id,
+        newRank]), otherwise blessing grows and the reply is [-1, id, lucky].
+        """
+        data = self.safe(msg, 1, [])
+        sj_id = str(self.safe(data, 0) or '')
+        auto = bool(self.safe(data, 1))
+        role = self._equip_role()
+        if role is None or not sj_id or self.config is None:
+            return None
+        rid = role.get('id')
+        row = self._shenjiang_owned(rid, sj_id)
+        if row is None:
+            return None
+        try:
+            rank = int(row.get('jiangxing_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        tier = self.config.shenjiang_tier(sj_id, rank)
+        if tier is None or not tier.get('jinjie'):
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_JINJIE), [0, SHENJIANG_ERR_RANKTOP]]))
+        if not str(row.get('jiangxing_id') or ''):
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_JINJIE), [0, SHENJIANG_ERR_LVNOTTOP]]))
+        try:
+            need_coin = int(tier.get('jinjieneedcoin') or 0)
+        except (TypeError, ValueError):
+            need_coin = 0
+        if need_coin > 0 and \
+                not self._bag_money_check(role, 'YXB', need_coin):
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_JINJIE), [0, GENERAL_JB]]))
+        pairs = self._shenjiang_pairs(tier.get('needthingsid'))
+        short = any(self._bag_goods_count(rid, gid) < n
+                    for gid, n in pairs)
+        if short:
+            if auto:
+                log.info('conn %d: jinjie auto-mall cover skipped '
+                         '(no price source)', self.conn_id)
+            return frame(amf3_encode(
+                [str(CMD_SHENJIANG_JINJIE), [0, GENERAL_GOODS]]))
+        self._shenjiang_money(role, rid, 'YXB', need_coin)
+        for gid, count in pairs:
+            try:
+                self._bag_decr(rid, gid, count)
+            except Exception:
+                pass
+        log.info('conn %d: JiangxingtuJinjieDecrEvent skipped (no bus)',
+                 self.conn_id)
+        try:
+            lucky = int(row.get('rank_lucky') or 0)
+            fail_count = int(row.get('rank_fail_count') or 0)
+            shangxian = int(tier.get('maxblessing') or 0)
+            odds = float(tier.get('odds') or 0)
+        except (TypeError, ValueError):
+            lucky, fail_count, shangxian, odds = 0, 0, 0, 0
+        if lucky >= shangxian and shangxian > 0:
+            return self._shenjiang_jinjie_success(rid, sj_id, rank)
+        if self._lottery_success(odds):
+            return self._shenjiang_jinjie_success(rid, sj_id, rank)
+        return self._shenjiang_jinjie_fail(rid, sj_id, tier, rank,
+                                           fail_count, lucky)
+
+    def _shenjiang_jinjie_success(self, rid, sj_id, rank):
+        """Rank up: fail count and blessing cleared, [1, id, newRank]."""
+        try:
+            self.save_role_shenjiang(rid, sj_id, jiangxing_rank=rank + 1,
+                                     rank_fail_count=0, rank_lucky=0)
+        except Exception:
+            pass
+        log.info('conn %d: jinjie 423011 notice skipped (no bus)',
+                 self.conn_id)
+        return frame(amf3_encode(
+            [str(CMD_SHENJIANG_JINJIE), [1, sj_id, rank + 1]]))
+
+    def _shenjiang_jinjie_fail(self, rid, sj_id, tier, rank, fail_count,
+                               lucky):
+        """Rank fail: fail count +1, blessing grows, [-1, id, lucky].
+
+        A blessing bar at/over the cap flips to success, like Java's
+        jinjieFail tail (pity overflow also ranks up).
+        """
+        import random as _random
+        try:
+            lo = int(tier.get('addminblessing') or 0)
+            hi = int(tier.get('addmaxblessing') or 0)
+        except (TypeError, ValueError):
+            lo, hi = 0, 0
+        lucky = lucky + (_random.randint(lo, hi) if hi >= lo and hi > 0
+                         else 0)
+        try:
+            shangxian = int(tier.get('maxblessing') or 0)
+        except (TypeError, ValueError):
+            shangxian = 0
+        try:
+            self.save_role_shenjiang(rid, sj_id,
+                                     rank_fail_count=fail_count + 1,
+                                     rank_lucky=lucky)
+        except Exception:
+            pass
+        if shangxian > 0 and lucky >= shangxian:
+            return self._shenjiang_jinjie_success(rid, sj_id, rank)
+        return frame(amf3_encode(
+            [str(CMD_SHENJIANG_JINJIE), [-1, sj_id, lucky]]))
+
+    def shenjiang_info(self, msg):
+        """41000: ShenjiangServiceImpl.getShenjiangInfo live rows."""
+        role = self._equip_role()
+        if role is None:
+            return None
+        try:
+            rows = self.get_role_shenjiang(role.get('id')) or []
+        except Exception:
+            rows = []
+        out = [[str(r.get('shenjiang_id') or r.get('shenjiang_key') or ''),
+                r.get('jiangxing_rank') or 0]
+               for r in rows]
+        return frame(amf3_encode(['41000', out]))
+
+    def chengjiu_panel(self):
+        """Command 89000: getChengJiu lists claimed achievements.
+
+        RoleChengjiuServiceImpl.getChengJiu maps each persisted row to
+        [taskId, taskStatus] (an empty cache answers an empty array); only
+        ever STATUS_1 rows exist, since rows are created at claim time.
+        """
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            rows = self.get_role_chengjiu(rid) or []
+        except Exception:
+            rows = []
+        out = [[str(r.get('task_id') or ''), r.get('task_status') or 0]
+               for r in rows]
+        return frame(amf3_encode([str(CMD_CHENGJIU_PANEL), out]))
+
+    def chengjiu_claim(self, msg):
+        """Command 89005: getLingQu claims an achievement reward.
+
+        Gates in order: unknown achievement id answers null; an already
+        claimed id answers [0, id]; a failed kaiqi/tiaojian gate answers
+        [False, [0, id]] ([False, 0] for an unknown gate type); a full bag
+        answers [0, 1006] (GeneralErrorCode.BAG_SLOT_NOT_ENOUGH); an empty
+        reward list answers null. Success persists STATUS_1, grants the
+        job-filtered rewards, and replies [1, id, [0, 0, formart2 maps]].
+        The ChengJiuFinishEvent has no bus here, so that tail is logged.
+        """
+        cid = self.safe(msg, 1)
+        role, rid = self._task_role()
+        if role is None or not isinstance(cid, str) or not cid \
+                or self.config is None:
+            return None
+        cfg = self.config.chengjiu_config(cid)
+        if cfg is None:
+            return frame(amf3_encode([str(CMD_CHENGJIU_CLAIM), None]))
+        try:
+            rows = self.get_role_chengjiu(rid) or []
+        except Exception:
+            rows = []
+        if self._chengjiu_claimed(rows, cid):
+            return frame(amf3_encode([str(CMD_CHENGJIU_CLAIM), [0, cid]]))
+        gate = self._chengjiu_gates(role, rid, cfg)
+        if gate is None:
+            return None
+        ok, fail_body = gate
+        if not ok:
+            return frame(amf3_encode(
+                [str(CMD_CHENGJIU_CLAIM), [False, fail_body]]))
+        grant = self._chengjiu_rewards(role, cfg)
+        if not grant:
+            return frame(amf3_encode([str(CMD_CHENGJIU_CLAIM), None]))
+        for item in grant:
+            if not self._prop_fits(rid, {'goods': item['goods_id'],
+                                         'count': item['count']},
+                                   item.get('bind') or 0):
+                return frame(amf3_encode(
+                    [str(CMD_CHENGJIU_CLAIM), [0, GENERAL_NOSLOT]]))
+        try:
+            self.save_role_chengjiu(rid, cid, task_status=1)
+        except Exception:
+            return None
+        self._task_grant(rid, [{'goods_id': item['goods_id'],
+                                'count': item['count'],
+                                'bind': item.get('bind') or 0}
+                               for item in grant])
+        records = [self.chengjiu_grant_record(rid, row)
+                   for row in self._chengjiu_granted(rid, grant)]
+        log.info('conn %d: chengjiu %r claimed (event skipped, no bus)',
+                 self.conn_id, cid)
+        return frame(amf3_encode(
+            [str(CMD_CHENGJIU_CLAIM), [1, cid, [0, 0, records]]]))
+
+    @staticmethod
+    def _chengjiu_claimed(rows, cid):
+        """Already-claimed check: a STATUS_1 row for the achievement."""
+        for row in rows or []:
+            if str(row.get('task_id') or '') != cid:
+                continue
+            try:
+                if int(row.get('task_status') or 0) == 1:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    def _chengjiu_gates(self, role, rid, cfg):
+        """isTaskKaiqi/isTaskTiaoJian over kaiqi then tiaojian.
+
+        Type 1 names a main quest (TaskMainServiceImpl.isTaskfinsh), type 2
+        a role level; anything else fails with a bare 0, like the Java
+        fallthrough. Returns (ok, fail_body) or None on a bad role state.
+        """
+        for gates in (cfg.get('kaiqi') or [], cfg.get('tiaojian') or []):
+            for kind, value in gates:
+                if kind == 2:
+                    try:
+                        need = int(str(value))
+                    except (TypeError, ValueError):
+                        return False, 0
+                    if self._task_role_level(role) < need:
+                        return False, [0, cfg['id']]
+                elif kind == 1:
+                    if not self._chengjiu_task_finished(rid, str(value)):
+                        return False, [0, cfg['id']]
+                else:
+                    return False, 0
+        return True, 0
+
+    def _chengjiu_task_finished(self, rid, task_id):
+        """TaskMainServiceImpl.isTaskfinsh: on the quest in state 1, or past it."""
+        try:
+            row = self.get_task_main(rid)
+        except Exception:
+            return False
+        if not row:
+            return False
+        cur = str(row.get('task_id') or '')
+        if cur == task_id:
+            try:
+                return int(row.get('state') or 0) == 1
+            except (TypeError, ValueError):
+                return False
+        return task_id < cur
+
+    def _chengjiu_rewards(self, role, cfg):
+        """GoodsJobFilter over the achievement rewards: unknown goods and job-gated equips drop."""
+        job = str(role.get('job') or '')
+        grant = []
+        for item in cfg.get('rewards') or []:
+            category = self.config.goods_category(item['goods_id']) \
+                if self.config is not None else None
+            if category is None:
+                continue
+            if category in ('20', ''):
+                gate = self.config.goods_job(item['goods_id']) \
+                    if self.config is not None else None
+                if gate != '0' and gate != job:
+                    continue
+            grant.append(item)
+        return grant
+
+    def _chengjiu_granted(self, rid, grant):
+        """Granted bag rows for the formart2 reply half, by (goods, bind)."""
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return []
+        wanted = {(item['goods_id'], item.get('bind') or 0)
+                  for item in grant}
+        return sorted(
+            (s for s in slots
+             if (str(s.get('goods_id') or ''), s.get('bind') or 0) in wanted),
+            key=lambda s: s.get('slot_num') or 0)
+
+    def chengjiu_grant_record(self, rid, row):
+        """One StoreGoodsOutput.formart2 record for a granted bag row."""
+        shared = self.buyback_map({'id': rid}, row)
+        shared['1'] = str(row.get('bag_id') or row.get('goods_id') or '')
+        return [shared[str(i)] for i in range(18)]
 
     def _mall_expired(self, row):
         """checkExpireTime: losttime past (60s grace) or duration under 60s."""
@@ -10591,6 +15594,32 @@ class Session:
         """
         entries = (self.config.zuwu_info()[0] if self.config is not None else [])
         return frame(amf3_encode(['111000', [entries, 0]]))
+
+    def juqing_info(self):
+        """Command 64001: [1, [highestOr0, daily, best, offline]].
+
+        JuQingFuBenAction.getInfo for a fresh role: no progress row is
+        migrated, so highest is 0 and the award slots read back null.
+        """
+        return frame(amf3_encode(['64001', [1, [0, None, None, None]]]))
+
+    def juqing_award(self):
+        """Command 64010: null when no awardInfo exists.
+
+        JuQingFuBenAction.getAwards with no progress or award rows
+        migrated, so there is never an award to return.
+        """
+        return frame(amf3_encode(['64010', None]))
+
+    def zuwufuben_info(self):
+        """Command 108001: [1, [passMax, everyday[], saodangOrNull]].
+
+        ZuwufubenServiceImpl.getInfo for a fresh role: passMax 0, one
+        everyday entry ['1', 0, 1], no saodang (no role_zuwufuben
+        table is migrated, so every role is fresh).
+        """
+        return frame(amf3_encode(
+            ['108001', [1, [0, [['1', 0, 1]], None]]]))
 
     def role_settings(self, msg):
         role_id = str(self.safe(msg, 1, '') or '')

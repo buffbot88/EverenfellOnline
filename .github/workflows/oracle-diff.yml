@@ -1,0 +1,68 @@
+name: parity
+
+# unit runs anywhere. oracle needs the 2014 Java server: its JRE 6 launcher,
+# dntg_start.jar and MySQL 5.1 are .gitignored binaries, so a clean hosted
+# checkout cannot run it. Point the ORACLE_RUNNER repository variable at a
+# runner where reference/TonNgoKhong is staged; with that set the job also
+# gates pull requests. Without it the job still runs on pushes to main,
+# schedule and manual dispatch, and stops with an explicit error instead of
+# pretending the parity check passed.
+#
+# The gate itself boots whichever legacy server is not already listening, so
+# this job and a laptop run the same command; an unprovisioned runner fails
+# inside the gate with the missing paths named.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Pillow (captcha tests)
+        run: python -m pip install --disable-pip-version-check pillow
+      - name: Server-v1 tests
+        working-directory: Server-v1
+        run: python -m unittest discover -s tests
+      - name: tools tests
+        working-directory: tools
+        run: python -m unittest discover -s tests
+
+  oracle:
+    needs: unit
+    # Pull requests only get the oracle when a runner is provisioned for it;
+    # everywhere else the gate runs and fails loudly if the stack is absent.
+    if: vars.ORACLE_RUNNER != '' || github.event_name != 'pull_request'
+    runs-on: ${{ vars.ORACLE_RUNNER || 'windows-latest' }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Boot the legacy stack and diff a fresh Python server against it
+        run: python tools/ci-oracle-diff.py --wait 240 --report oracle-diff-report.txt
+
+      - name: Upload the diff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oracle-diff-report
+          path: oracle-diff-report.txt
+          if-no-files-found: warn

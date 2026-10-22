@@ -10,18 +10,22 @@ cost); 33005 refunds the fanhuan rank's tracked spend with a feed row;
 33007 lists [cost, feed]; 33006 grants the kaifu meiren ahead of an
 82001 push; 33011 reports the claimable-now award ranks).
 """
+import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from auth import hash_password  # noqa: E402
 from db import Store  # noqa: E402
-from game.amf3 import decode  # noqa: E402
+from game.amf3 import decode, encode  # noqa: E402
 from game.config import GameConfig  # noqa: E402
-from game.protocol import Session  # noqa: E402
+from game.protocol import Session, frame  # noqa: E402
+
+CAPTURED_INITKEY = bytes.fromhex('00000009060f494e49544b4559')
 
 REAL_CONFIG = os.path.join(os.path.dirname(__file__), '..', '..',
                            'reference', 'TonNgoKhong', 'server', 'config',
@@ -416,6 +420,214 @@ class ZuoqiTest(unittest.TestCase):
         self.assertEqual(self.cfg.kaifu_zuoqi_fanhuan()['rank'], 4)
         mei = self.cfg.kaifu_zuoqi_meiren()
         self.assertEqual((mei['rank'], mei['meiren']), (3, 'baijingjing'))
+
+
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class ZuoqiReviveTest(unittest.TestCase):
+    """Mount revive family: 33020 heals, 33021 revives for YB, 33023 frees
+    after the countdown, 33024 reports it.
+
+    Evidence: StageMeirenServiceImpl.zuoqiFullHp/zuoqiRevive/zuoqiFreeRevive/
+    getZuoqiDeadInfo plus ZuoQiPet deadHandle/syncDeadZuoQiAttribute and
+    RoleStageUtil encode/decodeZuoQiInfo (ZuoJifuhuo.jat: deadtime 300s to
+    ms, needgold 20 YB, needmoney 200000 YXB). 33020 heals for silver and
+    leaves the death uncleared; 33021/33023 run the revive handle (death
+    cleared, HP topped, 12004 + 33022 pushes, [1, ...] reply); 33024 is
+    null unless the mount is dead with a recorded death, else [rank,
+    nowMs + need - useTime].
+    """
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(os.path.join(self.tmp.name, 'z.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56)
+        self.store.save_role_zuoqi(self.role_id, 1, 1, 0, 0, 0, 0, 0,
+                                   None, 0, 0)
+        self.cfg = GameConfig(str(REAL_CONFIG))
+        self.sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0,
+            save_role_state=self.store.update_character_state,
+            save_role_stage=self.store.save_role_stage,
+            get_role_zuoqi=self.store.get_role_zuoqi,
+            save_role_zuoqi=self.store.save_role_zuoqi,
+            config=self.cfg)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        _level, row = self.cfg.zuoqi_pet(1, 56)
+        self.max_hp = int(row.get('meinvhp'))
+        self.assertGreater(self.max_hp, 0)
+
+    @staticmethod
+    def frames(out):
+        if isinstance(out, (bytes, bytearray)):
+            return [decode(bytes(out)[4:])]
+        return [decode(bytes(f)[4:]) for f in out]
+
+    def wire_id(self):
+        role = self.store.list_roles('hero', 'fu1304')[0]
+        return str(role.get('legacy_id') or role['id'])
+
+    def seed_info(self, hp, dead=0, use=0, rank=1):
+        self.store.save_role_stage(
+            self.role_id, zuoqi_info=json.dumps(
+                {'id': rank, 'hp': hp, 'deadTime': dead,
+                 'useTime': use, 'rideOrNo': False}))
+
+    def stage_mount(self, hp=None):
+        cur = self.max_hp if hp is None else hp
+        pid = 'zuoqi_2_1'
+        self.sess._pet_state[pid] = {
+            'max_hp': float(self.max_hp), 'hp': float(cur), 'level': 1,
+            'owner': self.wire_id(), 'owner_name': 'Wukong',
+            'name': 'mount', 'template_id': 'zuoqi1', 'pos': [0, 0]}
+        return pid
+
+    def kill_mount(self, pid):
+        # _resolve_fire's kill marking (the fight loop adds every dead
+        # fighter to _dead); _store_fighter_hp only stamps the ledger.
+        self.sess._store_fighter_hp(
+            {'kind': 'pet', 'id': pid, 'max_hp': float(self.max_hp)},
+            0)
+        self.sess._dead.add(pid)
+
+    def test_dead_info_null_without_mount(self):
+        (reply,) = self.frames(self.sess.zuoqi_dead_info([33024, None]))
+        self.assertEqual(reply, ['33024', [None]])
+
+    def test_dead_info_null_when_alive(self):
+        self.seed_info(self.max_hp)
+        self.stage_mount()
+        (reply,) = self.frames(self.sess.zuoqi_dead_info([33024, None]))
+        self.assertEqual(reply, ['33024', [None]])
+
+    def test_mountless_error_shapes(self):
+        # A role that never owned a mount has no rank anywhere, so the
+        # family answers the need-revive/full-state errors, like Java's
+        # null-curRank branches.
+        self.store.create_account('bare', hash_password('pw'))
+        self.store.create_character('bare', 'fu1304', 'Bajie', job='C',
+                                    level=56)
+        self.sess.authed_user = 'bare'
+        self.assertEqual(
+            self.frames(self.sess.zuoqi_full_hp([33020, None])),
+            [['33020', [0, 82144]]])
+        self.assertEqual(
+            self.frames(self.sess.zuoqi_revive([33021, None])),
+            [['33021', [0, 82140]]])
+        self.assertEqual(
+            self.frames(self.sess.zuoqi_free_revive([33023, None])),
+            [['33023', [0, 82140]]])
+
+    def test_death_stamps_ledger_and_persists(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount()
+        before = int(time.time() * 1000)
+        self.kill_mount(pid)
+        dead, use = self.sess._zuoqi_dead[self.wire_id()]
+        self.assertTrue(before <= dead <= int(time.time() * 1000))
+        self.assertEqual(use, 0)
+        self.assertIn(pid, self.sess._dead)
+        info = json.loads(
+            self.store.get_role_stage(self.role_id)['zuoqi_info'])
+        self.assertEqual((info['hp'], info['deadTime'], info['useTime']),
+                         (0, dead, 0))
+        (reply,) = self.frames(self.sess.zuoqi_dead_info([33024, None]))
+        self.assertEqual(reply[0], '33024')
+        self.assertEqual(reply[1][0], 1)
+        self.assertTrue(abs(reply[1][1] - (dead + 300000)) < 60000)
+
+    def test_free_revive_counts_down_then_frees(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount()
+        self.kill_mount(pid)
+        (reply,) = self.frames(self.sess.zuoqi_free_revive([33023, None]))
+        self.assertEqual(reply[0], '33023')
+        self.assertEqual(reply[1][0], -1)
+        self.assertTrue(0 < reply[1][1] <= 300000)
+        # Five minutes later the same call revives for free.
+        self.sess._zuoqi_dead[self.wire_id()] = \
+            [int(time.time() * 1000) - 300001, 0]
+        out = self.frames(self.sess.zuoqi_free_revive([33023, None]))
+        self.assertEqual(out[-1], ['33023', [1, self.max_hp]])
+        self.assertEqual(out[-2], ['33022', [[self.max_hp, self.max_hp]]])
+        self.assertNotIn(pid, self.sess._dead)
+        self.assertEqual(self.sess._pet_state[pid]['hp'],
+                         float(self.max_hp))
+        info = json.loads(
+            self.store.get_role_stage(self.role_id)['zuoqi_info'])
+        self.assertEqual((info['hp'], info['deadTime'], info['useTime']),
+                         (self.max_hp, 0, 0))
+
+    def test_paid_revive_spends_yb(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount()
+        self.kill_mount(pid)
+        self.store.update_character_state(self.role_id, lingshi=1000)
+        out = self.frames(self.sess.zuoqi_revive([33021, None]))
+        self.assertEqual(out[-1], ['33021', [1, 20, self.max_hp]])
+        roles = self.store.list_roles('hero', 'fu1304')
+        self.assertEqual(roles[0]['lingshi'], 980)
+        self.assertNotIn(pid, self.sess._dead)
+
+    def test_paid_revive_short_gold(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount()
+        self.kill_mount(pid)
+        self.store.update_character_state(self.role_id, lingshi=0)
+        (reply,) = self.frames(self.sess.zuoqi_revive([33021, None]))
+        self.assertEqual(reply, ['33021', [0, 82143]])
+        self.assertIn(pid, self.sess._dead)
+
+    def test_healthy_mount_needs_no_revive(self):
+        self.seed_info(self.max_hp)
+        self.stage_mount()
+        (reply,) = self.frames(self.sess.zuoqi_revive([33021, None]))
+        self.assertEqual(reply, ['33021', [0, 82140]])
+        (reply,) = self.frames(self.sess.zuoqi_free_revive([33023, None]))
+        self.assertEqual(reply, ['33023', [0, 82140]])
+
+    def test_full_hp_heals_for_silver(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount(hp=self.max_hp - 100)
+        self.sess._store_fighter_hp(
+            {'kind': 'pet', 'id': pid, 'max_hp': float(self.max_hp)},
+            float(self.max_hp - 100))
+        self.store.update_character_state(self.role_id, tongqian=300000)
+        out = self.frames(self.sess.zuoqi_full_hp([33020, None]))
+        self.assertEqual(out[-1], ['33020', [1, 200000, self.max_hp]])
+        roles = self.store.list_roles('hero', 'fu1304')
+        self.assertEqual(roles[0]['tongqian'], 100000)
+        self.assertEqual(self.sess._pet_state[pid]['hp'],
+                         float(self.max_hp))
+
+    def test_full_hp_full_bar_and_short_silver(self):
+        self.seed_info(self.max_hp)
+        self.stage_mount()
+        (reply,) = self.frames(self.sess.zuoqi_full_hp([33020, None]))
+        self.assertEqual(reply, ['33020', [0, 82144]])
+        pid = self.stage_mount(hp=self.max_hp - 100)
+        self.sess._store_fighter_hp(
+            {'kind': 'pet', 'id': pid, 'max_hp': float(self.max_hp)},
+            float(self.max_hp - 100))
+        self.store.update_character_state(self.role_id, tongqian=0)
+        (reply,) = self.frames(self.sess.zuoqi_full_hp([33020, None]))
+        self.assertEqual(reply, ['33020', [0, 82147]])
+
+    def test_dispatch_routes_revive_family(self):
+        self.seed_info(self.max_hp)
+        pid = self.stage_mount()
+        self.kill_mount(pid)
+        self.sess.feed(CAPTURED_INITKEY)
+        for cmd in (33020, 33021, 33023, 33024):
+            out = self.sess.feed(
+                frame(self.sess.cipher.encode(encode([cmd, None]))))
+            kinds = [decode(bytes(f)[4:])[0] for f in out]
+            self.assertIn(str(cmd), kinds)
 
 
 if __name__ == '__main__':

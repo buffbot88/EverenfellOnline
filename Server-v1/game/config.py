@@ -6,13 +6,16 @@
 Both are AMF3 serialized (see amf3.py). The loader is read-only and never
 edits the tables; it only reports what the legacy server would load.
 """
+import hashlib
 import json
 import logging
 import os
 import random
 import re
 import struct
+import time
 
+from .amf3 import Obj, SealedObj
 from .amf3 import decode as amf3_decode
 
 log = logging.getLogger('config')
@@ -22,6 +25,70 @@ log = logging.getLogger('config')
 # via --config-dir when it lives elsewhere.
 DEFAULT_CONFIG_DIR = os.path.join('..', 'reference', 'TonNgoKhong', 'server',
                                   'config', 'game')
+
+# Mall sign published by the gameconfig sign service for the WuPinChuShouBiao
+# table (RemoteConfigureLoader.loadSign, configureName '1'; served at
+# <base>/upload/gameconfig/1). MallServiceImpl.shopList echoes it with the
+# full list and answers [-1, category] when the client's sign matches.
+MALL_SIGN = 'bd6daa8a453f8f57f8e745968d9cfbd4'
+
+# Mall item key order of the Java shop bean (MallServiceImpl.shopList output).
+# Captured on the wire (session-20261018-040230, categories 2000 and 3000
+# share it): the .jat column order differs, so rows are projected to this
+# order before encoding. Values stay untouched (locale data varies by drop).
+MALL_ITEM_KEYS = ('maxcount', 'showbindgold', 'describle', 'shopname',
+                  'rack', 'pagename', 'showcoin', 'order', 'losttime',
+                  'page', 'name', 'goodsdescribe', 'banggong', 'moneytype',
+                  'gold', 'append', 'coin', 'obtainlocked', 'showbanggong',
+                  'modelid', 'duration', 'bangpailevel', 'shoptype',
+                  'bindgole', 'showgold', 'sellid', 'hot', 'strengthen',
+                  'sexneed')
+
+# 105003 (dafuweng lottery config) tables, published under ESSamp/wwwroot/cnupload/gameconfig.
+# The sign is the three per-file MD5 digests concatenated in this order (Java getSign).
+# Key order per table is the one captured on the wire (reply105003).
+DAFUWENG_TABLES = (
+    ('dafuwengzhubiao-1390186829068.jat',
+     ('itemtype', 'id', 'icon', 'item', 'diban')),
+    ('dafuwengduihuan-1394171020776.jat',
+     ('id', 'page', 'sellid', 'name', 'pagename', 'yushi', 'jifen')),
+    ('dafuwengguanggao-1390194975618.jat', ('id', 'picres')),
+)
+
+# Wire key orders for the published-table replies, captured from the Java
+# server (sessions 20261018-040230, 20261020-072313). The .jat column
+# order differs, so rows are projected to these orders before encoding;
+# values stay untouched, like the mall/dafuweng projections.
+KAPAI_ENTRY_KEYS = ('icon', 'starttime', 'allcontrol', 'kapai5', 'kapai4',
+                    'kapai3', 'kapai2', 'daycontrol', 'finishtime', 'name',
+                    'libao', 'ID', 'kapai1')
+KAPAI_RECYCLE_KEYS = ('id', 'recycle', 'rechangerecycle', 'whetherechange',
+                      'paixu', 'whethercost')
+QIANFU_ENTRY_KEYS = ('img2', 'jiangli', 'index', 'leixing', 'startime',
+                     'mianbantime', 'leixingming', 'zhi', 'img',
+                     'youjianneirong', 'paixu2', 'anniu', 'wenzi', 'id',
+                     'jiangli2', 'lianjie', 'name', 'kaiqitime',
+                     'shangxian', 'youjian', 'shuzhi', 'overtime')
+GUANGGAO_KEYS = ('finishtime', 'id', 'kaifudays', 'jiemian', 'time',
+                 'starttime', 'hefudays', 'name', 'img', 'hefustart',
+                 'startday')
+
+# AOI half-extents in tiles for scene-entry snapshots. The stage properties
+# carry aoi_width = 600 by aoi_height = 400 (pixels); at 32 px per tile the
+# box is |dx| <= 9 by |dy| <= 6. A map-2 role at (10,150) sees N020001 at
+# (6,152) but not N020002 at (26,150), and none of the far monster spawns
+# (session-20261018-040230).
+AOI_X_RANGE = 9
+AOI_Y_RANGE = 6
+
+
+def _in_aoi(x, y, px, py, x_range=AOI_X_RANGE, y_range=AOI_Y_RANGE):
+    """True when point (px, py) lies in the AOI box around role (x, y)."""
+    try:
+        return abs(int(px) - int(x)) <= x_range and \
+            abs(int(py) - int(y)) <= y_range
+    except (TypeError, ValueError):
+        return False
 
 
 def _load(path):
@@ -385,6 +452,14 @@ def parse_item_attributes(text):
     return stars, pairs
 
 
+def _safe_float(value):
+    """ConvertObjectUtil.obj2float: a missing or non-numeric cell is 0."""
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _int(value):
     """Java getIntValue: a missing or non-numeric cell is 0."""
     try:
@@ -647,6 +722,118 @@ def load_meiren_table(path):
     return by_id, types
 
 
+BAOSHI_ATTRIBUTE_NAMES = ('hitpoints', 'mana', 'physicdamage',
+                            'physicdefence', 'critical', 'volt',
+                            'attackrate', 'velocity')
+
+
+def parse_goods_map(raw):
+    """ConfigAnalyzeUtil.convert2Map over 'goods|count;...' cells."""
+    out = {}
+    for chunk in str(raw or '').split(';'):
+        if not chunk.strip():
+            continue
+        parts = chunk.split('|')
+        if len(parts) != 2 or not parts[0]:
+            continue
+        try:
+            out[parts[0]] = int(parts[1])
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def load_baoshi_buwei_table(path):
+    """Rows of sys_config/BaoShiBuWei.jat as {part: buwei}.
+
+    Mirrors BaoShiBuWeiExportServiceImpl: each row becomes a detail
+    (gemid, ';'-separated costgoods, eqpart, gridid, mintimes, maxtimes,
+    notice, odds, costzhenqi, chushilv, needlv, gjneedpj) filed into its
+    part's detail map; min/maxGrid track the smallest/largest gridid.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of baoshi buwei rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            part = int(row.get('eqpart'))
+            grid = int(row.get('gridid'))
+        except (TypeError, ValueError):
+            continue
+        detail = {
+            'part': part,
+            'grid': grid,
+            'gemid': str(row.get('gemid') or ''),
+            'cost_goods': parse_goods_map(row.get('costgoods')) or None,
+            'mintimes': config_int(row.get('mintimes')),
+            'maxtimes': config_int(row.get('maxtimes')),
+            'notice': config_int(row.get('notice')) != 0,
+            'odds': _safe_float(row.get('odds')),
+            'cost_zhenqi': config_int(row.get('costzhenqi')),
+            'chushilv': config_int(row.get('chushilv')),
+            'needlv': config_int(row.get('needlv')),
+            'gjneedpj': config_int(row.get('gjneedpj')),
+        }
+        buwei = table.setdefault(
+            part, {'min_grid': grid, 'max_grid': grid, 'grids': {}})
+        buwei['grids'][grid] = detail
+        buwei['min_grid'] = min(buwei['min_grid'], grid)
+        buwei['max_grid'] = max(buwei['max_grid'], grid)
+    return table
+
+
+def load_baoshi_shengji_table(path):
+    """Rows of sys_config/BaoShiShengJi.jat as {gemid: config}.
+
+    Mirrors BaoShiShengJiExportServiceImpl.createLevelConfig: gemlv,
+    gemname, canpromote, costzhenqi, needexp (maxExp), costgoods, the
+    three-tier RateScope (cg/xbj/dbj odds+exp), and the 8-key base
+    attribute map; levels file into the gem's map, min/max tracked.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of baoshi shengji rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get('gemid'):
+            continue
+        try:
+            level = int(row.get('gemlv') or 0)
+        except (TypeError, ValueError):
+            continue
+        rates = []
+        for kind, odds_key, exp_key in (
+                (0, 'cgodds', 'cgaddexp'), (1, 'xbjodds', 'xbjaddexp'),
+                (2, 'dbjodds', 'dbjaddexp')):
+            try:
+                rates.append((kind, float(row.get(odds_key) or 0),
+                              int(row.get(exp_key) or 0)))
+            except (TypeError, ValueError):
+                rates.append((kind, 0.0, 0))
+        entry = {
+            'level': level,
+            'name': str(row.get('gemname') or ''),
+            'gemid': str(row.get('gemid')),
+            'can_upgrade': config_int(row.get('canpromote')) != 0,
+            'cost_zhenqi': config_int(row.get('costzhenqi')),
+            'max_exp': config_int(row.get('needexp')),
+            'cost_goods': parse_goods_map(row.get('costgoods')),
+            'rates': rates,
+            'attributes': {name: _safe_float(row.get(name))
+                           for name in BAOSHI_ATTRIBUTE_NAMES
+                           if _safe_float(row.get(name))},
+        }
+        cfg = table.setdefault(str(row['gemid']),
+                               {'levels': {}, 'min': level, 'max': level})
+        cfg['levels'][level] = entry
+        cfg['min'] = min(cfg['min'], level)
+        cfg['max'] = max(cfg['max'], level)
+    return table
+
+
 def load_zuwu_table(path):
     """Rows of sys_config/ZuWuShuxing.jat as {type: first jieshu==1 id}.
 
@@ -779,6 +966,76 @@ def load_zuoji_table(path):
     return table
 
 
+def load_shenjiang_table(path):
+    """Tier rows of sys_config/ShenJiangBiao.jat grouped by shenjiang id.
+
+    Each id carries one row per breakthrough tier in file order (maxlv
+    20/40/60/80/100 for sj0101); the A/B/C/D choice rows stand alone.
+    Java loads one ShenjiangConfig per (id, rank) via
+    ShenjiangConfigExportServiceImpl, so the rank indexes the tier list.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of ShenJiangBiao rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get('id'):
+            continue
+        table.setdefault(str(row['id']), []).append(row)
+    return table
+
+
+def load_jiangxingtu_table(path):
+    """Rows of sys_config/JiangXingTu.jat keyed by dwid.
+
+    Java keys JiangxingtuConfig by the star-chart id (dwId1BeforedwId2 +
+    load(dwId) in ShenjiangServiceImpl bytecode); abovedw chains each
+    chart to its predecessor.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of JiangXingTu rows')
+    return {str(r['dwid']): r for r in rows
+            if isinstance(r, dict) and r.get('dwid')}
+
+
+def load_chengjiu_table(path):
+    """Rows of sys_config/chengjiuzhuizong.jat keyed by achievement id.
+
+    Java reads one kaiqi pair (kaiqi1/kaizhi1), the jiangli string via
+    convertGoodsesStrs2List3, and five tiaojian pairs (tiaojianN/zhiN;
+    gaps stay null and are skipped). Type 1 gates name a main quest,
+    type 2 a role level.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chengjiu rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get('id'):
+            continue
+        table[str(row['id'])] = {
+            'id': str(row['id']),
+            'kaiqi': _chengjiu_gate(row.get('kaiqi1'), row.get('kaizhi1')),
+            'rewards': parse_task_item_order(row.get('jiangli')),
+            'tiaojian': [gate for n in range(1, 6)
+                         for gate in _chengjiu_gate(row.get(f'tiaojian{n}'),
+                                                  row.get(f'zhi{n}'))],
+        }
+    return table
+
+
+def _chengjiu_gate(kind, value):
+    """One [type, value] gate pair, or [] when the cells are empty."""
+    try:
+        kind = int(kind)
+    except (TypeError, ValueError):
+        return []
+    if kind == 0 or value is None or value == '':
+        return []
+    return [(kind, value)]
+
+
 # MapExportServiceImpl.configureDataResolve reads path.mm as a big-endian int32 width,
 # int32 height, then one unsigned byte per cell in row-major order (x wraps at width)
 # until EOF. PathInfoConfig.addPathNode treats a cell as walkable when (value & 31) != 0.
@@ -833,6 +1090,7 @@ class GameConfig:
         self._templates = None
         self._zhujue = None
         self._zuoji = None
+        self._zuoji_revive = None
         self._equip = None
         self._shuxingdan = None
         self._fujia_random = None
@@ -841,11 +1099,14 @@ class GameConfig:
         self._xishu = None
         self._dazuo = None
         self._vip = None
+        self._husong = None
         self._vipqq = None
         self._xianjie = None
         self._chenghao = None
         self._meiren = None
         self._meiren_raw = None
+        self._baoshi_buwei = None
+        self._baoshi_shengji = None
         self._cd = None
         self._xiaoguo = None
         self._jineng = None
@@ -876,8 +1137,125 @@ class GameConfig:
         self._rc_rew = None
         self._rc_loop = None
         self._kaifu_zuoqi = None
+        self._shenjiang = None
+        self._jiangxingtu = None
+        self._chengjiu = None
         self._zhujue_zqmax = None
         self._birth = None
+        self._npc = None
+        self._dafuweng = None
+        self._denglulibao = None
+        self._dengjilibao = None
+        self._loginlingjiang = None
+        self._online_reward = None
+        self._weiduan = None
+        self._qiandao = None
+        self._yingyin = None
+        self._touxian = None
+        self._guangyi = None
+        self._baixian = None
+        self._baixian_huafei = None
+        self._zhuihui = None
+        self._dafuweng_jiage = None
+        self._dafuweng_zuanshi = None
+        self._dafuweng_zhubiao = None
+        self._dafuweng_duihuan = None
+        self._xianshishop = None
+        self._published = {}
+
+    def warm(self):
+        """Pre-load every config table so no client pays cold-load latency.
+
+        Mirrors the Java server, which parses all configs at boot: without
+        this the first 21000 pays ~2.6s decoding JiNengBiao.jat (5.9MB AMF)
+        and every map entry re-reads its monster.mm/path.mm from disk.
+        Each probe is guarded so a lookup-time miss never aborts warming.
+        """
+        started = time.monotonic()
+        try:
+            map_ids = list(self.map_lines())
+        except Exception:
+            map_ids = []
+        probes = [
+            self.monster_templates,
+            self.npc_table,
+            lambda: self.role_attribute_row(1),
+            lambda: self.cd_time('t070'),
+            lambda: self.buff_lasttime('birthprotect'),
+            lambda: self.skill_cd_id('normal003'),
+            lambda: self.skill_row('normal003'),
+            self.skillbook_table,
+            lambda: self.exp_decay(0),
+            lambda: self.exp_revise(100),
+            self.zuoqi_table,
+            lambda: self.zuoqi_max_rank(),
+            lambda: self.zuoqi_rank_config(0),
+            self.equip_table,
+            self.shuxingdan_table,
+            self.fujia_random_table,
+            lambda: self.goods_category('x'),
+            lambda: self.dan_buff('x'),
+            lambda: self.lihe_box('x'),
+            lambda: self.duoxuan_box('x'),
+            lambda: self.youhui_box('x'),
+            lambda: self.qianghua_config('x', 0),
+            lambda: self.fujia_config('x'),
+            lambda: self.fujia_random('x', 0),
+            lambda: self.zhujue_jdexp(1),
+            lambda: self.jianding_config(1),
+            lambda: self.dead_birth(1),
+            self.mall_table,
+            self.mall_sign,
+            self.zuwu_table,
+            self.zuwu_info,
+            self.chat_level,
+            self.dazuo_table,
+            self.xishu_table,
+            self.vip_table,
+            self.vipqq_rewards,
+            self.vip_choujiang,
+            lambda: self.vip_lingjiang(0),
+            lambda: self.vip_huodong(0),
+            lambda: self.vip_buff_id(0),
+            self.kapai_tables,
+            self.qianfu_table,
+            self.guanggao_table,
+            self.tuangou_sign,
+            self.xianjie_table,
+            self.chenghao_table,
+            self.meiren_table,
+            self.meiren_gates,
+            self.baoshi_buwei,
+            self.baoshi_shengji,
+            self.kaifu_zuoqi_table,
+            self.kaifu_zuoqi_fanhuan,
+            self.kaifu_zuoqi_meiren,
+            lambda: self.zhujue_zq_fail_max_exp(1),
+            self.task_main_first_id,
+            lambda: self.task_main('x'),
+            lambda: self.task_subchapter('x'),
+            self.taofa_table,
+            lambda: self.taofa_config(0),
+            lambda: self.taofa_interval(1, 1),
+            self.richang_condition_buckets,
+            self.richang_reward_buckets,
+            self.richang_loop_buckets,
+            lambda: self.kaige_max_slot_num('x'),
+        ]
+        for probe in probes:
+            try:
+                probe()
+            except Exception:
+                pass
+        for map_id in map_ids:
+            for loader in (self.monsters, self.path_grid):
+                try:
+                    loader(map_id)
+                except Exception:
+                    pass
+        log.info('config warmup done in %.1fs (%d maps)',
+                 time.monotonic() - started, len(map_ids))
+        return self
 
     @property
     def map_lines_path(self):
@@ -1546,6 +1924,28 @@ class GameConfig:
         if row is None:
             return None
         return level, row
+
+    def zuoqi_revive(self):
+        """Revive costs from sys_config/ZuoJifuhuo.jat; {} when absent.
+
+        Field map is ZuoqiReviveConfigExportServiceImpl.configureDataResolve:
+        reviveNeedTime is deadtime seconds scaled to ms, reviveNeedYb is
+        needgold (YB), fullNeedYxb is needmoney (YXB), recoveryInterval is
+        jiange. Values are ints, tolerant of bad cells like the converters.
+        """
+        if self._zuoji_revive is None:
+            _sign, rows = self._sys_jat('ZuoJifuhuo.jat')
+            row = rows[0] if rows else {}
+            try:
+                self._zuoji_revive = {
+                    'reviveNeedTime': int(row.get('deadtime') or 0) * 1000,
+                    'reviveNeedYb': int(row.get('needgold') or 0),
+                    'fullNeedYxb': int(row.get('needmoney') or 0),
+                    'recoveryInterval': int(row.get('jiange') or 0),
+                }
+            except (TypeError, ValueError):
+                self._zuoji_revive = {}
+        return self._zuoji_revive
 
     def equip_table(self):
         """ZhuangBeiFuJiaShuXingBiao rows keyed by goods id; empty when absent."""
@@ -2229,10 +2629,14 @@ class GameConfig:
         return totals
 
     def mall_table(self):
-        """WuPinChuShouBiao rows by modelid; empty when the file is absent."""
+        """WuPinChuShouBiao rows by modelid; empty when no table is found.
+
+        The published copy whose md5 is MALL_SIGN is the one the client's
+        sign refers to, so it is preferred over the older sys_config drop.
+        """
         if self._mall is None:
-            path = os.path.join(self.config_dir, 'sys_config',
-                                'WuPinChuShouBiao.jat')
+            path = self._published_mall_path() or os.path.join(
+                self.config_dir, 'sys_config', 'WuPinChuShouBiao.jat')
             try:
                 self._mall = load_mall_table(path) \
                     if os.path.isfile(path) else {}
@@ -2241,24 +2645,628 @@ class GameConfig:
                 self._mall = {}
         return self._mall
 
-    def mall_sign(self):
-        """The 32000 sign: None, exactly like Java.
-
-        ClasspathConfigureLoader.loadSign returns [null, path] and
-        AbsConfigureParser.init stores element 0, so the sign is null and
-        MallServiceImpl always takes the full-list branch (the [-1, echo]
-        path is unreachable: a null request takes the list branch first,
-        and any string .equals(null) is false).
-        """
+    def _published_mall_path(self):
+        """The WuPinChuShouBiao-*.jat whose md5 equals MALL_SIGN, or None."""
+        folder = os.path.join(self.config_dir, '..', '..', 'ESSamp',
+                              'wwwroot', 'gameconfig', 'upload', 'gameconfig')
+        try:
+            names = sorted(os.listdir(folder), reverse=True)
+        except OSError:
+            return None
+        for name in names:
+            if not (name.startswith('WuPinChuShouBiao-') and name.endswith('.jat')):
+                continue
+            path = os.path.join(folder, name)
+            with open(path, 'rb') as f:
+                if hashlib.md5(f.read()).hexdigest() == MALL_SIGN:
+                    return path
         return None
 
+    def mall_sign(self):
+        """The 32000 sign, published by the gameconfig sign service.
+
+        RemoteConfigureLoader.loadSign answers [sign, path] per configure
+        name (mall configureName '1'); MallServiceImpl.shopList echoes the
+        sign with the full list and answers [-1, category] when the client
+        already holds it. The live value for WuPinChuShouBiao is served at
+        <base>/upload/gameconfig/1 and is constant for this data drop.
+        """
+        return MALL_SIGN
+
     def mall_shop_list(self, category):
-        """Raw mall rows for a modelid (the source map IS the row).
+        """Mall rows for a modelid as sealed AMF3 shop-bean objects.
 
         WuPinChuShouConfig.setMap stores the raw .jat row and getAllData
-        returns those maps, so the client entries are the rows themselves.
+        returns those maps, but the client entries are sealed beans: anonymous
+        class, the MALL_ITEM_KEYS members, no dynamic tail (the capture shows
+        traits once plus traits-refs; dynamic objects stall the client).
         """
-        return list(self.mall_table().get(str(category), []))
+        # Diagnostic override: serve Java-captured rows verbatim when
+        # MKO_MALL_CAPTURE points at a {category: [rows]} JSON file.
+        capture = os.environ.get('MKO_MALL_CAPTURE', '')
+        if capture:
+            try:
+                with open(capture, encoding='utf-8') as handle:
+                    rows = json.load(handle).get(str(category), [])
+                return [SealedObj([(k, row.get(k, '')) for k in MALL_ITEM_KEYS],
+                                  members=MALL_ITEM_KEYS)
+                        for row in rows]
+            except (OSError, ValueError):
+                pass
+        return [SealedObj([(k, row.get(k, '')) for k in MALL_ITEM_KEYS],
+                          members=MALL_ITEM_KEYS)
+                for row in self.mall_table().get(str(category), [])]
+
+    def dafuweng_reply(self):
+        """[sign, [zhubiao, duihuan, guanggao]] for 105003, or None if a table is missing.
+
+        Rows keep file order with the captured Java key order; the sign is the
+        per-file MD5 digests concatenated. The result is cached after the first load.
+        """
+        if self._dafuweng is not None:
+            return self._dafuweng
+        folder = os.path.join(self.config_dir, '..', '..', 'ESSamp',
+                              'wwwroot', 'cnupload', 'gameconfig')
+        digests, tables = [], []
+        for name, keys in DAFUWENG_TABLES:
+            path = os.path.join(folder, name)
+            if not os.path.isfile(path):
+                log.warning('no dafuweng table at %s; 105003 unavailable', path)
+                return None
+            with open(path, 'rb') as f:
+                data = f.read()
+            try:
+                rows = amf3_decode(data)
+            except ValueError as e:
+                log.error('bad dafuweng table %s: %s', path, e)
+                return None
+            if not isinstance(rows, list):
+                log.error('dafuweng table %s: expected a list', path)
+                return None
+            digests.append(hashlib.md5(data).hexdigest())
+            tables.append([Obj([(k, row.get(k, '')) for k in keys])
+                           for row in rows if isinstance(row, dict)])
+        self._dafuweng = [''.join(digests), tables]
+        return self._dafuweng
+
+    @staticmethod
+    def _drop_stamp(name):
+        """Trailing numeric timestamp of a gameconfig drop (after last '-')."""
+        base = name[:-4] if name.endswith('.jat') else name
+        tail = base.rsplit('-', 1)[-1]
+        try:
+            return int(tail)
+        except (TypeError, ValueError):
+            return -1
+
+    def published_gameconfig(self, prefix):
+        """(md5, rows) of the newest prefix*.jat under cnupload/gameconfig.
+
+        Mirrors the mall/dafuweng published-table pattern: the operators
+        drop dated drops and Java serves the newest, echoing its md5 as
+        the client-cache sign (kapai 121000, qianfu 120000 and tuangou
+        122002 all carry it). Cached per prefix after the first load.
+        Drops use mixed conventions (dengluguanggao-<ts> but
+        qianfuhuodong310qb-<ts>), so any name starting with the prefix
+        counts and the trailing timestamp picks the newest.
+        """
+        if prefix in self._published:
+            return self._published[prefix]
+        folder = os.path.join(self.config_dir, '..', '..', 'ESSamp',
+                              'wwwroot', 'cnupload', 'gameconfig')
+        try:
+            names = sorted(
+                (n for n in os.listdir(folder)
+                 if n.startswith(prefix) and n.endswith('.jat')),
+                key=self._drop_stamp)
+        except OSError:
+            names = []
+        if not names:
+            log.warning('no published table for %s; related commands stay silent',
+                        prefix)
+            self._published[prefix] = (None, [])
+            return self._published[prefix]
+        path = os.path.join(folder, names[-1])
+        try:
+            with open(path, 'rb') as f:
+                data = f.read()
+            rows = amf3_decode(data)
+        except (OSError, ValueError) as e:
+            log.error('bad published table %s: %s', path, e)
+            self._published[prefix] = (None, [])
+            return self._published[prefix]
+        if not isinstance(rows, list):
+            log.error('published table %s: expected a list', path)
+            self._published[prefix] = (None, [])
+            return self._published[prefix]
+        self._published[prefix] = (hashlib.md5(data).hexdigest(), rows)
+        return self._published[prefix]
+
+    def kapai_tables(self):
+        """(sign, duihuan_rows, recycle_rows) for the kapai bronze board.
+
+        Sign and entries come from the newest kapaibiao drop (its md5 is
+        the 121000 sign on the wire); the 12 recycle rows come from the
+        newest kapaiduihuan drop. Both keep file order.
+        """
+        sign, entries = self.published_gameconfig('kapaibiao')
+        _, recycle = self.published_gameconfig('kapaiduihuanbiao')
+        if sign is None or not entries:
+            return None, [], []
+        return sign, [r for r in entries if isinstance(r, dict)], \
+            [r for r in recycle if isinstance(r, dict)]
+
+    def qianfu_table(self):
+        """(sign, rows) of the newest qianfuhuodong drop for 120000."""
+        sign, rows = self.published_gameconfig('qianfuhuodong')
+        if sign is None or not rows:
+            return None, []
+        return sign, [r for r in rows if isinstance(r, dict)]
+
+    @staticmethod
+    def drop_millis(text):
+        """'YYYY/MM/DD/hh:mm:ss' to ms via the server-local clock.
+
+        Mirrors the Java drop tables' date math (server-local parse, as
+        the mall losttime check does with time.mktime); the 5h delta
+        between the capture's 1394341201000 and the UTC parse is the
+        legacy EST host offset, documented not faked.
+        """
+        if not text:
+            return 0
+        for fmt in ('%Y/%m/%d/%H:%M:%S', '%Y-%m-%d %H:%M:%S',
+                    '%Y-%m-%d', '%Y/%m/%d'):
+            try:
+                return int(time.mktime(time.strptime(
+                    str(text).strip(), fmt)) * 1000)
+            except (ValueError, OverflowError):
+                continue
+        return 0
+
+    def tuangou_table(self):
+        """(sign, rows, startMs, endMs) of the newest xianshituangou drop."""
+        sign, rows = self.published_gameconfig('xianshituangou')
+        rows = [r for r in rows if isinstance(r, dict)]
+        if sign is None or not rows:
+            return None, [], 0, 0
+        starts = [self.drop_millis(r.get('starttime')) for r in rows]
+        ends = [self.drop_millis(r.get('finishtime')) for r in rows]
+        starts = [s for s in starts if s > 0]
+        ends = [e for e in ends if e > 0]
+        return sign, rows, min(starts) if starts else 0, \
+            max(ends) if ends else 0
+
+    def _sys_jat(self, name):
+        """Decode one sys_config .jat file; [] when absent or bad."""
+        path = os.path.join(self.config_dir, 'sys_config', name)
+        try:
+            with open(path, 'rb') as f:
+                data = f.read()
+        except OSError:
+            return None, []
+        try:
+            rows = amf3_decode(data)
+        except ValueError as e:
+            log.error('bad sys table %s: %s', path, e)
+            return None, []
+        if not isinstance(rows, list):
+            return None, []
+        return hashlib.md5(data).hexdigest(), \
+            [r for r in rows if isinstance(r, dict)]
+
+    def denglulibao_table(self):
+        """(sign, rows) of denglulibao.jat for 127000; cached."""
+        if self._denglulibao is None:
+            self._denglulibao = self._sys_jat('denglulibao.jat')
+        return self._denglulibao
+
+    def dengjilibao_table(self):
+        """(sign, rows) of DengJiLiBao.jat for 58000; cached."""
+        if self._dengjilibao is None:
+            self._dengjilibao = self._sys_jat('DengJiLiBao.jat')
+        return self._dengjilibao
+
+    @staticmethod
+    def parse_pipe_goods_string(goods):
+        """'id|count|bind;...' (ConfigGoodsParser pipe form) to parcels.
+
+        The dafuweng zanshi gift (dafuwengzuanshi.jat duihuan) and the
+        xianshishop grant (XianShiBuyConfig itmeid) use '|' where the
+        goods-table family uses ':'; normalizing keeps one parser.
+        """
+        return GameConfig.parse_goods_string(
+            str(goods or '').replace('|', ':'))
+
+    @staticmethod
+    def parse_goods_string(goods):
+        """'id:count:bind;...' to [(id, count, bind)]."""
+        out = []
+        for part in str(goods or '').split(';'):
+            part = part.strip()
+            if not part:
+                continue
+            segs = part.split(':')
+            if len(segs) < 2:
+                continue
+            try:
+                count = int(segs[1])
+            except (TypeError, ValueError):
+                continue
+            try:
+                bind = int(segs[2]) if len(segs) > 2 else 0
+            except (TypeError, ValueError):
+                bind = 0
+            out.append((str(segs[0]), count, bind))
+        return out
+
+    def loginlingjiang_items(self):
+        """Reward pool string of dengluqijiangli.jat for 103001."""
+        if self._loginlingjiang is None:
+            _, rows = self._sys_jat('dengluqijiangli.jat')
+            item = ''
+            for r in rows:
+                if r.get('item'):
+                    item = r.get('item')
+                    break
+            self._loginlingjiang = item
+        return self._loginlingjiang
+
+    def online_reward_tables(self):
+        """{1: daily, 2: monthly} OnlineRewardConfig lists from zaixianjiangli.jat."""
+        if self._online_reward is None:
+            _, rows = self._sys_jat('zaixianjiangli.jat')
+            tables = {1: [], 2: []}
+            for r in rows:
+                try:
+                    typ = int(r.get('type') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if typ not in tables:
+                    continue
+                try:
+                    day_limit = [int(x) for x in
+                               str(r.get('daytime') or '').split(',')
+                               if x.strip()]
+                except (TypeError, ValueError):
+                    day_limit = []
+                rewards = []
+                for part in str(r.get('randomaward') or '').split(';'):
+                    segs = part.strip().split(':')
+                    if len(segs) < 5 or not segs[0]:
+                        continue
+                    try:
+                        rewards.append((str(segs[0]), int(segs[1]),
+                                        int(segs[2]), float(segs[3]),
+                                        int(segs[4])))
+                    except (TypeError, ValueError):
+                        continue
+                try:
+                    tables[typ].append({
+                        'count': int(r.get('count') or 0),
+                        'time': int(r.get('time') or 0),
+                        'month': int(r.get('month') or 0),
+                        'bindGold': float(r.get('bindgold') or 0),
+                        'monthTime': int(r.get('monthtime') or 0),
+                        'dayLimit': day_limit,
+                        'rewards': rewards,
+                    })
+                except (TypeError, ValueError):
+                    continue
+            self._online_reward = tables
+        return self._online_reward
+
+    def weiduan_items(self):
+        """[(id, count, bind)] of dengluqijiangli.jat for 10061."""
+        if self._weiduan is None:
+            _, rows = self._sys_jat('dengluqijiangli.jat')
+            item = ''
+            for r in rows:
+                if r.get('item'):
+                    item = r.get('item')
+                    break
+            self._weiduan = self.parse_goods_string(item)
+        return self._weiduan
+
+    def qiandao_tables(self):
+        """{stye: {id: cfg}} QiandaoConfigs from jianglipeizhi.jat."""
+        if self._qiandao is None:
+            _, rows = self._sys_jat('jianglipeizhi.jat')
+            tables = {}
+            for r in rows:
+                try:
+                    stye = int(r.get('stye') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not r.get('id'):
+                    continue
+                tables.setdefault(stye, {})[str(r['id'])] = {
+                    'id': str(r['id']),
+                    'count': config_int(r.get('count')),
+                    'vip_level': config_int(r.get('level')),
+                    'rewards': self.parse_goods_string(
+                        str(r.get('reward') or '')),
+                    'meiren_id': str(r.get('meinvtype') or ''),
+                    'week1': config_int(r.get('week1')),
+                    'week2': config_int(r.get('week2')),
+                }
+            self._qiandao = tables
+        return self._qiandao
+
+    def yingyin_config(self):
+        """BaiDuYingYinConfig loadByYingyin: the number-1 baiduyingyin row."""
+        if self._yingyin is None:
+            _, rows = self._sys_jat('baiduyingyin.jat')
+            cfg = None
+            for r in rows:
+                try:
+                    if int(r.get('number') or 0) == 1:
+                        cfg = r
+                        break
+                except (TypeError, ValueError):
+                    continue
+            if cfg is None:
+                self._yingyin = None
+                return None
+            self._yingyin = {
+                'time': config_int(cfg.get('time')),
+                'first_goods': self.parse_goods_string(
+                    str(cfg.get('goods') or '')),
+                'day_goods': self.parse_goods_string(
+                    str(cfg.get('day') or '')),
+            }
+        return self._yingyin
+
+    def qiandao_config(self, stye, cid):
+        """One qiandao config by category and id, or None when unknown."""
+        try:
+            return self.qiandao_tables().get(int(stye), {}).get(str(cid))
+        except (TypeError, ValueError):
+            return None
+
+    def touxian_table(self):
+        """touxianbiao.jat rows by string touxianid; cached."""
+        if self._touxian is None:
+            _, rows = self._sys_jat('touxianbiao.jat')
+            self._touxian = {str(r.get('touxianid')): r for r in rows
+                             if r.get('touxianid') is not None}
+        return self._touxian
+
+    def guangyi_table(self):
+        """guangyi.jat rows in file order; cached."""
+        if self._guangyi is None:
+            _, rows = self._sys_jat('guangyi.jat')
+            self._guangyi = rows
+        return self._guangyi
+
+    def baixian_table(self):
+        """BaiXian.jat rows ordered by `order`; cached."""
+        if self._baixian is None:
+            _, rows = self._sys_jat('BaiXian.jat')
+            try:
+                rows = sorted(rows, key=lambda r: int(r.get('order') or 0))
+            except (TypeError, ValueError):
+                pass
+            self._baixian = rows
+        return self._baixian
+
+    def baixian_huafei(self, count):
+        """BaiXianHuaFei.jat row for the nth worship of the day."""
+        if self._baixian_huafei is None:
+            _, rows = self._sys_jat('BaiXianHuaFei.jat')
+            table = {}
+            for r in rows:
+                try:
+                    table[int(r.get('count'))] = r
+                except (TypeError, ValueError):
+                    continue
+            self._baixian_huafei = table
+        return self._baixian_huafei.get(int(count))
+
+    def zhuihui_table(self):
+        """ziyuanzhuihui.jat rows by string id; cached."""
+        if self._zhuihui is None:
+            _, rows = self._sys_jat('ziyuanzhuihui.jat')
+            self._zhuihui = {str(r.get('id')): r for r in rows
+                             if r.get('id') is not None}
+        return self._zhuihui
+
+    def guanggao_table(self):
+        """Newest dengluguanggao rows for the 109000 login ads."""
+        _, rows = self.published_gameconfig('dengluguanggao')
+        return [r for r in rows if isinstance(r, dict)]
+
+    def dafuweng_jiage(self):
+        """dafuwengjiage.jat rows by roll number; cached."""
+        if self._dafuweng_jiage is None:
+            _, rows = self._sys_jat('dafuwengjiage.jat')
+            table = {}
+            for r in rows:
+                try:
+                    table[int(r.get('id'))] = r
+                except (TypeError, ValueError):
+                    continue
+            self._dafuweng_jiage = table
+        return self._dafuweng_jiage
+
+    def dafuweng_roll_price(self, roll_type, n):
+        """DaFuWengJiaGeConfig.getMoneyMap: nth-roll price for a roll type.
+
+        The bean's moneyMap picks the column by type (tongqian1 for the
+        coin roll, yuanbao for the gold roll); the shipped rows price
+        every roll number 1..150. Past the last row the price holds at
+        the final row instead of throwing like Java's loadById null.
+        """
+        try:
+            n = int(n)
+            roll_type = int(roll_type)
+        except (TypeError, ValueError):
+            return None
+        if roll_type not in (1, 2):
+            return None
+        table = self.dafuweng_jiage()
+        if not table:
+            return None
+        row = table.get(n) or table.get(max(table))
+        try:
+            if int(roll_type) == 1:
+                return int(row.get('tongqian1') or 0)
+            return int(row.get('yuanbao') or 0)
+        except (TypeError, ValueError):
+            return None
+
+    def dafuweng_zuanshi(self):
+        """(threshold, goods-string) of dafuwengzuanshi.jat for 105001."""
+        if self._dafuweng_zuanshi is None:
+            _, rows = self._sys_jat('dafuwengzuanshi.jat')
+            row = rows[0] if rows else {}
+            try:
+                need = int(row.get('zuanshi') or 0)
+            except (TypeError, ValueError):
+                need = 0
+            self._dafuweng_zuanshi = (need, row.get('duihuan') or '')
+        return self._dafuweng_zuanshi
+
+    def dafuweng_zhubiao(self):
+        """Board rows of the pinned 105003 zhubiao drop by slot id."""
+        if self._dafuweng_zhubiao is None:
+            table = {}
+            try:
+                rows = (self.dafuweng_reply() or [None, []])[1][0]
+            except (IndexError, TypeError):
+                rows = []
+            for r in rows or []:
+                try:
+                    table[int(r.get('id'))] = r
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            self._dafuweng_zhubiao = table
+        return self._dafuweng_zhubiao
+
+    def dafuweng_duihuan(self, did):
+        """Parsed exchange entry: (jifen, {goods: count}, [(id, count, bind)]).
+
+        Page-1 rows cost grade points (jifen), page-2 rows cost yushi
+        goods ('yushi:100'); the grant list parses sellid. None when the
+        105003 duihuan drop is missing or has no such id.
+        """
+        if self._dafuweng_duihuan is None:
+            table = {}
+            try:
+                rows = (self.dafuweng_reply() or [None, []])[1][1]
+            except (IndexError, TypeError):
+                rows = []
+            for r in rows or []:
+                try:
+                    table[str(r.get('id'))] = r
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            self._dafuweng_duihuan = table
+        try:
+            row = self._dafuweng_duihuan.get(str(did))
+        except (TypeError, ValueError):
+            return None
+        if not row:
+            return None
+        try:
+            jifen = int(row.get('jifen') or 0)
+        except (TypeError, ValueError):
+            jifen = 0
+        decr = {}
+        for part in str(row.get('yushi') or '').split(';'):
+            segs = part.split(':')
+            if len(segs) < 2:
+                continue
+            try:
+                decr[str(segs[0])] = int(segs[1])
+            except (TypeError, ValueError):
+                continue
+        return jifen, decr, self.parse_goods_string(row.get('sellid'))
+
+    def vip_dafuwong_rolls(self, vip_level):
+        """VipConfig.dafuwongcs: free coin rolls per day (-1 unlimited)."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+            n = int((row or {}).get('tongqiancishu') or 0)
+        except (TypeError, ValueError):
+            return 0
+        return 999999 if n < 0 else n
+
+    def xianshishop_table(self):
+        """Parsed rows of the newest xianshishop drop for 119000/119002.
+
+        Row fields mirror XianShiBuyConfig.createXianShiBuyConfig: shuliang
+        caps of 0 mean unlimited, starttime/finishtime parse to ms (0 when
+        absent), and the first itmeid parcel is the grant. Empty when no
+        drop is published.
+        """
+        if self._xianshishop is None:
+            _, rows = self.published_gameconfig('xianshishop')
+            parsed = []
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    smax = int(r.get('shuliang1') or 0) or 999999999
+                    pmax = int(r.get('shuliang2') or 0) or 999999999
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    price = int(r.get('money2') or 0)
+                except (TypeError, ValueError):
+                    price = 0
+                try:
+                    consume = int(r.get('cdmoney') or 0)
+                except (TypeError, ValueError):
+                    consume = 0
+                try:
+                    cd = int(r.get('cdtime') or 0)
+                except (TypeError, ValueError):
+                    cd = 0
+                try:
+                    start_ms = int(time.mktime(time.strptime(
+                        str(r.get('starttime')), '%Y/%m/%d/%H:%M:%S'))) \
+                        * 1000 if r.get('starttime') else 0
+                except (TypeError, ValueError):
+                    start_ms = 0
+                try:
+                    end_ms = int(time.mktime(time.strptime(
+                        str(r.get('finishtime')), '%Y/%m/%d/%H:%M:%S'))) \
+                        * 1000 if r.get('finishtime') else 0
+                except (TypeError, ValueError):
+                    end_ms = 0
+                window = str(r.get('time') or '').split('-')
+                grants = self.parse_pipe_goods_string(r.get('itmeid'))
+                try:
+                    parsed.append({
+                        'id': str(r.get('ID') if r.get('ID') is not None
+                                  else r.get('id')),
+                        'type': int(r.get('leixing') or 0),
+                        'smax': smax, 'pmax': pmax, 'price': price,
+                        'cd': cd, 'consume': consume,
+                        'kaifudays': int(r.get('kaifudays') or 0),
+                        'startday': int(r.get('startday') or 0),
+                        'hefustart': int(r.get('hefustart') or 0),
+                        'hefudays': int(r.get('hefudays') or 0),
+                        'start_ms': start_ms, 'end_ms': end_ms,
+                        'window': window, 'grants': grants,
+                        'client': r,
+                    })
+                except (TypeError, ValueError):
+                    continue
+            self._xianshishop = parsed
+        return self._xianshishop
+
+    def xianshishop_row(self, sid):
+        """Parsed xianshishop row by id, or None (Java loadById null)."""
+        for row in self.xianshishop_table():
+            if row.get('id') == str(sid):
+                return row
+        return None
+
+    def tuangou_sign(self):
+        """md5 of the newest xianshituangou drop: the 122002 sign."""
+        sign, rows = self.published_gameconfig('xianshituangou')
+        return sign if rows else None
 
     def mall_offer(self, sellid, npc_id):
         """Merged offer for a sellid at one npc, or None when not sold there.
@@ -2381,6 +3389,37 @@ class GameConfig:
                 log.error('bad vip table: %s', e)
                 self._vip = {}
         return self._vip
+
+    def vip_husong_count(self, vip_level):
+        """VipConfig.getHuSongCount (husongsishu) for a level; 0 when absent."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+            return int(row.get('husongsishu') or 0) if row else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def vip_dajie(self, vip_level):
+        """VipConfig.getDajie (jiebiao) for a level; 0 when absent."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+            return int(row.get('jiebiao') or 0) if row else 0
+        except (TypeError, ValueError):
+            return 0
+
+    def husong_first_id(self):
+        """First MeiQi id of husong.jat (getFirstMeiQiId); None when absent."""
+        if self._husong is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'husong.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad husong table: %s', e)
+                rows = []
+            first = next((r for r in rows if isinstance(r, dict)
+                          and r.get('id') is not None), None)
+            self._husong = str(first.get('id')) if first else None
+        return self._husong
 
     def vip_need_gold(self, vip_level):
         """VipInfoConfig.getVipConfigByLevel needGold for a level; 0 when absent."""
@@ -2782,6 +3821,81 @@ class GameConfig:
                 totals[key] = totals.get(key, 0.0) + value
         return totals
 
+    def baoshi_buwei(self):
+        """BaoShiBuWei.jat as {part: {min_grid, max_grid, grids}}."""
+        if self._baoshi_buwei is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'BaoShiBuWei.jat')
+            try:
+                self._baoshi_buwei = load_baoshi_buwei_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad baoshi buwei table: %s', e)
+                self._baoshi_buwei = {}
+        return self._baoshi_buwei
+
+    def baoshi_detail(self, part, grid):
+        """Buwei detail for a (part, grid), or None when unconfigured."""
+        try:
+            return self.baoshi_buwei().get(int(part), {}).get(
+                'grids', {}).get(int(grid))
+        except (TypeError, ValueError):
+            return None
+
+    def baoshi_shengji(self):
+        """BaoShiShengJi.jat as {gemid: {levels, min, max}}."""
+        if self._baoshi_shengji is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'BaoShiShengJi.jat')
+            try:
+                self._baoshi_shengji = load_baoshi_shengji_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad baoshi shengji table: %s', e)
+                self._baoshi_shengji = {}
+        return self._baoshi_shengji
+
+    def baoshi_level(self, gemid, level):
+        """Shengji level row for a gem at a level, or None."""
+        try:
+            return self.baoshi_shengji().get(str(gemid), {}).get(
+                'levels', {}).get(int(level))
+        except (TypeError, ValueError):
+            return None
+
+    def baoshi_attribute_map(self, rows):
+        """Summed BaoShiLevel attribute bags for owned role_baoshi rows.
+
+        Port of loadAllBaoShiAttribute over getBaoShiAttribute: a row
+        with level 0 resolves null (skipped), otherwise its gem's level
+        row contributes its base attribute map. Missing gems or levels
+        are logged and skipped.
+        """
+        totals = {}
+        for row in rows or []:
+            try:
+                part = int(row.get('part'))
+                grid = int(row.get('grid'))
+                level = int(row.get('level') or 0)
+            except (TypeError, ValueError):
+                continue
+            if level <= 0:
+                continue
+            detail = self.baoshi_detail(part, grid)
+            if not detail:
+                log.warning('baoshi part %r grid %r has no config row;'
+                            ' skipped', part, grid)
+                continue
+            bag = (self.baoshi_level(detail.get('gemid'), level) or {}).get(
+                'attributes')
+            if not bag:
+                log.warning('baoshi gem %r level %r has no config row;'
+                            ' skipped', detail.get('gemid'), level)
+                continue
+            for key, value in bag.items():
+                totals[key] = totals.get(key, 0.0) + value
+        return totals
+
     def zuoqi_attribute_map(self, max_rank, role_level):
         """ZuoQiLevelConfig bag for a mount rank at a role level.
 
@@ -2857,12 +3971,72 @@ class GameConfig:
         ranks = [rk for (rk, _lv) in self.zuoqi_table()]
         return max(ranks) if ranks else 0
 
+    def shenjiang_tiers(self, sj_id):
+        """ShenJiangBiao tier rows for a shenjiang id, in file order."""
+        if self._shenjiang is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ShenJiangBiao.jat')
+            try:
+                self._shenjiang = load_shenjiang_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad ShenJiangBiao table: %s', e)
+                self._shenjiang = {}
+        return self._shenjiang.get(str(sj_id)) or []
+
+    def shenjiang_tier(self, sj_id, rank):
+        """Tier row for (shenjiang id, jiangxing rank); rank indexes tiers.
+
+        Out-of-range ranks fall back to the first tier, mirroring the
+        zuoqi first-row rule (ShenjiangConfigExportServiceImpl keys one
+        config per id, so every tier shares the fragment/zhenqi/skill
+        fields and only maxlv/jinjie costs vary).
+        """
+        tiers = self.shenjiang_tiers(sj_id)
+        if not tiers:
+            return None
+        try:
+            rank = int(rank)
+        except (TypeError, ValueError):
+            rank = 0
+        if 0 <= rank < len(tiers):
+            return tiers[rank]
+        return tiers[0]
+
+    def jiangxingtu_config(self, dwid):
+        """JiangXingTu row for a star-chart id, or None when unknown."""
+        if self._jiangxingtu is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'JiangXingTu.jat')
+            try:
+                self._jiangxingtu = load_jiangxingtu_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad JiangXingTu table: %s', e)
+                self._jiangxingtu = {}
+        return self._jiangxingtu.get(str(dwid))
+
+    def chengjiu_config(self, cid):
+        """Parsed chengjiuzhuizong row for an achievement id, or None."""
+        if self._chengjiu is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'chengjiuzhuizong.jat')
+            try:
+                self._chengjiu = load_chengjiu_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad chengjiuzhuizong table: %s', e)
+                self._chengjiu = {}
+        return self._chengjiu.get(str(cid))
+
     def zuoqi_level_config(self, rank, level):
         """ZuoQiLevelConfig fields for a (rank, level) row, or None.
 
         Port of createLevelConfig: min/maxTimes from mintims/maxtimes,
         odds, upgradeZhufu from maxblessing, notice, min/maxZhufu from
-        addmin/addmaxblessing.
+        addmin/addmaxblessing, maxAttributeGoodsCount from xlimit and
+        maxAttributeGoodsCountByPercentage from perxlimit (the longhun/
+        longling per-goods caps checked by checkAttDan/checkAttLuckyDan).
         """
         try:
             row = self.zuoqi_table().get((int(rank), int(level)))
@@ -2877,7 +4051,9 @@ class GameConfig:
                 'upgrade_zhufu': config_int(row.get('maxblessing')),
                 'notice': bool(row.get('notice')),
                 'min_zhufu': config_int(row.get('addminblessing')),
-                'max_zhufu': config_int(row.get('addmaxblessing'))}
+                'max_zhufu': config_int(row.get('addmaxblessing')),
+                'max_attribute': config_int(row.get('xlimit')),
+                'max_attribute_pct': config_int(row.get('perxlimit'))}
 
     def kaifu_zuoqi_table(self):
         """kaifuzuoqi.jat rows (KaifuZuoqiConfig list); empty when absent."""
@@ -3040,6 +4216,149 @@ class GameConfig:
         """
         return self.fight_value(self.zuoqi_attribute_map(max_rank, role_level))
 
+    def goods_zuoqi_attribute_map(self, goods_id):
+        """GoodsConfig.attributeMap for one goods id (skill-33 source).
+
+        Port of ConfigAttributeParser.attribute2Map(row, 'zuoqi'): the
+        41 attribute columns prefixed with 'zuoqi' (zuoqihitpoints,
+        ...); zeros are skipped but velocity is always present (0.0
+        when the cell is empty). Fight-neutral either way since
+        velocity's ZhanLiXiShu factor is 0.0.
+        """
+        row = self._goods_table().get(str(goods_id)) or {}
+        bag = {name: _number(row.get('zuoqi' + name))
+               for name in MEIREN_ATTRIBUTE_NAMES
+               if _number(row.get('zuoqi' + name))}
+        bag['velocity'] = _number(row.get('zuoqivelocity'))
+        return bag
+
+    def zuoqi_level_attribute_map(self, rank, role_level):
+        """ZuoQiLevelConfig.attributeMap for a mount rank at a role level.
+
+        Port of createLevelConfig's attribute2Map(row): the full 41-key
+        bag of the clamped (rank, level) row (velocity included, unlike
+        zuoqi_attribute_map's refined bag); {} when the row is missing.
+        """
+        pet = self.zuoqi_pet(rank, role_level)
+        if pet is None:
+            return {}
+        return {name: _number(pet[1].get(name))
+                for name in MEIREN_ATTRIBUTE_NAMES
+                if _number(pet[1].get(name))}
+
+    def zuoqi_effect_attribute_map(self, rank, role_level, counts):
+        """RoleFactoryHelper.replaceZuoqiAttribute's ZUOQI base bag.
+
+        The refined level bag plus the attribute-goods loop: skill-33
+        goods add their zuoqi bag once per owned pill; skill-35 goods
+        with per (sxbfb) above 0 add the refined level bag scaled by per
+        once per owned pill (a count loop, unlike the fight half's single
+        per*count pass). Unknown goods and missing configs add nothing;
+        a missing (rank, clamped level) row yields {}.
+        """
+        if self.zuoqi_pet(rank, role_level) is None:
+            return {}
+        base = self.zuoqi_attribute_map(rank, role_level)
+        acc = dict(base)
+        table = self._goods_table()
+        for goods_id, bought in (counts or {}).items():
+            try:
+                owned = int(bought)
+            except (TypeError, ValueError):
+                continue
+            if owned <= 0:
+                continue
+            grow = table.get(str(goods_id))
+            if grow is None:
+                continue
+            goods_map = self.goods_zuoqi_attribute_map(goods_id)
+            if goods_map:
+                for _ in range(owned):
+                    for name, value in goods_map.items():
+                        acc[name] = acc.get(name, 0.0) + value
+            try:
+                per = float(grow.get('sxbfb') or 0)
+            except (TypeError, ValueError):
+                per = 0.0
+            if per > 0:
+                for _ in range(owned):
+                    for name, value in base.items():
+                        acc[name] = acc.get(name, 0.0) + value * per
+        return acc
+
+    def zuoqi_longhun_fight(self, rank, role_level, counts):
+        """ZhanDouLiServiceImpl.getlongLingOrLongHun over a goods map.
+
+        Empty map or missing (rank, clamped level) row is 0. Skill-33
+        goods add their goods-attribute bag once per owned pill
+        (addMapValue in a count loop); skill-35 goods add the level bag
+        scaled by zqAttributePer (sxbfb) times the owned count
+        (multipleAttribute, one pass, skipped when the factor is 0).
+        Unknown goods and other skills add nothing; the merged bag runs
+        through getFight.
+        """
+        if not counts:
+            return 0
+        level_map = self.zuoqi_level_attribute_map(rank, role_level)
+        if not level_map:
+            return 0
+        table = self._goods_table()
+        acc = {}
+        for goods_id, bought in counts.items():
+            try:
+                owned = int(bought)
+            except (TypeError, ValueError):
+                continue
+            if owned <= 0:
+                continue
+            grow = table.get(str(goods_id))
+            if grow is None:
+                continue
+            try:
+                skill = int(grow.get('skill') or 0)
+            except (TypeError, ValueError):
+                continue
+            if skill == 33:
+                goods_map = self.goods_zuoqi_attribute_map(goods_id)
+                for _ in range(owned):
+                    for name, value in goods_map.items():
+                        acc[name] = acc.get(name, 0.0) + value
+            elif skill == 35:
+                try:
+                    per = float(grow.get('sxbfb') or 0)
+                except (TypeError, ValueError):
+                    per = 0.0
+                factor = per * owned
+                if factor != 0:
+                    for name, value in level_map.items():
+                        acc[name] = acc.get(name, 0.0) + value * factor
+        return self.fight_value(acc)
+
+    def longling_longhun_counts(self, counts):
+        """PropUtil.getLonglingLonghunCount: [skill-35, skill-33] totals.
+
+        Unknown goods add nothing; a missing map is [0, 0].
+        """
+        table = self._goods_table()
+        hun = ling = 0
+        for goods_id, bought in (counts or {}).items():
+            try:
+                owned = int(bought)
+            except (TypeError, ValueError):
+                continue
+            grow = table.get(str(goods_id))
+            if grow is None:
+                continue
+            try:
+                skill = int(grow.get('skill') or 0)
+            except (TypeError, ValueError):
+                continue
+            if skill == 33:
+                hun += owned
+            elif skill == 35:
+                ling += owned
+        return [ling, hun]
+
     def zuoqi_equip_fight(self, items):
         """ZhanDouLiServiceImpl.getZuoEquipFight over a role's equip rows.
 
@@ -3083,6 +4402,16 @@ class GameConfig:
     def level_fight(self, row):
         """getRoleLevelFight: getFight over the level row's combat keys."""
         return self.fight_value({k: v for k, v in (row or {}).items()})
+
+    def xianjie_fight(self, xianjie_id):
+        """ZhanDouLiServiceImpl.getxianjie: getFight over the XianJieConfig bag.
+
+        0 when no xianjie is active; xianjie 1's bag computes to exactly
+        the captured 122 for the stress role.
+        """
+        if xianjie_id is None:
+            return 0
+        return self.fight_value(self.xianjie_attribute_map(xianjie_id))
 
     def equip_fight_parts(self, items):
         """(base, qianghua, fujia) fight ints over equipped items.
@@ -3172,11 +4501,16 @@ class GameConfig:
                 return nx, ny
         return x, y
 
-    def monster_snapshot(self, map_id):
+    def monster_snapshot(self, map_id, x=None, y=None,
+                         x_range=AOI_X_RANGE, y_range=AOI_Y_RANGE):
         """23002 monster records for a map: one per spawn point, template stats from GuaiWuBiao.
 
         Positions are the spawn points, not live positions; monsters that move
         later are not tracked. Spawn groups with no template row are skipped and logged.
+        When the role position is given, only spawn points inside its AOI box
+        are reported: Java emits 23002 through the AOI listener, so a fresh
+        entry on map 2 (role at 10,150, spawns 40+ tiles away) carries no
+        23002 at all (session-20261018-040230).
         """
         templates = self.monster_templates()
         records = []
@@ -3189,7 +4523,10 @@ class GameConfig:
             hp = tpl.get('hitpoints')
             mp = tpl.get('mana')
             speed = tpl.get('velocity')
-            for x, y, _dir in group.get('createPoints') or []:
+            for px, py, _dir in group.get('createPoints') or []:
+                if x is not None and y is not None and not _in_aoi(
+                        x, y, px, py, x_range, y_range):
+                    continue
                 n = len(records)
                 # Layout copied from a captured 23002 record (output/orig-stack/tap-decoded.txt).
                 # Verified: 0-4 (id, template, name, level, hp), 11-12 (x, y against spawn points).
@@ -3197,5 +4534,40 @@ class GameConfig:
                 # 10, 13-17 are copied from the capture; their meaning is unverified.
                 records.append([f'm_{map_id}_{n}', tpl['id'], tpl.get('name'),
                                 tpl.get('level'), hp, hp, mp, mp, speed, speed,
-                                0, x, y, 0, None, False, None, 0])
+                                0, px, py, 0, None, False, None, 0])
+        return records
+
+    def npc_table(self):
+        """NpcLieBiao.jat rows (id, map, x, y, ...); empty when absent."""
+        if self._npc is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'NpcLieBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad npc table: %s', e)
+                rows = []
+            self._npc = [r for r in rows if isinstance(r, dict)]
+        return self._npc
+
+    def npc_snapshot(self, map_id, x, y,
+                     x_range=AOI_X_RANGE, y_range=AOI_Y_RANGE):
+        """23003 NPC records near a role: [npcId, x, y] per NpcLieBiao row.
+
+        Java emits 23003 through the AOI listener (AdvancedAoiMsgListener
+        maps NPC elements to 23003), so only NPCs of this map inside the
+        role's AOI box are reported: map-2 entry sends just N020001
+        (6,152) for a role at (10,150) (session-20261018-040230).
+        """
+        records = []
+        for row in self.npc_table():
+            if str(row.get('map')) != str(map_id):
+                continue
+            try:
+                px, py = int(row.get('x')), int(row.get('y'))
+            except (TypeError, ValueError):
+                continue
+            if not _in_aoi(x, y, px, py, x_range, y_range):
+                continue
+            records.append([str(row.get('id')), px, py])
         return records

@@ -48,6 +48,7 @@ one currency row.
 | `role_bag_slot` (slot/goods/count/blob) | `role_bag_slot` | Bag slots 1..150 (151+ are storage); drives the 30000 goods maps. |
 | `role_skillbook_slot` (slot/goods/count/blob) | `role_skillbook_slot` | Worn skillbook slots 10001..10056; drives the 99000 maps. |
 | `role_bag_state` (capacities/timers) | `role_bag_state` | Capacities gate the 30000 lock VOs; timers feed the unlock countdown. |
+| `role_qiandao` (counters/day and reward lists) | `role_qiandao` | Sign-in state for `58011`; `create_time`/`log_update_time` are not copied. |
 
 `role_stage` is a **separate table** mirroring Java's `role_stage` columns, not extra
 columns on `characters`. The SQLite table has 21 columns including `role_id`. The

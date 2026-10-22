@@ -14,6 +14,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from auth import hash_password  # noqa: E402
+from db import Store  # noqa: E402
 from game import amf3  # noqa: E402
 from game.config import GameConfig  # noqa: E402
 from game.protocol import Session  # noqa: E402
@@ -78,6 +80,31 @@ class InnerFlyTest(unittest.TestCase):
         b = self.session(2, 2, x=2, y=3, map_id='7')
         a.inner_fly([40101, [None, '9', 2, 4, 'stage']])
         self.assertIsNone(b.tick(now_ms=0))
+
+    def test_same_map_teleport_persists_position(self):
+        # Same-map innerFly persists the landing cell through
+        # save_role_state, read back live from the store.
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.store = Store(os.path.join(tmp, 'f.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        rid = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', map_id='7', map_x=1,
+            map_y=3)
+        sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0, config=self.cfg, stage_registry=self.reg,
+            save_role_state=self.store.update_character_state)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        self.reg.register(str(rid), '7', sess, x=1, y=3)
+        out = sess.inner_fly([40101, [None, '7', 5, 6, 'stage']])
+        self.assertEqual(decode([out[0]]),
+                         [['40101', [5, 6, 0, str(rid)]]])
+        row = self.store.list_roles('hero', 'fu1304')[0]
+        self.assertEqual((row['map_x'], row['map_y']), (5, 6))
 
     def test_unowned_sender_is_silent(self):
         sess = Session(conn_id=9, check_sign=lambda *a: False,

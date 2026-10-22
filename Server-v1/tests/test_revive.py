@@ -18,6 +18,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from auth import hash_password  # noqa: E402
+from db import Store  # noqa: E402
 from game import amf3  # noqa: E402
 from game.amf3 import Obj  # noqa: E402
 from game.config import GameConfig  # noqa: E402
@@ -138,6 +140,34 @@ class TownReviveTest(unittest.TestCase):
             out = a.town_revive([43001, None])
         self.assertIn(['40100', [11, 13, 0, '1']], decode(out))
         self.assertEqual(self.reg._pos['1'], (11, 13))
+
+    def test_dead_revive_persists_hp_and_birth_position(self):
+        # Same-map birth (map 7 -> 10|12): the hp/mp reset and the
+        # teleport persist through save_role_state, read back live.
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.store = Store(os.path.join(tmp, 'r.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        rid = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', map_id='7', map_x=1,
+            map_y=3, hp=0, mp=0, max_hp=100, max_mp=50)
+        sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0, config=self.cfg, stage_registry=self.reg,
+            save_role_state=self.store.update_character_state)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        self.reg.register(str(rid), '7', sess, x=1, y=3)
+        sess._dead.add(str(rid))
+        out = decode(sess.town_revive([43001, None]))
+        self.assertEqual([f[0] for f in out],
+                         ['12004', '43001', '40100', '43001'])
+        row = self.store.list_roles('hero', 'fu1304')[0]
+        self.assertEqual(row['hp'], 100)
+        self.assertEqual(row['mp'], 50)
+        self.assertEqual((row['map_x'], row['map_y']), (10, 12))
 
     def test_unplaced_sender_is_silent(self):
         sess = Session(conn_id=9, check_sign=lambda *a: False,

@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from auth import hash_password  # noqa: E402
 from db import Store  # noqa: E402
 from game.amf3 import decode  # noqa: E402
+from game.amf3 import encode as amf3_encode  # noqa: E402
+from game.cipher import SimpleEncrypt  # noqa: E402
 from game.config import GameConfig  # noqa: E402
 from game.protocol import Session, frame  # noqa: E402
 
@@ -528,7 +530,7 @@ class BagSlotUnlockTest(unittest.TestCase):
         before = int(time.time() * 1000)
         got = self.frames(self.sess.bag_activate('bag', [30201, 1]))
         self.assertEqual([f[0] for f in got], ['32010', '12001', '30201'])
-        self.assertEqual(got[0][1], [0, 49, 0, 0])
+        self.assertEqual(got[0][1], [0.0, 49.0, 0.0, 1])
         self.assertEqual(got[1], ['12001', [1750.0, 56]])
         self.assertEqual(got[2][0], '30201')
         self.assertEqual(got[2][1][0], 1)
@@ -547,7 +549,7 @@ class BagSlotUnlockTest(unittest.TestCase):
         got = self.frames(self.sess.bag_activate('storage', [30202, 1]))
         self.assertEqual([f[0] for f in got], ['32010', '12001', '30202'])
         # Slot 31 costs 4 with no bind balance: bind fails, ceil(4/5) = 1 YB.
-        self.assertEqual(got[0][1], [0, 49, 0, 0])
+        self.assertEqual(got[0][1], [0.0, 49.0, 0.0, 1])
         self.assertEqual(got[2][1][0], 1)
         self.assertEqual(got[2][1][1][0], 32)
         state = self.store.get_role_bag_state(self.role_id)
@@ -557,7 +559,7 @@ class BagSlotUnlockTest(unittest.TestCase):
         self.store.update_character_state(self.role_id, bind_lingshi=10,
                                           lingshi=0)
         got = self.frames(self.sess.bag_activate('bag', [30201, 1]))
-        self.assertEqual(got[0][1], [0, 0, 9, 0])
+        self.assertEqual(got[0][1], [0.0, 0.0, 9.0, 1])
 
     def test_activate_exceed_max(self):
         self.store.save_role_bag_state(self.role_id, bag_capacity=143,
@@ -1350,6 +1352,15 @@ class PropBoxTest(unittest.TestCase):
                             row['use_start_time']) < 60000)
         self.assertIsNone(self.sess.prop_teshu_count(5))
         self.assertIsNone(self.sess.prop_teshu_count(None))
+
+    def test_teshu_count_through_dispatch(self):
+        # Live path: client [30307, id] -> handle -> prop_teshu_count(id).
+        self.store.save_role_prop(self.role_id, 'teshu_fire', use_count=3,
+                                  use_start_time=int(time.time() * 1000))
+        self.sess.cipher = SimpleEncrypt('testkey')
+        payload = self.sess.cipher.encode(amf3_encode([30307, 'teshu_fire']))
+        out = self.sess.handle(payload)
+        self.assertEqual(decode(bytes(out)[4:]), ['30307', 3])
 
 
 class HornChatTest(unittest.TestCase):

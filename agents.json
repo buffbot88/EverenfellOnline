@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "skills": {
+    "brain-page": {
+      "path": "skills/brain-page",
+      "entry": "skills/brain-page/SKILL.md",
+      "source": "local",
+      "use": "Project Brain persistent memory: load context at task start, record durable decisions."
+    },
+    "brain-setup": {
+      "path": "skills/brain-setup",
+      "entry": "skills/brain-setup/SKILL.md",
+      "source": "local",
+      "use": "One-time Brain scaffolding for a new project."
+    },
+    "brain-bootstrap": {
+      "path": "skills/brain-bootstrap",
+      "entry": "skills/brain-bootstrap/SKILL.md",
+      "source": "local",
+      "use": "Bootstrap Brain pages from existing project material."
+    },
+    "brain-ingest": {
+      "path": "skills/brain-ingest",
+      "entry": "skills/brain-ingest/SKILL.md",
+      "source": "local",
+      "use": "Ingest external documents into Brain pages."
+    },
+    "ui-ux-pro-max": {
+      "path": "skills/ui-ux-pro-max",
+      "entry": "skills/ui-ux-pro-max/SKILL.md",
+      "source": "github:nextlevelbuilder/ui-ux-pro-max-skill subtree .claude/skills/ui-ux-pro-max",
+      "use": "UI/UX design intelligence: use when designing, building, reviewing, or fixing anything visual or interactive. Skip for pure backend, API, database, or infra work."
+    }
+  },
+  "coUse": {
+    "ui-work": "For UI tasks, load brain context first (brain-page), then apply skills/ui-ux-pro-max/SKILL.md: record the chosen design system back to the Brain."
+  }
+}

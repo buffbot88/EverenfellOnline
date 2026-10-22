@@ -227,6 +227,34 @@ class TaskDispatchTest(MainTaskFrameTest):
             condition='', recevie_time=1, create_time=1)
         self.assertIsNone(self.sess.submit_task('c001004'))
 
+    def test_kill_hook_reports_progress_then_completion(self):
+        # c001004 needs one D010006 kill; the hook pushes 50006 per
+        # kill and 50007 when the count completes (pay_type 0: no
+        # auto-submit follows).
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c001004', state=0,
+            condition='', recevie_time=1, create_time=1)
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        got = [decode(f[4:]) for f in
+               self.sess.task_kill_progress(role, 'D010006')]
+        self.assertEqual(got,
+                         [['50006', ['c001004', 'D010006', 1]],
+                          ['50007', 'c001004']])
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual(row['state'], 1)
+
+    def test_submit_last_quest_pushes_chapter_complete(self):
+        # c003022 closes subchapter a000001 with no reqs, so paying
+        # it pushes the 50005 reward and the 50012 chapter notice.
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id='c003022', state=1,
+            condition='', recevie_time=1, create_time=1)
+        got = self.frames(self.sess.submit_task('c003022'))
+        self.assertEqual([f[0] for f in got][:2], ['50005', '50012'])
+        self.assertEqual(got[1], ['50012', 'a000001'])
+        self.assertEqual(
+            self.store.get_task_main(self.role_id)['task_id'], 'c004001')
+
     def test_chapter_tips_kinds(self):
         (out,) = self.frames(self.sess.chapter_tips([2, 'a000001']))
         sub = self.cfg.task_subchapter('a000001')

@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Server-v1'))
 
-from auth import check_sign, hash_password
+from auth import check_sign, generate_sign, hash_password
 from db import Store
 from game.amf3 import decode, encode
 from game.cipher import SimpleEncrypt
@@ -114,6 +114,7 @@ def seed_store(store, tap):
     state = first(tap, 'S', 10003)['args'][0][1]
     stage = first(tap, 'S', 10003)['args'][0][2]
     money = first(tap, 'S', 32010)['args'][0]
+    vip_level = int(state[7])
     hp = first(tap, 'S', 12004)['args'][0]
     zhenqi = int(first(tap, 'S', 12050)['args'][0][0])
     shanbi_val = int(first(tap, 'S', 12005)['args'][0][0])
@@ -133,6 +134,10 @@ def seed_store(store, tap):
     # zuoqi_info seeds the captured mount: the tap's 23009 says rank 1 with
     # curHp 500 and pet alive, i.e. rideOrNo false (Java only spawns the pet
     # when not riding). No migrated role_stage row has this column yet.
+    if vip_level:
+        # 10003 state[7] is RoleVip.vip_level; without the row Python
+        # answers 0.
+        store.save_role_vip(role_id, vip_level=vip_level)
     store.save_role_stage(role_id, shanbi_val=shanbi_val,
                           zuoqi_info='{"id":1,"hp":500,"deadTime":0,'
                                      '"useTime":0,"rideOrNo":false}')
@@ -238,6 +243,14 @@ def replay(tap, use_python_role_id):
         replies = []
         sent = []
         for msg in client_messages(tap):
+            if msg[0] == 10001:
+                # The capture's login timestamp is years stale and fails
+                # the SIGN_WINDOW_S freshness gate; re-sign with now (the
+                # sign shape itself is unit-tested, not replayed).
+                now = int(time.time())
+                msg = [10001, [msg[1][0], float(now), msg[1][2], msg[1][3],
+                               generate_sign(msg[1][0], now),
+                               *msg[1][5:]]]
             if use_python_role_id and replies:
                 # The 10001 reply carries Python's role id; a client would use it.
                 py_id = replies[0][1][3][0][0]

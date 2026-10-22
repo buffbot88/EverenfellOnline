@@ -117,7 +117,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({
                 'ok': True, 'uid': uid, 't': t,
                 'sign': generate_sign(uid, t),
-                'seid': SEID, 'sport': SPORT, 'ip': IP, 'pid': PID,
+                'seid': SEID,
+                'sport': getattr(self.server, 'game_port', SPORT),
+                'ip': getattr(self.server, 'game_host', IP),
+                'pid': PID,
             }), 'application/json')
         if path.endswith('VerifyCode.php'):
             code = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
@@ -194,11 +197,14 @@ def render_captcha(code):
     return buf.getvalue()
 
 
-def serve(store, sessions, host, port, require_captcha):
+def serve(store, sessions, host, port, require_captcha, game_host=IP,
+          game_port=SPORT):
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.store = store
     httpd.sessions = sessions
     httpd.require_captcha = require_captcha
+    httpd.game_host = game_host
+    httpd.game_port = game_port
     httpd.limiter = FailLimiter()
     log.info('web up: http://%s:%d (captcha %s)',
              host, port, 'on' if require_captcha else 'off')

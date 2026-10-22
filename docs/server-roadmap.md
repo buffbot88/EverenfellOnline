@@ -5,24 +5,26 @@ Oracle: the live Java server + `reference/TonNgoKhong` configs; captures in
 from bytecode, never invent numbers, golden-test everything, update this file
 and the parity audit per phase. No servers start/stop without the user asking.
 
-## Completion tracker (primary denominator: 879 command IDs in docs/command-ledger.md — 886 jar IDs minus 7 non-command error codes; module count secondary)
+## Completion tracker (primary denominator: 861 command IDs in docs/command-ledger.md — 886 jar IDs minus 25 non-command IDs (24 error codes + 82004 broadcast data); module count secondary)
 
-ID track (ledger header: 719 not started, 4 dispatched-only, 9 golden-only, 109 persisted, 6 emitted, 32 push-golden-tested): 122 of 879 routed (13.9%) — 118 routed-with-tests (109 persisted, 9 golden-only), 4 dispatched-only; 38 server-push IDs emitted (32 with a test mention); 719 not started. Module track: 44 of 71 `*Commands` modules touched (~62%). Tables: 29 SQLite vs 176 MySQL (163 unmapped; 13 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track (ledger header: 633 not started, 0 dispatched-only, 11 golden-only, 152 persisted, 0 emitted, 65 push-golden-tested): 163 of 861 routed (18.9%) — 163 routed-with-tests (152 persisted, 11 golden-only), 0 dispatched-only; 65 server-push IDs emitted (65 with a test mention); 633 not started. Module track: 45 of 71 `*Commands` modules touched (~63%). Tables: 31 SQLite vs 176 MySQL (162 unmapped; 14 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
 | 0 harness+ledger | tooling | ledger generated (886 rows), replay world-entry only | — | `persisted`/`client-verified` ledger statuses; generalized replay; recapture (blocked by no-live-runs rule) |
 | 1 core loop (72) | bag 21, equip 13, vip 12, vipqq 3, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 60 persisted (+9 push-golden) | 0 | 0 (closed: vip 62003/62006 push-golden-tested; mall 2000 excluded as a non-command; vipqq 88003/88004 persisted, 88005 push-golden-tested; 1003/1006/430405/794000-794002 excluded as error codes) |
 | 2 scene (210) | stage | 9 persisted, 8 golden-only | 0 | 180 not started (+13 push-golden); scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); inner fly 40101 landed (`tests/test_inner_fly.py`, 6: same-map teleport echoes `[x, y, 0, roleId]` to the surround, other maps change map one-step, bad args silent); 179 open |
-| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 6 persisted (+1 push-golden) | 5 | 101 not started (+2 emitted) + 5 dispatched-only (50001/50002/50003/50005/50008 report, submit pays) |
+| 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 53 persisted (+13 push-golden) | 0 | 32 not started (jiangli 5, shenjiang 5, zuoqi 3, pet 12, xianjiechenhao 7, meiren 0); yingyin slice landed: 58017/58018/58019 persisted (`tests/test_yingyin.py`, 13), 82004 excluded as broadcast-data non-command (meiren family complete); qiandao slice landed: 58012/58013/58014/58015 persisted (`tests/test_qiandao.py`, 23), 58016 a dead inbound route with no handler jar-wide, 592000-592010 excluded as error-code non-commands; chengjiu slice landed: 89000/89005 persisted (`tests/test_chengjiu.py`, 16); shenjiang slice landed: 41001/41002/41003/41004/41021 persisted (`tests/test_shenjiang.py`, 26), 41000 push-golden-tested, 423000/423001/423002/423004/423005/423006 excluded as error-code non-commands |
 | 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | 92 not started |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
 | triage | public_ 183, gamerule 13, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase (vipqq done: 3 routed, 3 error codes excluded) |
 
-Module history (how the 41 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
+Module history (how the 42 touched modules landed): socket framing/login/enter-world/map/settings/currency/scene entry/monsters/mount/attr formulas (15), init burst 12010/62000/32000/35011/64001/64010/108001/111000/19000 (+8), entry buffs (+3), combat loop (+4), monster AI (+4), effect bags (+3), equip 31000 (+1), bag 30000–30302 (+2 families' worth: bag 15, task 6 commands), equip enhance 34000/34003/34009 (+3), equip jinjie 34001 (+1), equip jianding 34004/34005/34006 (+3), equip hecheng 34007/34008 (+2), vip gifts+kaifu 62001/62002/62004/62020/62021/62022 (+6), skill/skillbook 42000/42003/99000/99001/99002 (+5), vip huodong 88000/88001/88002 (+3), setting 13001/13002/13003/13004 (+4), equip dress 31001 (+1), mall buy 32001 (+1), buyback cluster
 32002/32003/32004/32006 (+4), vipqq info/rewards/bind 88003/88004/88005 (+3), prop gift-box selection 30305/30306/30307
 (+3), zuoqi panel/ride/claim 33001/33000/33004 (+3), zuoqi jinjie 33003
-(+1), meiren panel/obtain/upgrade/chanmian 82000/82001/82002/82003 (+4).
+(+1), meiren panel/obtain/upgrade/chanmian 82000/82001/82002/82003 (+4),
+shenjiang activate/skillup/canjihuo/jihuo/jinjie 41001/41002/41003/41004/41021 (+5),
+chengjiu panel/claim 89000/89005 (+2).
 Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)
@@ -135,6 +137,29 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
   (sources unmigrated); heal calculators, DiKang/skill-resist/fixed-harm
   paths, MP costs, level-up thresholds, pet-HP persist, combat 42005
   refresh triggers, entry-12004 int-vs-Float question.
+
+## Pet (136000) evidence log (all from `dntg_start.jar` via `tools/javap.py`)
+
+- Routes: PetModuleInit.getInCmd carries 136000-136009; 136010 is a
+  formation push (sendToClientZhenFaMessage) and 136011 chuZhan is
+  service-internal (called from the stage flow, not ModuleInit).
+- 136000 -> PetAction.getPetInfo (roleId only, no C> data) ->
+  PetServiceImpl.getPetInfo over RolePetDao.cacheLoadAll and
+  RolePetZhenfaDao.cacheLoad: Object[4] = [[petId, lv, rank, lvExp,
+  rankExp]...] (null with no pets), [zhenfaId, upgradeExp, [[pos,
+  petId]...] or null] (null zhenfa_pet blob parses to empty, hence
+  null), petChuzhanId, petUpgradeCount. No formation row is silent
+  (Java would NPE on the miss; live rows always exist, created at
+  role birth). Covered by `tests/test_pet.py` (5 tests: silent
+  miss, live zhenfa-only shape, pets + entries, bad blob, upsert
+  persist); ledger lists 136000 as persisted.
+- Tables: role_pet (by (role_id, petId)) and role_pet_zhenfa (by
+  role_id), both in the `--users` migration scope; live role_pet is
+  empty and every legacy role_pet_zhenfa row is zhenfa '1' with '{}'
+  maps, so 136000 answers [null, ['1', 0, null], null, 0] for every
+  migrated role. Pet configs (chongwubiao.jat etc.) do not ship in
+  the reference config dir, so activate/upgrade/jinjie (136001+)
+  stay unsliced until their gates can be resolved.
 
 ## Taofa (50101-50105) evidence log (in progress)
 
@@ -252,26 +277,47 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
   tests); ledger lists 33006/33011 as persisted.
 - 33008 -> sendZhanli over getZuoQiFight: the cached fight-map total
   (jichu + mount-equip + longhun) computed live as zuoqi_fight +
-  zuoqi_equip_fight over the [-105, -100] rows; longhun stays 0 with no
-  attribute-goods source. Covered by `tests/test_zuoqi.py` (2 new
-  tests, incl. a mount-gear row proving the equip half); ledger lists
-  33008 as persisted.
+  zuoqi_equip_fight over the [-105, -100] rows + zuoqi_longhun_fight
+  over the role's attribute-goods map. getlongLingOrLongHun port:
+  null/empty map or missing (rank, clamped level) row is 0; skill-33
+  goods add their ConfigAttributeParser.attribute2Map(row, 'zuoqi')
+  bag (zuoqi-prefixed cells, velocity forced to 0.0) once per pill via
+  addMapValue; skill-35 goods add the level bag scaled by sxbfb times
+  count via multipleAttribute (skipped when the factor is 0); unknown
+  goods add nothing; the merge runs through getFight. Covered by
+  `tests/test_zuoqi_longhun.py` (880 = 2x longhun pills at rank 7/56,
+  226 = 1x longling at rank 8/56, empty-map 0) plus the 12010 slot[3]
+  and 12102 count goldens below; ledger lists 33008 as persisted.
+- 33010/33012 -> useLongHun/useLongLing through the 30301 prop flow
+  (skill 33 LongHun / 35 LongLing; consumePrior null so the pipeline
+  never decrs): zuoqiLv > rank or a missing (rank, clamped level) row
+  answers [0, 520004], checkAttDan/checkAttLuckyDan answer [0, 520011]
+  once the goods id fills the row's xlimit/perxlimit cap (absent ids
+  always pass), the guid row decrs once inside, and the bumped
+  attribute_goods_id {goods: n} count pushes as '33010'/'33012' ahead
+  of the 30301 [1, guid] terminal. ZuoQiModuleInit routes neither id,
+  so both stay push-only (no dispatch). Covered by
+  `tests/test_zuoqi_longhun.py` (7 tests: both pills' push+persist,
+  rank gates incl. rank 0, both caps, no double-consume); ledger lists
+  both as push-golden-tested. The save_role_zuoqi binding bug (13
+  placeholders, 12 values) is fixed and _zuoqi_save now persists
+  attribute_goods_id.
 - Known gaps: shipped upgradeJb is 0 at every rank so the YXB gate never
   fires; lucky-pill time shaves need the GoodsConfig.luckyChance column
   mapping (no local row can carry lucky pills); zhufu-card odds/baoji
   props are unported (0.0); fail level-ups ride the plain exp persist;
-  GetZuoQiEvent/ZuoqiUpgradeFanhuanEvent/MeiRenLingQuEvent publish ride
-  no bus. 33010 longhun / 33012 longling are service-internal by
-  design: ZuoQiModuleInit.getInCmd routes 11 ids (33000/33008/S:33008/
-  33006/33005/33004/33003/33001/12102/33007/33011) with no 33010/33012,
-  and useLongHun/useLongLing are called only from the prop-use flow
-  (PropServiceImpl inner types), which is unported -- so the '33010'
-  frame is never emitted and attribute_goods_id stays NULL. Decoded
-  for the prop milestone: guid lookup ([0, 1008] GOODS_INEXISTENCE),
-  GoodsConfig.zuoqiLv > rank or missing level row ([0, 520004]),
-  checkAttDan at maxAttributeGoodsCount ([0, 520011]), decr by guid,
-  then the {goodsId: count} map is pushed as '33010'. No live client
-  capture confirms any zuoqi shape.
+  GetZuoQiEvent/ZuoqiUpgradeFanhuanEvent/MeiRenLingQuEvent/UsePropLongHun
+  publish ride no bus. 12102 slots [4]/[5] now report
+  PropUtil.getLonglingLonghunCount ([skill-35, skill-33] totals, [0,0]
+  on a missing map); slots [2]/[3]/[6]/[7] stay null/null/0/null.
+  The 12000 mount bag runs the replaceZuoqiAttribute goods loop
+  (zuoqi_effect_attribute_map): the refined level bag, plus each
+  skill-33 pill's zuoqi bag once per pill and each positive-sxbfb
+  skill-35 pill's refined level bag scaled by sxbfb once per pill
+  (a count loop, unlike the fight half's single per*count pass).
+  Covered by `tests/test_zuoqi_longhun.py` (rank-7 + 2 longhun pills,
+  rank-8 + 1 longling at 1.02x, plain level bag without pills). No
+  live client capture confirms any zuoqi shape.
 
 ## Meiren (82000-82003) evidence log (all from `dntg_start.jar` via `tools/javap.py`)
 
@@ -1060,6 +1106,104 @@ without the guild mall). Vipqq is done (88003 info with the 0/1/2 flag from migr
 - Goldens: `tests/test_dazuo.py` (gain table, solo, fight refusal, cross-session
   pair, refusal, offline target, exit, timer, timer stop). Server-v1 581/581,
   tools 39/39.
+
+## Shenjiang (41001/41002/41003/41004/41021) evidence log (all from `dntg_start.jar` via `tools/javap.py`)
+
+- `ShenjiangModuleInit.getInCmd` routes exactly 41001/41002/41003/41004/41021
+  (+41000 info, already ported); 41005 is service-internal (expShare),
+  41010/41011 are stage-side transformation pushes, 41022 needs the wuhun
+  goods mapping (no local source), 41024 needs the slot subsystem.
+  423000/423001/423002/423004/423005/423006 are `ShenjiangErrorCodeOutput`
+  payloads with no inbound route: excluded as non-commands in
+  `NON_COMMAND_IDS`. `ShenjiangErrorCode` ints and `JiangliErrorCodeOutput`
+  423000-series strings ride the `[0, code]` arm.
+- 41001 `suiPianHeCheng`: unknown id or owned id stays silent; short
+  `partquatity` fragments answer `[0, 420011]`, short zhenqi `[0, 1001]`.
+  Costs burn, a zeroed row (`jiangxing_rank` 0, `{}` skills) is inserted,
+  reply `[1, id]`. Real row: sj0101 tier0 wants 10000 zhenqi.
+- 41002 `skillUpgrade`: no owned row or no (id, rank) tier stays silent;
+  `level + 1 > maxlv` or level >= 100 answers `[0, 420010]`; the skill
+  missing from the owned JSON stays silent. `checkSkillUpgrade` gates:
+  no `JiNengBiao` row `[0, 420001]`, role level `[0, 1000]`, zhenqi
+  `[0, 1001]`, exp `[0, 1014]`, YXB `[0, 1003]`, fragments `[0, 1005]`
+  (the shenjiang id/rank lookups have no local source, so the 420012 arm
+  stays silent like a null `getShengjiangId`). Costs burn, `learnodds`
+  rolls, reply `[1, id, skill, newLevel]` or `[0, id, skill, level]`; the
+  `additionSjid` chain has no local source, so it is logged, not followed.
+  Real row: niumowang1 L1 (levelneed 1, zhenqineed 100, goldneed 1000,
+  learnodds 1). The owned-skills JSON and `role_skill` both advance.
+- 41003 `canJihuoJiangxingtu`: unknown chart or no owned row stays silent.
+  `checkCanJihuoJiangxingtu` gates: unmet `jinengneed` `[0, 420013]`,
+  already-lit chart `[0, '423000']`, short role level `[0, 1000]`, short
+  zhenqi `[0, 1001]`, broken `abovedw` chain `[0, '423001']`, short rank
+  `[0, '423006']`, short money `[0, '423002']` (`MoneyType` intType:
+  YXB = 1, YB = 2, BIND_YB = 3). Passing burns zhenqi + money, arms
+  `cur_jiangxing_id` with state 1, and answers
+  `[1, maxTimes, moneyType, costValue, dwid]`. Real row: dj0101
+  (needlv 30, costzhenqi 2000, costtype 1 x 1000, needmaxtime 1).
+- 41004 `jihuoJiangxingtu`: C> shenjiang id; the chart is the armed
+  `curJiangxingId`, boolean hardcoded false. No owned row, no armed
+  chart, or an unmet skill requirement stays silent. `computeIsSuccess`:
+  pity window `max(0, minTimes - kaifuDays/kaifuJianmian)` (the row's
+  `jolt` stands in for kaifuJianmian); below the window always fails, at
+  maxTimes always succeeds, otherwise a float roll against successOdds.
+  Failure banks `fail_count + 1`, grants failAddExp, answers `[0, exp]`;
+  success sets the chart id, learns success/prize skills, grants
+  successAddExp, answers `[1, dwid, attrMap, skillIds, exp]`. Notices
+  have no bus here. Real row: dj0101 (successodds 1, failaddexp 8000,
+  successaddexp 24000, successskillid df_sf, hitpoints 64).
+- 41021 `jiangxingtuJinjie`: C> [shenjiang id, auto-mall boolean]. No
+  owned row stays silent; a tier that forbids breakthrough answers
+  `[0, '423005']`, an unlit chart `[0, '423004']`, short YXB coin
+  `[0, 1003]`, short goods `[0, 1005]` (auto-mall YB cover has no local
+  price source, so it fails closed with the same goods error). Costs
+  burn; a full blessing bar or a won odds roll ranks up
+  (`[1, id, newRank]`, fail count and blessing cleared), else blessing
+  grows and the reply is `[-1, id, lucky]` (pity overflow also ranks up,
+  like the `jinjieFail` tail).  Real rows: sj0101 tier1 (jinjie 1, coin 20000, `jinjiedan002:1`,
+  odds 0.5, blessing 2-4 to cap 40); top tier (empty `jinjie`) is the
+  rank cap.
+- Config: `sys_config/ShenJiangBiao.jat` grouped by id (one row per
+  breakthrough tier in file order; rank indexes the list, out-of-range
+  falls back to tier0 like the zuoqi first-row rule) and
+  `sys_config/JiangXingTu.jat` keyed by dwid (`abovedw` chains charts).
+  Store: `role_shenjiang` gains `jiangxing_state`, `cur_jiangxing_id`,
+  `fail_count`, `rank_fail_count`, `rank_lucky` (`save_role_shenjiang`
+  upserts; migrator copies the scoped rows). 26 goldens in
+  `tests/test_shenjiang.py` (wire ids, gates, goldens, persist readback
+  via `store.get_role_shenjiang`/`get_role_skills`/`list_roles`).
+  Server-v1 shenjiang/protocol/config/skill 310 green; tools 133 green.
+  Ledger: 41001/41002/41003/41004/41021 persisted.
+- Config: `sys_config/chengjiuzhuizong.jat` keyed by id (one kaiqi pair,
+  jiangli via the task itemOrder parser, five tiaojian pairs; type 1 names
+  a main quest, type 2 a role level). Store: `role_chengjiu` upserts
+  (role, achievement) STATUS_1 rows. Claim gates mirror isTaskKaiqi /
+  isTaskTiaoJian (isTaskfinsh = current quest in state 1, or lexicographically
+  past it); rewards pass the task-reward job filter, the bag check answers
+  [0, 1006], and success replies [1, id, [0, 0, formart2 records]] built
+  from the granted bag rows. 16 goldens in `tests/test_chengjiu.py`
+  (real cjzz01-cjzz07 rows, persist readback via `store.get_role_chengjiu`).
+  Ledger: 89000/89005 persisted.
+- Config: `sys_config/jianglipeizhi.jat` grouped by stye (1 total-count
+  rewards, 2 meiren tiers, 3 vip weekend; reward cells are
+  goodsId:count:bind). Store: no new table (`role_qiandao` already held
+  every column; `save_role_qiandao` is now wired into the live session
+  alongside the read path). Sign-in marks comma day lists (setIds) and
+  bumps the lifetime total; buqian is vip-gated ([0, 1010] below vip 1)
+  and future days stay silent; reward claims check the bag ([0, 1006]);
+  meiren claims grant via addMeiRen (82001 push when it inserts) and
+  always answer [1, id] on pass. 23 goldens in `tests/test_qiandao.py`
+  (real z100-z106/z111+ rows, persist readback via
+  `store.get_role_qiandao`).  Ledger: 58012/58013/58014/58015 persisted.
+- Config: `sys_config/baiduyingyin.jat` number-1 row (loadByYingyin;
+  goods/day cells are goodsId:count:bind, time is the kaifu-day window).
+  Store: `role_jiangli_list` holds the download/daily flags plus the day
+  stamp (loginYingYin creates the row and resets only the daily flag).
+  Both claims gate repeat [0, '592013'], past-window [0, '592014'], and
+  bag [0, 1006]; download replies [1], daily replies [1, [[id, count]]].
+  State answers [download, daily]. 13 goldens in `tests/test_yingyin.py`
+  (persist readback via `store.get_role_jiangli_list`).
+  Ledger: 58017/58018/58019 persisted.
 
 ## Conventions
 

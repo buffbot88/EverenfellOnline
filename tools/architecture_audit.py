@@ -38,6 +38,7 @@ MYSQL_TO_SQLITE = {
     'role_zuoqi': 'role_zuoqi',
     'role_skill': 'role_skill',
     'role_shenjiang': 'role_shenjiang',
+    'role_chengjiu': 'role_chengjiu',
 }
 
 
@@ -56,9 +57,26 @@ def family_of(classes):
 # 2000 is MallServiceImpl.getGoodsCountPrice; 1003/1006 are GeneralErrorCode
 # JB/NOSLOT (protocol.py GENERAL_JB/GENERAL_NOSLOT); 430405 is the 32002
 # unknown-goods error payload; 794000/794001/794002 are VipQqErrorCode
-# NOTIN_LIST/LINGQU_AGAIN/NOT_CONFIG. 88005 stays: vipQqOK pushes it.
+# NOTIN_LIST/LINGQU_AGAIN/NOT_CONFIG; 423000/423001/423002/423004/423005/
+# 423006 are ShenjiangErrorCodeOutput payloads (no ModuleInit route).
+# 592000-592010 are JiangliErrorCodeOutput payloads (no ModuleInit route;
+# 592011/592012 stay: getWeiDanReward returns them as live 10061 arms
+# (592013/592014 go: xiazaiReward/dayReward error payloads, no route).
+# 82004 stays out: MeirenCommands declares it but only getMeiRen stamps it
+# into the 82001/11101 broadcast data; MeirenModuleInit routes 82000-82003.
+# 88005 stays: vipQqOK pushes it.
 NON_COMMAND_IDS = frozenset({'2000', '1003', '1006', '430405',
-                              '794000', '794001', '794002'})
+                              '794000', '794001', '794002',
+                              '423000', '423001', '423002',
+                              '423004', '423005', '423006',
+                              '592000', '592001', '592002',
+                              '592003', '592004', '592005',
+                              '592006', '592007', '592008',
+                              '592009', '592010',
+                              '592013', '592014',
+                              '82004',
+                              '520007',
+                              '423010', '423011'})
 
 
 def load_java():

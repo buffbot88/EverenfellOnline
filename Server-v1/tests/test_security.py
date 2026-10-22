@@ -1,5 +1,7 @@
 """Security regressions: game sign freshness/secret, cookie flags, login rate limit, role ownership."""
 import hashlib
+import http.cookiejar
+import json
 import os
 import shutil
 import struct
@@ -142,6 +144,48 @@ class TestLoginRateLimitHTTP(unittest.TestCase):
         status, cookie, _ = self.post(Action='Login', uName='hero', uPas='pw-correct')
         self.assertEqual(status, 429)
         self.assertEqual(cookie, '')
+
+
+class TestGamesessionEndpoint(unittest.TestCase):
+    def setUp(self):
+        self.cleanups = []
+        self.addCleanup(lambda: [fn(*a, **k) for fn, a, k in reversed(self.cleanups)])
+        store = temp_store(self.cleanups)
+        store.create_account('hero', hash_password('pw-correct'))
+        httpd = ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
+        httpd.store = store
+        httpd.sessions = Sessions(store)
+        httpd.require_captcha = False
+        httpd.limiter = web.FailLimiter(limit=100, window=300)
+        httpd.game_host = '127.0.0.1'
+        httpd.game_port = 8028
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        self.cleanups.append((httpd.server_close, (), {}))
+        self.cleanups.append((httpd.shutdown, (), {}))  # runs first (reverse order)
+        self.base = f'http://127.0.0.1:{httpd.server_address[1]}'
+
+    def gamesession(self, user, password):
+        jar = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(jar))
+        data = urllib.parse.urlencode(
+            {'Action': 'Login', 'uName': user, 'uPas': password}).encode()
+        req = urllib.request.Request(
+            self.base + '/AjaxRequest/AccountHandler.php',
+            data=data, method='POST')
+        with opener.open(req, timeout=10) as r:
+            r.read()
+        with opener.open(self.base + '/gamesession.php',
+                         timeout=10) as r:
+            return json.load(r)
+
+    def test_gamesession_reports_the_bound_game_port(self):
+        sess = self.gamesession('hero', 'pw-correct')
+        self.assertTrue(sess['ok'])
+        self.assertEqual(sess['sport'], 8028)
+        self.assertEqual(sess['ip'], '127.0.0.1')
+        self.assertTrue(check_sign(sess['uid'], sess['t'], sess['sign']))
 
 
 class TestCrossOrigin(unittest.TestCase):

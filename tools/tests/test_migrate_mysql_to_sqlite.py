@@ -77,11 +77,12 @@ class ScopeTest(unittest.TestCase):
                                   'role_equip_slot': 1,
                                   'role_attribute_buff': 1, 'role_vip': 1,
                                   'role_xianjiechenhao': 1, 'role_meiren': 1,
-                                  'role_zuoqi': 1, 'role_skill': 1,
+                                  'role_zuoqi': 1, 'role_pet': 1,
+                                  'role_pet_zhenfa': 1, 'role_skill': 1,
                                   'role_shenjiang': 1, 'role_bag_slot': 1,
                                   'role_bag_buyback': 1,
                                   'role_bag_dummy': 1,
-                                  'role_prop': 1,
+                                  'role_prop': 1, 'role_qiandao': 1,
                                   'role_skillbook_slot': 1,
                                   'role_bag_state': 1,
                                   'role_qq_list': 1, 'vip_qq': 1,
@@ -139,6 +140,10 @@ class FakeDataMySql:
             return []
         if 'from role_zuoqi' in sql:
             return [['7', '1', '1']]
+        if 'from role_pet_zhenfa' in sql:
+            return [['7', '1', None, '0', '{}', '0']]
+        if 'from role_pet' in sql:
+            return []
         if 'from role_shenjiang' in sql:
             return [['1', '7', 'sj0101', '', '1', '{"xiaolongnv": 2}']]
         if 'from role_skillbook_slot' in sql:
@@ -158,6 +163,9 @@ class FakeDataMySql:
         if 'from role_prop' in sql:
             return [['7', 'teshu_fire', '1394468076000', None, None,
                      None, '3']]
+        if 'from role_qiandao' in sql:
+            return [['7', '1', '10', '', '', '', '43', '0',
+                     '1394468593406', '1792360479694']]
         if 'from task_main' in sql:
             # id, user_role_id, current_task_id, current_state,
             # current_condition, current_recevie_time, create_time.
@@ -217,6 +225,15 @@ class MigrateCharactersTest(unittest.TestCase):
         zuoqi = conn.execute('SELECT * FROM role_zuoqi').fetchone()
         self.assertEqual(zuoqi['zuoqi_rank'], 1)
         self.assertEqual(zuoqi['zuoqi_cur_rank'], 1)
+        pets = conn.execute('SELECT * FROM role_pet').fetchall()
+        self.assertEqual(pets, [])   # no pet rows for this role
+        self.assertEqual(report['pets_written'], 0)
+        zhenfa = conn.execute('SELECT * FROM role_pet_zhenfa').fetchone()
+        self.assertEqual(zhenfa['zhenfa_id'], '1')
+        self.assertEqual(zhenfa['upgrade_exp'], 0)
+        self.assertEqual(zhenfa['zhenfa_pet'], '{}')
+        self.assertEqual(zhenfa['pet_upgrade_count'], 0)
+        self.assertEqual(report['pet_zhenfa_written'], 1)
         shenjiang = conn.execute('SELECT * FROM role_shenjiang').fetchone()
         self.assertEqual(shenjiang['shenjiang_id'], 'sj0101')
         self.assertEqual(shenjiang['skills'], '{"xiaolongnv": 2}')
@@ -243,6 +260,13 @@ class MigrateCharactersTest(unittest.TestCase):
         self.assertEqual(prop['use_count'], 3)
         self.assertEqual(prop['use_start_time'], 1394468076000)
         self.assertEqual(report['role_prop_written'], 1)
+        qiandao = conn.execute('SELECT * FROM role_qiandao').fetchone()
+        self.assertEqual(qiandao['total_qiandao_count'], 1)
+        self.assertEqual(qiandao['month'], 10)
+        self.assertEqual(qiandao['month_qiandao'], '')
+        self.assertEqual(qiandao['week'], 43)
+        self.assertEqual(qiandao['qiandao_time'], 1394468593406)
+        self.assertEqual(report['role_qiandao_written'], 1)
         self.assertEqual(report['bag_state_written'], 1)
         book = conn.execute('SELECT * FROM role_skillbook_slot').fetchone()
         self.assertEqual(book['slot_num'], 10001)

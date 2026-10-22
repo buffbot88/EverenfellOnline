@@ -74,7 +74,17 @@ class LedgerTest(unittest.TestCase):
     def test_non_command_ids_are_excluded_from_the_jar_scan(self):
         self.assertEqual(aa.NON_COMMAND_IDS,
                          frozenset({'2000', '1003', '1006', '430405',
-                                    '794000', '794001', '794002'}))
+                                    '794000', '794001', '794002',
+                                    '423000', '423001', '423002',
+                                    '423004', '423005', '423006',
+                                    '592000', '592001', '592002',
+                                    '592003', '592004', '592005',
+                                    '592006', '592007', '592008',
+                                    '592009', '592010',
+                                    '592013', '592014',
+                                    '82004',
+                                    '520007',
+                                    '423010', '423011'}))
         commands, _ = aa.load_java()
         for cmd in aa.NON_COMMAND_IDS:
             self.assertNotIn(cmd, commands)
@@ -95,6 +105,7 @@ class SqliteSchemaTest(unittest.TestCase):
         self.assertIn('characters', tables)
         self.assertIn('role_stage', tables)
         self.assertIn('role_shenjiang', tables)
+        self.assertIn('role_chengjiu', tables)
 
 
 if __name__ == '__main__':

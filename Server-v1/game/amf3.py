@@ -37,6 +37,20 @@ class Obj(dict):
     """
 
 
+class SealedObj(Obj):
+    """Dict encoding as an AMF3 sealed-traits object (0x0A), like BlazeDS beans.
+
+    Carries a class name plus an ordered sealed member list; values come
+    from the dict in member order with no dynamic tail, and repeats use
+    traits references. The Java server sends these (ZoneInfo, mall rows).
+    """
+
+    def __init__(self, values, cname='', members=()):
+        super().__init__(values)
+        self.cname = cname
+        self.members = list(members)
+
+
 class Reader:
     def __init__(self, data: bytes):
         self.d = data
@@ -247,6 +261,7 @@ class Writer:
     def __init__(self):
         self.b = bytearray()
         self.strings = []
+        self.traits = []
 
     def u29(self, v):
         v &= 0x1FFFFFFF
@@ -302,6 +317,21 @@ class Writer:
             self.u29(1)  # empty assoc terminator
             for it in items:
                 self.write(it)
+        elif isinstance(v, SealedObj):
+            self.b.append(0x0A)
+            key = (v.cname, tuple(v.members))
+            if key in self.traits:
+                self.u29((self.traits.index(key) << 2) | 0x01)
+            else:
+                self.traits.append(key)
+                # traits word: (sealedCount << 4) | 0x03 (dynamic bit clear).
+                self.u29((len(v.members) << 4) | 0x03)
+                self.string(v.cname)
+                for k in v.members:
+                    self.string(str(k))
+            # Sealed values always travel inline; only the traits are shared.
+            for k in v.members:
+                self.write(v[k])
         elif isinstance(v, Obj):
             self.b.append(0x0A)
             # traits word: (sealedMemberCount << 4) | dynamic(0x08) | 0x03.

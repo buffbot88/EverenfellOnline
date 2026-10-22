@@ -125,10 +125,7 @@ class MonsterDeathLifecycleTest(unittest.TestCase):
         self.assertEqual(respawn_tick, 7)
 
     def test_respawn_gets_fresh_id_and_full_hp(self):
-        # Live code seeds the per-map counter from the snapshot the first time a
-        # snapshot monster is seen; this fixture registers the monster by hand, so
-        # seed the same value here (the snapshot count for map 7).
-        self.sess._respawn_next['7'] = len(self.cfg.monster_snapshot('7'))
+        # No snapshot is requested first: respawn ids must still avoid snapshot ids.
         self.sess._monster_hp[MONSTER_ID] = 50.0
         self.swing()
         for _ in range(3 + 5):

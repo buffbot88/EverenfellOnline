@@ -4514,20 +4514,25 @@ class GameConfig:
         """
         templates = self.monster_templates()
         records = []
+        spawn_no = 0
         for group in self.monsters(map_id):
             tpl = templates.get(str(group.get('id')))
             if tpl is None:
                 log.warning('map %s: spawn group %r has no template; skipped',
                             map_id, group.get('id'))
-                continue
-            hp = tpl.get('hitpoints')
-            mp = tpl.get('mana')
-            speed = tpl.get('velocity')
+            hp = tpl.get('hitpoints') if tpl is not None else None
+            mp = tpl.get('mana') if tpl is not None else None
+            speed = tpl.get('velocity') if tpl is not None else None
             for px, py, _dir in group.get('createPoints') or []:
+                # The id is the spawn point's index in the whole map list, so a
+                # viewer's AOI filter never renumbers another viewer's monsters.
+                n = spawn_no
+                spawn_no += 1
+                if tpl is None:
+                    continue
                 if x is not None and y is not None and not _in_aoi(
                         x, y, px, py, x_range, y_range):
                     continue
-                n = len(records)
                 # Layout copied from a captured 23002 record (output/orig-stack/tap-decoded.txt).
                 # Verified: 0-4 (id, template, name, level, hp), 11-12 (x, y against spawn points).
                 # Assumed: 5-9 (maxhp, mp, maxmp, speed = template velocity). Constants at
@@ -4536,6 +4541,13 @@ class GameConfig:
                                 tpl.get('level'), hp, hp, mp, mp, speed, speed,
                                 0, px, py, 0, None, False, None, 0])
         return records
+
+    def monster_spawn_count(self, map_id):
+        """Number of spawn points on a map, including groups with no template.
+
+        Snapshot ids use indices 0..count-1, so respawned ids start at this value.
+        """
+        return sum(len(g.get('createPoints') or []) for g in self.monsters(map_id))
 
     def npc_table(self):
         """NpcLieBiao.jat rows (id, map, x, y, ...); empty when absent."""

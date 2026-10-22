@@ -2148,12 +2148,11 @@ class Session:
             return {'kind': 'monster', 'id': fid, 'template': reg['template']}
         parts = fid.split('_')
         if len(parts) == 3 and parts[0] == 'm' and self.config is not None:
-            try:
-                records = self.config.monster_snapshot(parts[1])
-                rec = records[int(parts[2])]
-            except (ValueError, IndexError):
-                rec = None
-            if rec is not None and rec[0] == fid:
+            # Match by id: the snapshot list is AOI-filtered, so list position is not
+            # the spawn index. Unfiltered records give the stable spawn identity.
+            rec = next((r for r in self.config.monster_snapshot(parts[1])
+                        if r[0] == fid), None)
+            if rec is not None:
                 tpl = self.config.monster_template(rec[1])
                 if tpl is not None:
                     hp = self._monster_hp.setdefault(
@@ -2161,8 +2160,6 @@ class Session:
                     self._monster_reg.setdefault(fid, {
                         'template': tpl, 'map': parts[1],
                         'born': [rec[11], rec[12]], 'pos': [rec[11], rec[12]]})
-                    self._respawn_next.setdefault(
-                        parts[1], len(records))
                     return {'kind': 'monster', 'id': fid, 'template': tpl,
                             'record': rec, 'hp': hp}
         return None
@@ -2638,7 +2635,13 @@ class Session:
                 log.info('conn %d: respawn template %r gone (skipped)',
                          self.conn_id, tpl_id)
                 continue
-            n = self._respawn_next.get(str(map_id), 0)
+            # Snapshot ids occupy 0..spawn_count-1 on this map, so respawns start
+            # above them without needing a snapshot to have been sent first.
+            base = (self.config.monster_spawn_count(str(map_id))
+                    if self.config is not None else 0)
+            n = max(self._respawn_next.get(str(map_id), 0), base)
+            while ('m_%s_%d' % (map_id, n)) in self._monster_reg:
+                n += 1
             self._respawn_next[str(map_id)] = n + 1
             nid = 'm_%s_%d' % (map_id, n)
             self._monster_reg[nid] = {'template': tpl, 'map': str(map_id),

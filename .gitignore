@@ -2,14 +2,14 @@
 # Everything below is local-only and never committed.
 
 # Legacy distribution, client, tooling, internal docs (private history).
-/reference/
-/MKO_Client/
-/tools/
-/docs/
-/output/
-/brain/
-/skills/
-/bin/
+/reference/*
+/MKO_Client/*
+/tools/*
+/docs/*
+/output/*
+/brain/*
+/skills/*
+/bin/*
 *.jar
 *.dll
 *.exe
@@ -28,7 +28,7 @@
 *.pid
 
 # Python bytecode.
-__pycache__/
+__pycache__/*
 *.pyc
 
 # Local dev credentials (never commit).
@@ -39,9 +39,9 @@ MKO_Client/config.json
 /oracle-diff-report.txt
 
 # Local agent metadata.
-.freebuff/
+.freebuff/*
 .aider*
-/state/
+/state/*
 err.txt
 oracle-diff-report.txt
 BRAIN.md
@@ -52,6 +52,5 @@ agents.json
 knowledge.md
 brain-install.js
 package.json
-/reference
 *.MYI
 *.MYD

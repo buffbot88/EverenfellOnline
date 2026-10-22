@@ -52,8 +52,16 @@ def _consume_value(skill):
         return f32(0.0)
 
 
+def _rule_type(consume_type):
+    """ConsumeCalRuleFactory: a type with no registered rule falls back to EMPTY."""
+    if consume_type in (CONSUME_TYPE_MP, CONSUME_TYPE_MP_PERCENT, CONSUME_TYPE_TILI):
+        return consume_type
+    return CONSUME_TYPE_EMPTY
+
+
 def is_satisfied(consume_type, fighter, skill):
     """ISkillConsume.isSatify for the given consume type."""
+    consume_type = _rule_type(consume_type)
     value = _consume_value(skill)
     if consume_type == CONSUME_TYPE_MP:
         return f32(fighter['cur_mp']) >= value
@@ -92,6 +100,7 @@ def consume(consume_type, fighter, skill, on_attribute_change=None):
     Returns True when a resource changed. Insufficient resources are rejected
     by the caller via is_satisfied(); this function does not re-check them.
     """
+    consume_type = _rule_type(consume_type)
     value = _consume_value(skill)
     if consume_type == CONSUME_TYPE_MP:
         return special_effect_mp(fighter, 0.0, value, on_attribute_change) is not None

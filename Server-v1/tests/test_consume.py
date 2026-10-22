@@ -134,6 +134,15 @@ class TestTiLiDeduction(unittest.TestCase):
         self.assertEqual(f['tili'], 0)
 
 
+class TestUnknownConsumeType(unittest.TestCase):
+    def test_unregistered_type_uses_empty_rule(self):
+        # ConsumeCalRuleFactory.getConsumeCalRule: a null lookup returns the type-0 rule.
+        f = fighter(cur_mp=0, tili=0)
+        self.assertTrue(is_satisfied(3, f, skill(999)))
+        self.assertFalse(consume(3, f, skill(999)))
+        self.assertEqual(f, fighter(cur_mp=0, tili=0))
+
+
 class TestNumericEdgeCases(unittest.TestCase):
     def test_java_f2i_nan_and_saturation(self):
         from game.consume import java_f2i

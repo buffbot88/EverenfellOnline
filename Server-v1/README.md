@@ -18,6 +18,17 @@ python server.py [--db data/mko.db] [--game 127.0.0.1:8008]
 | `--debug` | off | DEBUG-level logging |
 | `--add-char ACCOUNT:NAME` | — | create a character, then exit |
 | `--server-id` | `fu1304` | server id characters are scoped to |
+| `--config-dir` | `../reference/.../config/game` | legacy game config tables (see below) |
+
+### Config data
+
+Game data tables (maps, monsters, goods, skills: `*.jat`/`*.mm`) ship with
+the original game distribution and are **not** included here. Point
+`--config-dir` at your own copy's `server/config/game` tree to enable
+them. Without it the server still boots — every table load is guarded and
+logs what is missing — but config-driven commands stay silent or empty
+(no maps, no goods, no skill data). Nothing phones home; the server only
+reads local files.
 
 ### Characters
 
@@ -45,8 +56,8 @@ so restarting the server does not invalidate browser logins.
 
 ## Game socket (port 8008)
 
-Faithful to the bytecode recovered from `dntg_start.jar` (see
-`docs/protocol.md` for evidence):
+Faithful to the bytecode recovered from the legacy `dntg_start.jar`
+(every reply shape and error code is golden-tested in `tests/`):
 
 1. client → `u32be(9) + AMF3 "INITKEY"`
 2. server → `u32be(36) + <uuid key>` (plaintext; the client's cipher needs it)
@@ -59,11 +70,15 @@ Served commands: `10001` login (sign check + role list), `10002` createRole
 `CreateRoleOutput`), enter-world `10003`, map change `20000`, role settings
 `13000`, scene entry `21000` with `23002` monster snapshot and `23009` mount
 pet, plus the world-entry stat pushes (`12004`/`12005`/`12050`/`12000`) and
-SQLite-backed `32010`/`12011`. The login result's TimeZone slot is an AMF3
-object carrying `rawOffset`, as `ServerInfoVO.decode()` requires. Each role
-is a positional `Object[8]` per `GetRoleOutput.roleInfo` (see
-`docs/protocol.md`); full parity status lives in
-`docs/java-python-parity-audit.md`.
+SQLite-backed `32010`/`12011`. Progression families: bag/equip/vip/mall/
+skill + buyback, zuoqi ranks and longhun pills, meiren companions, shenjiang
+star charts, baoshi gems, chengjiu achievements, qiandao sign-in, yingyin
+mount skins, email inbox with item/JB/YB claims, pet panel, quest tails
+(task/richang/juqing/zuwu), teleport/inner-fly/revive, chat and scheduler
+ticks. The login result's TimeZone slot is an AMF3 object carrying
+`rawOffset`, as `ServerInfoVO.decode()` requires. Each role is a positional
+`Object[8]` per `GetRoleOutput.roleInfo`. v1.4 routes 164 command IDs with
+tests (153 persisted to SQLite) plus 71 server-push IDs.
 
 ## Layout
 
@@ -72,4 +87,4 @@ is a positional `Object[8]` per `GetRoleOutput.roleInfo` (see
 - `game/amf3.py` — AMF3 codec (incl. anonymous objects)
 - `game/cipher.py` — `SimpleEncrypt`
 - `auth.py` / `db.py` / `web.py` — sign, SQLite store, account API
-- `tests/` — `python3 -m unittest discover -s tests` (837 tests)
+- `tests/` — `python3 -m unittest discover -s tests` (1083 tests, all passing; oracle-dependent cases skip when the legacy config tree is absent)

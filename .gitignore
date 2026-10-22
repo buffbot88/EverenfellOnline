@@ -1,62 +1,54 @@
-# ── Curated repo: text, configs, web code and the new client are versioned.
-# ── Legacy runtime binaries, database data, logs and bulk assets are not.
-# ── (See knowledge.md for what lives where.)
+# ── Public repo: only the Python server (Server-v1/) ships. ──
+# Everything below is local-only and never committed.
 
-# ── Java runtime / game server binaries ──
+# Legacy distribution, client, tooling, internal docs (private history).
+/reference/
+/MKO_Client/
+/tools/
+/docs/
+/output/
+/brain/
+/skills/
+/bin/
 *.jar
 *.dll
 *.exe
-
-MKO_Client/Assets/
-
-# ── Binary game data tables (not hand-editable; see knowledge.md) ──
 *.dat
 *.jat
 *.mm
-*.db
 *.psd
 *.ttc
 
-
+# Runtime state: SQLite databases, logs, pid files, captures.
+/Server-v1/data/
+/Server-v1/*.log
+*.db
 *.log
 *.err
+*.pid
 
-# ── OS / editor noise ──
-Thumbs.db
-Desktop.ini
-.DS_Store
-*.lnk
-.vscode/
-.idea/
-
-# ── New web client build output + deps ──
-client/node_modules/
-client/dist/
-tools/bridge/node_modules/
-# Ruffle selfhosted runtime (~30MB) staged from npm by sync:ruffle
-client/public/ruffle/
-
-# ── Python server bytecode (the SQLite db is covered by *.db above) ──
+# Python bytecode.
 __pycache__/
 *.pyc
 
-# ── Local dev credentials (never commit) ──
+# Local dev credentials (never commit).
+Server-v1/config.json
 MKO_Client/config.json
 
-# ── CI artifacts ──
+# CI artifacts.
 /oracle-diff-report.txt
 
-# ── Local agent metadata ──
+# Local agent metadata.
 .freebuff/
 .aider*
-/output/*
-/reference/*
-/brain
+/state/
+err.txt
+oracle-diff-report.txt
 BRAIN.md
 CLAUDE.md
-brain-install.js
-bin/brain.mjs
 AGENTS.md
-/bin
-/reference
-/skills
+VOWS.md
+agents.json
+knowledge.md
+brain-install.js
+package.json

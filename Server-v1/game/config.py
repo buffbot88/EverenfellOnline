@@ -4517,6 +4517,43 @@ class GameConfig:
                 cells.add((int(x), int(y)))
         return cells
 
+    def surround_valid_point_for_goods(self, map_id, x, y, occupied=()):
+        """Java's AoiStage.getSurroundValidPoint(point, true, GOODS).
+
+        The true flag returns the start tile itself when it is walkable and not
+        taken; otherwise the first walkable, untaken surround in A_EXTEND_OFFS
+        order wins. A start tile with no PathNode (unwalkable/missing map)
+        returns None, and Java's goodsEnterStage then skips the item. When every
+        surround is taken Java random-walks until free; without a scene
+        simulation this returns the original point, the same fallback Java's
+        wrapper uses when the search fails. `occupied` holds GOODS-taken tiles
+        (existing ground items); BEING takeup does not block goods.
+        """
+        grid = self.path_grid(map_id)
+        if grid is None or not grid.walkable(x, y):
+            return None
+        taken = {(int(a), int(b)) for a, b in occupied}
+        if (x, y) not in taken:
+            return x, y
+        for dx, dy in A_EXTEND_OFFS:
+            nx, ny = x + dx, y + dy
+            if grid.walkable(nx, ny) and (nx, ny) not in taken:
+                return nx, ny
+        return x, y
+
+    def drop_goods_duration(self, template):
+        """Expiry seconds for a monster's drops: dropitemlast via object2int.
+
+        Java passes MonsterConfig.getDropGoodsDuration() (loaded from the
+        dropitemlast column) to goodsEnterStage, which overrides the Goods
+        60-second default; the disappear task runs in TimeUnit.SECONDS.
+        Blank or unparseable values read as 0, matching object2int.
+        """
+        try:
+            return int(str(template.get('dropitemlast')).strip())
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
     def surround_valid_point(self, map_id, x, y, occupied=()):
         """Java's AoiStage.getSurroundValidPoint(point, false, BEING).
 

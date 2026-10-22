@@ -14,6 +14,7 @@ from unittest import mock
 
 from game import loot
 from game.config import GameConfig
+from game.ground_items import can_pick_up
 from game.protocol import Session
 from game.stage_registry import StageRegistry
 
@@ -155,8 +156,9 @@ class KillLifecycleTest(unittest.TestCase):
         return sess
 
     def seed(self, hp):
+        # (27, 28) is walkable on map 7, so Java places the drop there.
         self.a._monster_reg[MID] = {'template': self.tpl, 'map': MAP,
-                                    'born': [11, 10], 'pos': [11, 10]}
+                                    'born': [27, 28], 'pos': [27, 28]}
         self.a._monster_hp[MID] = hp
 
     def swing(self, sess, role):
@@ -175,6 +177,20 @@ class KillLifecycleTest(unittest.TestCase):
         self.assertEqual(dropped, ['hpadd002', 'mpadd002'])
         # No S:DROP_GOODS or other invented frame is emitted by the drop step.
         self.assertFalse(any(f for f in frames if b'DROP_GOODS' in f))
+        # Exactly one shared ground item per successful drop, visible to both sessions.
+        items = self.a._world.ground_items.on_map(MAP)
+        self.assertEqual(sorted(i.goods_id for i in items), ['hpadd002', 'mpadd002'])
+        # Java placement: monster tile free, so hpadd002 lands on it and
+        # mpadd002 takes the first free surround in AExtend order, (28, 28).
+        by_goods = {i.goods_id: (i.x, i.y) for i in items}
+        self.assertEqual(by_goods['hpadd002'], (27, 28))
+        self.assertEqual(by_goods['mpadd002'], (28, 28))
+        self.assertEqual({r['goods_id']: r['point'] for r in results},
+                         {'hpadd002': (27, 28), 'mpadd002': (28, 28)})
+        self.assertIs(self.b._world.ground_items, self.a._world.ground_items)
+        self.assertEqual(len({i.id for i in items}), 2)
+        self.assertTrue(all(i.count == 1 for i in items))
+        self.assertTrue(all(i.owner_id == str(self.role['id']) for i in items))
 
     def test_failed_roll_through_death_hook_records_no_item(self):
         self.seed(hp=50.0)
@@ -184,16 +200,85 @@ class KillLifecycleTest(unittest.TestCase):
         self.assertEqual([r['goods_id'] for r in results if r['outcome'] == 'dropped'], [])
         self.assertEqual({r['goods_id']: r['outcome'] for r in results},
                          {'hpadd002': 'missed', 'mpadd002': 'missed'})
+        self.assertEqual(self.a._world.ground_items.on_map(MAP), [])
 
     def test_second_attack_on_corpse_does_not_reevaluate(self):
         self.seed(hp=50.0)
         with mock.patch('game.protocol.random.randrange', return_value=100):
             self.swing(self.a, self.role)
         first = self.a._world.drop_results[MID]
+        created = len(self.a._world.ground_items.on_map(MAP))
         with mock.patch('game.protocol.random.randrange', return_value=0) as rr:
             self.swing(self.b, self.role)
         self.assertEqual(rr.call_count, 0)
         self.assertIs(self.a._world.drop_results[MID], first)
+        self.assertEqual(len(self.a._world.ground_items.on_map(MAP)), created)
+
+    def test_too_high_role_level_skips_drops_through_hook(self):
+        # 42 - 31 = 11 > levelDifference 10: both slots skip, no items.
+        self.role['level'] = 42
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=0):
+            self.swing(self.a, self.role)
+        results = self.a._world.drop_results[MID]
+        self.assertEqual({r['outcome'] for r in results}, {'skipped_level'})
+        self.assertEqual(self.a._world.ground_items.on_map(MAP), [])
+
+    def test_dropitemlast_sets_item_lifetime(self):
+        self.assertEqual(self.cfg.drop_goods_duration(self.tpl), 60)
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=100):
+            with mock.patch.object(Session, '_world_now_ms', return_value=5000):
+                self.swing(self.a, self.role)
+        for item in self.a._world.ground_items.on_map(MAP):
+            self.assertEqual(item.expires_at_ms, 5000 + 60 * 1000)
+
+    def test_owner_window_then_open_through_hook(self):
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=100):
+            with mock.patch.object(Session, '_world_now_ms', return_value=9000):
+                self.swing(self.a, self.role)
+        (item,) = [i for i in self.a._world.ground_items.on_map(MAP)
+                   if i.goods_id == 'hpadd002']
+        self.assertEqual(item.owner_id, '1')
+        self.assertIsNone(item.owner_team_id)
+        self.assertFalse(can_pick_up(item, '2', None, 9000 + 19999))
+        self.assertTrue(can_pick_up(item, '2', None, 9000 + 20001))
+        self.assertTrue(can_pick_up(item, '1', None, 9000 + 1))
+
+    def test_expiry_runs_once_through_world_rounds(self):
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=100):
+            with mock.patch.object(Session, '_world_now_ms', return_value=1000):
+                self.swing(self.a, self.role)
+        self.assertEqual(len(self.a._world.ground_items.on_map(MAP)), 2)
+        dropped_at = 1000
+        end = dropped_at + 60 * 1000
+        with mock.patch.object(Session, '_world_now_ms', return_value=end - 1):
+            self.a.ai_tick()
+            self.assertEqual(len(self.a._world.ground_items.on_map(MAP)), 2)
+            # The peer's round in the same tick cycle changes nothing early.
+            self.b.ai_tick()
+            self.assertEqual(len(self.a._world.ground_items.on_map(MAP)), 2)
+        with mock.patch.object(Session, '_world_now_ms', return_value=end):
+            self.a.ai_tick()
+            self.assertEqual(self.a._world.ground_items.on_map(MAP), [])
+            # A second session's round cannot remove anything twice.
+            self.b.ai_tick()
+            self.assertEqual(self.a._world.ground_items.on_map(MAP), [])
+
+    def test_disconnecting_killer_keeps_shared_loot(self):
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=100):
+            self.swing(self.a, self.role)
+        self.reg.unregister_session(self.a)
+        self.assertEqual(len(self.a._world.ground_items.on_map(MAP)), 2)
+
+    def test_loot_is_isolated_from_other_maps(self):
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=100):
+            self.swing(self.a, self.role)
+        self.assertEqual(self.a._world.ground_items.on_map('8'), [])
 
 
 if __name__ == '__main__':

@@ -2535,6 +2535,46 @@ class Session:
                         self.config.goods_count(slot['goods_id'])),
                     roll=random.randrange(loot_lib.LOTTERY_TENTHOUSAND)))
         self._world.drop_results[mid] = results
+        self._place_ground_items(dead_monster, role, results)
+
+    def _world_now_ms(self):
+        """Server clock for ground-item creation and expiry; patchable in tests."""
+        return int(time.time() * 1000)
+
+    def _place_ground_items(self, dead_monster, role, results):
+        """Create one shared ground item per supported successful drop (no packets).
+
+        Placement follows AoiStage.getSurroundValidPoint(point, true, GOODS): the
+        monster tile when free, else the first free surround, else nothing when
+        the tile has no path node (Java logs and skips the item). The whole
+        drop is owner-protected (formatDrop's constant 1): the killer owns it
+        and the killer's team shares it; a null team stays null, as in Java.
+        Lifetime is the template's dropitemlast in seconds.
+        """
+        store = self._world.ground_items
+        if store is None or self.config is None:
+            return
+        template = dead_monster.get('template') or {}
+        duration = self.config.drop_goods_duration(template)
+        reg = self._monster_reg.get(dead_monster['id']) or {}
+        map_id = reg.get('map') or self._mid_map(dead_monster['id'])
+        pos = reg.get('pos') or (0, 0)
+        now_ms = self._world_now_ms()
+        for result in results:
+            if result['outcome'] != loot_lib.OUTCOME_DROPPED:
+                continue
+            occupied = {(i.x, i.y) for i in store.on_map(map_id)}
+            point = self.config.surround_valid_point_for_goods(
+                map_id, int(pos[0]), int(pos[1]), occupied)
+            if point is None:
+                result['point'] = None
+                continue
+            item = store.add(result['goods_id'], result['count'], map_id,
+                             int(point[0]), int(point[1]), now_ms,
+                             owner_id=str(role.get('id')),
+                             owner_team_id=None,  # Python roles carry no team id yet
+                             duration_seconds=duration)
+            result['point'] = (item.x, item.y)
 
     def _schedule_leave(self, dead_monster):
         """Monster.deadHandle/scheduleDisappearHandle: 24002 after asheslast."""
@@ -2600,6 +2640,7 @@ class Session:
         """
         frames = []
         if self._world.claim_round():
+            self._world.ground_items.expire(self._world_now_ms())
             frames.extend(self.deliver_world_frames(self.monster_world_step()))
         frames.extend(self.pet_ai_step())
         return tuple(frames) if frames else None

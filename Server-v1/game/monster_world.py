@@ -7,6 +7,8 @@ once per server round (see claim_round), not once per session.
 """
 import threading
 
+from game.ground_items import GroundItemStore
+
 
 class MonsterWorld:
     """Monster HP, dead set, registry, hatred, leave/respawn queues and a lock."""
@@ -21,6 +23,7 @@ class MonsterWorld:
         self.spawning = []      # [template_id, map, born, ticks] until 23002
         self.drop_done = set()  # monster ids whose death drops were evaluated
         self.drop_results = {}  # monster id -> structured drop results (no packets)
+        self.ground_items = GroundItemStore()  # shared by every session on the server
         self.respawn_next = {}  # map id -> next fresh-id index
         self._driven = False    # True once a scheduler has started rounds
         self._round = 0

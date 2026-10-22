@@ -50,6 +50,7 @@ from . import combat as combat_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
 from .ratelimit import TokenBucket
+from .monster_world import MonsterWorld
 from .amf3 import decode as amf3_decode
 from .config import MALL_PRICE_COLUMNS, TASK_ATTRIBUTE_INDEX, convert_index_attribute, equip_vo, fujia_client_map, qh_xingxings_client, richang_condition_interval, richang_loop_interval, richang_reward_interval, xingxing_lv
 from .amf3 import encode as amf3_encode
@@ -960,9 +961,12 @@ class Session:
         # sight, exactly Java's stage-element state), pet id -> {max_hp, hp,
         # level, owner, name} (registered by zuoqi_pet_frame). Dead ids stay
         # in _dead until the respawn scheduler (Phase 4) revives them.
-        self._monster_hp = {}
+        # Monster state is bound to the shared world below (not per session).
+        self._world = (stage_registry.monsters if stage_registry is not None
+                       else MonsterWorld())
+        self._monster_hp = self._world.hp
         self._pet_state = {}
-        self._dead = set()
+        self._dead = self._world.dead
         # Mount death ledger (ZuoQiBussinessData deadTime/useTime): owner
         # wire id -> [deadMs, useMs]. Death stamps [now, 0] (ZuoQiPet
         # syncDeadZuoQiAttribute); revive zeroes it. A dict miss with a
@@ -984,11 +988,11 @@ class Session:
         # _leaving: dead id -> ticks until the 24002 AOI leave (asheslast).
         # _spawning: list of [template_id, map, born, ticks] until the 23002
         # re-enter (creattime). _respawn_next: per-map fresh-id counter.
-        self._monster_reg = {}
-        self._hatred = {}
-        self._leaving = {}
-        self._spawning = []
-        self._respawn_next = {}
+        self._monster_reg = self._world.reg
+        self._hatred = self._world.hatred
+        self._leaving = self._world.leaving
+        self._spawning = self._world.spawning
+        self._respawn_next = self._world.respawn_next
         self._ai_seq = 0
         # Stage timers (StageScheduleManager mirror): the server tick loop
         # drains these via tick(); handle() still runs ai_tick after 42002.
@@ -2535,20 +2539,46 @@ class Session:
         return True
 
     def ai_tick(self):
-        """One monster/pet AI tick (AiFightServiceImpl.defaultHandle).
+        """One AI step for this session (AiFightServiceImpl.defaultHandle).
 
-        Hatred (FIGHT-state) monsters adjacent to their target emit the
-        42001 skillReady + 42002 fire; distant ones chase one tile (BACK:
-        toward born, clearing hatred on arrival). Pets step toward owners
-        past 2 tiles. The 1-second clock retires corpses (24002 after
-        asheslast) and re-produces spawns (23002 after creattime, flag
-        True). The server tick loop drives this via tick(); handle() also
-        runs it after every 42002, and explicit calls drive tests. Returns
-        the frame tuple, or None when the stage is quiet.
+        The shared monster world steps at most once per server round, whichever
+        session claims the round first, and its frames reach the sessions on each
+        map. This session's own pets step on every call. Returns this session's
+        frames, or None when quiet.
         """
         frames = []
+        if self._world.claim_round():
+            frames.extend(self.deliver_world_frames(self.monster_world_step()))
+        frames.extend(self.pet_ai_step())
+        return tuple(frames) if frames else None
+
+    @staticmethod
+    def _mid_map(mid):
+        """Map id encoded in a monster id m_<map>_<n>, or None."""
+        parts = str(mid).split('_')
+        return parts[1] if len(parts) == 3 and parts[0] == 'm' else None
+
+    def monster_world_step(self):
+        """Step every shared monster once, grouped by map (under the world lock).
+
+        Monster ids encode their map, so hatred, leave and respawn work for one map
+        never touches another map's monsters.
+        """
+        with self._world.lock:
+            maps = {self._mid_map(m) for m in self._monster_reg}
+            maps |= {str(sp[1]) for sp in self._spawning}
+            maps.discard(None)
+            by_map = {}
+            for map_id in sorted(maps):
+                frames = []
+                self._monster_ai_map(map_id, frames)
+                by_map[map_id] = frames
+            return by_map
+
+    def _monster_ai_map(self, map_id, frames):
+        """Hatred, leave and respawn for the monsters of one map."""
         for mid in sorted(self._hatred):
-            if mid in self._dead:
+            if self._mid_map(mid) != map_id or mid in self._dead:
                 continue
             reg = self._monster_reg.get(mid)
             if reg is None:
@@ -2585,28 +2615,9 @@ class Session:
                     None, 1))
             else:
                 self._monster_step(mid, reg, tpos, frames)
-        for pet_id in sorted(self._pet_state):
-            if pet_id in self._dead:
-                continue
-            pet = self._pet_state[pet_id]
-            roles = self.get_roles(self.authed_user or '', self.server_id or '')
-            owner = _find_role(roles, pet.get('owner'))
-            if owner is None or pet.get('pos') is None:
-                continue
-            opos = [int(owner.get('map_x')), int(owner.get('map_y'))]
-            if ai_lib.chebyshev(pet['pos'], opos) > ai_lib.PET_TELEPORT_RANGE and \
-                    self._pet_teleport(pet_id, pet, owner, frames):
-                continue
-            if ai_lib.chebyshev(pet['pos'], opos) > 2:
-                walkable = self._walkable(str(owner.get('map_id')))
-                if walkable is None:
-                    continue
-                step = ai_lib.step_toward(list(pet['pos']), opos, walkable)
-                if step is not None:
-                    pet['pos'] = step
-                    frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
-                        pet_id, step, False, ai_lib.MOVE_KIND_PET))))
         for mid in sorted(self._leaving):
+            if self._mid_map(mid) != map_id:
+                continue
             self._leaving[mid] -= 1
             if self._leaving[mid] > 0:
                 continue
@@ -2621,13 +2632,17 @@ class Session:
                 self._spawning.append([tpl.get('id'), reg['map'],
                                        list(reg['born']), max(delay, 1)])
             frames.append(self.aoi_leave_frame(mid))
-        for mid in [m for m in self._leaving if self._leaving[m] <= 0]:
+        for mid in [m for m in self._leaving
+                    if self._mid_map(m) == map_id and self._leaving[m] <= 0]:
             del self._leaving[mid]
         still = []
-        for tpl_id, map_id, born, ticks in self._spawning:
+        for tpl_id, sp_map, born, ticks in list(self._spawning):
+            if str(sp_map) != map_id:
+                still.append([tpl_id, sp_map, born, ticks])
+                continue
             ticks -= 1
             if ticks > 0:
-                still.append([tpl_id, map_id, born, ticks])
+                still.append([tpl_id, sp_map, born, ticks])
                 continue
             tpl = (self.config.monster_template(tpl_id)
                    if self.config is not None else None)
@@ -2649,8 +2664,66 @@ class Session:
             self._monster_hp[nid] = float(tpl.get('hitpoints') or 0)
             frames.append(frame(amf3_encode(
                 ['23002', [ai_lib.respawn_record(nid, tpl, born)]])))
-        self._spawning = still
-        return tuple(frames) if frames else None
+        self._spawning[:] = still
+
+    def pet_ai_step(self):
+        """Pets follow their owners: teleport past range, otherwise step toward them."""
+        frames = []
+        for pet_id in sorted(self._pet_state):
+            if pet_id in self._dead:
+                continue
+            pet = self._pet_state[pet_id]
+            roles = self.get_roles(self.authed_user or '', self.server_id or '')
+            owner = _find_role(roles, pet.get('owner'))
+            if owner is None or pet.get('pos') is None:
+                continue
+            opos = [int(owner.get('map_x')), int(owner.get('map_y'))]
+            if ai_lib.chebyshev(pet['pos'], opos) > ai_lib.PET_TELEPORT_RANGE and \
+                    self._pet_teleport(pet_id, pet, owner, frames):
+                continue
+            if ai_lib.chebyshev(pet['pos'], opos) > 2:
+                walkable = self._walkable(str(owner.get('map_id')))
+                if walkable is None:
+                    continue
+                step = ai_lib.step_toward(list(pet['pos']), opos, walkable)
+                if step is not None:
+                    pet['pos'] = step
+                    frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
+                        pet_id, step, False, ai_lib.MOVE_KIND_PET))))
+        return frames
+
+    def deliver_world_frames(self, by_map):
+        """Return this session's share of per-map monster frames; push the rest.
+
+        A session gets the frames of the maps where it has roles (or all frames when
+        it has no stage registry). Every other session on a map is pushed that map's
+        frames once, however many of its roles are there.
+        """
+        if not by_map:
+            return []
+        if self.stage_registry is None:
+            mine = []
+            for frames in by_map.values():
+                mine.extend(frames)
+            return mine
+        own_maps = {str(r.get('map_id')) for r in
+                    self.get_roles(self.authed_user or '', self.server_id or '')}
+        mine = []
+        for map_id, frames in by_map.items():
+            if not frames:
+                continue
+            seen = set()
+            for _role, sess in self.stage_registry.peers(map_id):
+                if id(sess) in seen:
+                    continue
+                seen.add(id(sess))
+                if sess is self:
+                    mine.extend(frames)
+                else:
+                    sess.push_frames(frames)
+            if map_id in own_maps and id(self) not in seen:
+                mine.extend(frames)
+        return mine
 
     def schedule_stage(self, key, command, callback, delay=0,
                        unit='SECONDS', now_ms=None):
@@ -3421,7 +3494,7 @@ class Session:
         # monster right after the buffs (old tap entry); without tiles
         # the client has records but no positions and renders no actors.
         if self.config is not None and x is not None:
-            for rec in self.config.monster_snapshot(map_id, x, y) or []:
+            for rec in self.world_snapshot_records(map_id, x, y) or []:
                 try:
                     frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
                         rec[0], [rec[11], rec[12]], True))))
@@ -3447,6 +3520,41 @@ class Session:
         frames.extend(self.scene_tail_frames(role, map_id))
         return tuple(frames) if len(frames) > 1 else frames[0]
 
+    def world_snapshot_records(self, map_id, x=None, y=None):
+        """23002 records built from shared monster state, not the static spawn list.
+
+        Spawns whose monster has died are omitted, so a late joiner never sees a dead
+        monster alive. Live respawns on the map are added, and each spawn record
+        carries the monster's current HP.
+        """
+        if self.config is None:
+            return []
+        from .config import _in_aoi
+        with self._world.lock:
+            spawn_records = self.config.monster_snapshot(map_id, x, y)
+            spawn_ids = {r[0] for r in self.config.monster_snapshot(map_id)}
+            records = []
+            for rec in spawn_records:
+                if rec[0] in self._dead:
+                    continue
+                rec = list(rec)
+                if rec[0] in self._monster_hp:
+                    rec[4] = float(self._monster_hp[rec[0]])
+                records.append(rec)
+            for mid, reg in sorted(self._monster_reg.items()):
+                if (reg['map'] != str(map_id) or mid in spawn_ids
+                        or mid in self._dead):
+                    continue
+                pos = reg['pos']
+                if x is not None and y is not None and not _in_aoi(
+                        x, y, pos[0], pos[1]):
+                    continue
+                rec = ai_lib.respawn_record(mid, reg['template'], pos)
+                if mid in self._monster_hp:
+                    rec[4] = float(self._monster_hp[mid])
+                records.append(rec)
+            return records
+
     def monster_snapshot_frame(self, map_id, x=None, y=None):
         """23002 monster snapshot, or None when no spawn is in range.
 
@@ -3455,7 +3563,7 @@ class Session:
         """
         if self.config is None:
             return None
-        records = self.config.monster_snapshot(map_id, x, y)
+        records = self.world_snapshot_records(map_id, x, y)
         if not records:
             return None
         log.info('conn %d: map %s snapshot with %d monsters',

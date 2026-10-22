@@ -11,6 +11,8 @@ block of cells around the role's cell (AOI.getElements(ROLE, 9)).
 """
 import threading
 
+from .monster_world import MonsterWorld
+
 TILE_W = 60
 TILE_H = 30
 AOI_W = 600
@@ -32,6 +34,7 @@ class StageRegistry:
         self._maps = {}     # map_id -> {role_id: session}
         self._where = {}    # role_id -> map_id
         self._pos = {}      # role_id -> (tile_x, tile_y)
+        self.monsters = MonsterWorld()  # shared monster lifecycle for every session
 
     def register(self, role_id, map_id, session, x=None, y=None):
         """Place a role on a map under its session, relocating it if it moved."""

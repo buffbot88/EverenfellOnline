@@ -331,7 +331,13 @@ def register_stage_quartz(sched, kuangzhan=None, guaiwu_time_exprs=()):
 def tick_sessions(pairs):
     """Run one server tick over (session, send) pairs; returns (ticked, sent)."""
     ticked = sent = 0
-    for sess, send in list(pairs):
+    pairs = list(pairs)
+    # One round for the shared monster world: the first session to tick runs it.
+    for world in {id(getattr(s, '_world', None)): getattr(s, '_world', None)
+                  for s, _ in pairs}.values():
+        if world is not None:
+            world.begin_round()
+    for sess, send in pairs:
         lock = getattr(sess, 'send_lock', None)
         try:
             out = sess.tick()  # takes the session state lock itself

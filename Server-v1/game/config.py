@@ -2154,6 +2154,21 @@ class GameConfig:
         except ValueError:
             return 0
 
+    def goods_item_level(self, goods_id):
+        """Item level (itemlevel cell); 0 when unknown.
+
+        ItemCreatorServiceImpl stamps every converted ItemModel with
+        GoodsConfig.getItemLevel (hpadd002 carries 20); the pickup bag row
+        keeps it so bag_goods_map reports the Java value.
+        """
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return 0
+        try:
+            return int(row.get('itemlevel') or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def goods_max_stack(self, goods_id):
         """Max stack (maxstack cell) for a goods id, or None when unknown."""
         row = self._goods_table().get(str(goods_id))

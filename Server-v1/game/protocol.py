@@ -47,6 +47,7 @@ from .attributes import entry_attribute_map
 from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from . import ai as ai_lib
 from . import loot as loot_lib
+from .ground_items import can_pick_up as _ground_can_pick_up
 from . import combat as combat_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
@@ -476,6 +477,7 @@ BAG_MONEY_COLUMNS = {'YXB': 'tongqian', 'BIND_YB': 'bind_lingshi',
 CMD_BAG_SPLIT = 30100
 CMD_BAG_DISCARD = 30101
 CMD_BAG_DELETE = 30102
+CMD_GOODS_PICKUP = 30103
 CMD_PROP_USE = 30301
 CMD_PROP_DUOXUAN = 30305
 CMD_PROP_YOUHUI = 30306
@@ -1327,6 +1329,8 @@ class Session:
             return self.bag_discard(msg)
         if cmd_num == CMD_BAG_DELETE:
             return self.bag_delete(msg)
+        if cmd_num == CMD_GOODS_PICKUP:
+            return self.pickup_goods(msg)
         if cmd_num == CMD_PROP_USE:
             return self.prop_use(msg)
         if cmd_num == CMD_PROP_DUOXUAN:
@@ -2569,12 +2573,246 @@ class Session:
             if point is None:
                 result['point'] = None
                 continue
+            # bind 0: drop2sp carries no bind marker (MonsterConfigExport-
+            # ServiceImpl.createRule sets isBind only on the bind marker),
+            # and hpadd002's obtainLocked is 0, so ItemCreatorServiceImpl
+            # .getBind yields 0 and calGoodsExpireTime yields 0 (duration 0).
             item = store.add(result['goods_id'], result['count'], map_id,
                              int(point[0]), int(point[1]), now_ms,
                              owner_id=str(role.get('id')),
                              owner_team_id=None,  # Python roles carry no team id yet
-                             duration_seconds=duration)
+                             duration_seconds=duration, bind=0)
             result['point'] = (item.x, item.y)
+
+    def pickup_goods(self, msg):
+        """Command 30103: RoleBehaviourAction.pickUp -> goodsPickUp -> 30103.
+
+        C> [itemId string]. Replies [0] when the item is gone, expired,
+        on another map, owner-protected, or the bag cannot hold it;
+        [1, goodsId, count, itemId] on success with the 30105/30104 bag
+        pushes (BagExportServiceImpl.notifyClient order: adds, then
+        updates). Money ground items have no producer (moneyDropCal is
+        unported), so they answer [0] and stay on the ground.
+        """
+        args = self.safe(msg, 1, []) or []
+        if not args or not isinstance(args[0], str):
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        _ok, frames = self.pickup_item(role, args[0])
+        return frames
+
+    def pickup_item(self, role, item_id, now_ms=None):
+        """RoleBehaviourServiceImpl.goodsPickUp for one ground item.
+
+        Order mirrors Java: element lookup, checkIdentity, money branch,
+        checkPutInBag1, stage.leave, putInBag1(true). Here the leave is the
+        atomic store.remove claim, so a failed bag write restores the
+        item instead of destroying it. Returns (ok, frames); frames[0] is
+        the 30103 reply, followed by any 30105/30104 bag pushes.
+        No distance, alive or expiry pre-check exists in Java beyond the
+        leave itself: a missing/expired element answers [0], and roles
+        pick up on their own stage only (here: the item's map must match
+        the role's map).
+        """
+        now = now_ms if now_ms is not None else self._world_now_ms()
+        store = self._world.ground_items
+        fail = (False, (frame(amf3_encode(['30103', [0]])),))
+        if store is None or self.config is None or role is None:
+            return fail
+        item = store.get(item_id)
+        if item is None:
+            return fail
+        if now >= item.expires_at_ms:
+            # The S:GOODS_DIS leave already fired (or would have): gone.
+            store.remove(item_id)
+            return fail
+        if str(role.get('map_id')) != str(item.map_id):
+            return fail
+        if item.goods_id == 'money':
+            log.info('conn %d: money pickup %r (no producer; left)',
+                     self.conn_id, item_id)
+            return fail
+        if not _ground_can_pick_up(item, str(role.get('id')), None, now):
+            return fail
+        if self.config._goods_table().get(str(item.goods_id)) is None:
+            # Java destroys the item here (leave runs before putInBag1
+            # reports the unknown config); the item is kept instead so a
+            # config gap cannot eat a drop.
+            log.info('conn %d: pickup of unconfigured goods %r (left)',
+                     self.conn_id, item.goods_id)
+            return fail
+        if not self._pickup_fits(role.get('id'), item):
+            return fail
+        claimed = store.remove(item_id)
+        if claimed is None:
+            return fail
+        ok, applied, new_row = self._pickup_write(role, claimed)
+        if not ok:
+            # Nothing (or only part of the award) reached the bag: roll
+            # back any stacked counts, restore the item, drop nothing.
+            for row, old_count in applied:
+                try:
+                    self.update_role_bag_slot(role.get('id'),
+                                            row.get('slot_num'),
+                                            count=old_count)
+                except Exception:
+                    pass
+            store.restore(claimed)
+            if applied:
+                log.warning('conn %d: pickup write failed mid-apply '
+                            '(rolled back, item %r restored)',
+                            self.conn_id, item_id)
+            return fail
+        frames = [frame(amf3_encode(
+            ['30103', [1, claimed.goods_id, claimed.count, claimed.id]]))]
+        if new_row is not None:
+            frames.append(frame(amf3_encode(
+                ['30105', [self.bag_goods_map(role, new_row)]])))
+        for row, _old in applied:
+            frames.append(frame(amf3_encode(
+                ['30104', [[[row.get('bag_id'), row.get('count')]]]])))
+        return True, tuple(frames)
+
+    @staticmethod
+    def _pickup_expire(value):
+        """Bag expire_time normalized the way Java's longValue reads it."""
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _pickup_stackable(self, slot, item, max_stack):
+        """BagServiceImpl.canStack: same goods/bind/expire, room left."""
+        try:
+            if str(slot.get('goods_id')) != str(item.goods_id):
+                return False
+        except Exception:
+            return False
+        try:
+            same_bind = int(slot.get('bind') or 0) == int(item.bind or 0)
+        except (TypeError, ValueError):
+            same_bind = False
+        if not same_bind:
+            return False
+        if self._pickup_expire(slot.get('expire_time')) != 0:
+            # Drops always carry expire 0 (hpadd002 duration 0), so a
+            # nonzero row can never stack with one.
+            return False
+        try:
+            return int(slot.get('count') or 0) < max_stack
+        except (TypeError, ValueError):
+            return False
+
+    def _pickup_fits(self, rid, item):
+        """BagServiceImpl.checkBagSlots1 for one ground item."""
+        try:
+            slots = self.get_role_bag_slots(rid, 1, 150) or []
+        except Exception:
+            return False
+        try:
+            state = self._bag_state_or_init(rid) or {}
+            capacity = int(state.get('bag_capacity') or 0)
+        except (TypeError, ValueError):
+            return False
+        if capacity - len(slots) >= 1:
+            return True
+        max_stack = self.config.goods_max_stack(item.goods_id)
+        if not max_stack:
+            return False
+        try:
+            left = int(item.count or 0)
+        except (TypeError, ValueError):
+            return False
+        for slot in slots:
+            if not self._pickup_stackable(slot, item, max_stack):
+                continue
+            try:
+                left -= max_stack - int(slot.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            if left <= 0:
+                return True
+        return False
+
+    def _pickup_write(self, role, item):
+        """BagServiceImpl.putOneGoodsInBag1 for a claimed ground item.
+
+        Returns (ok, applied_updates, new_row): applied_updates is
+        [(row, old_count)] for each stacked row, new_row the inserted bag
+        row (or None when the whole count stacked). A write failure
+        returns (False, applied_so_far, None) so the caller can roll
+        the counts back and restore the item.
+        """
+        rid = role.get('id')
+        max_stack = self.config.goods_max_stack(item.goods_id) or 0
+        if max_stack <= 0:
+            max_stack = 1
+        try:
+            slots = self.get_role_bag_slots(rid, 1, 150) or []
+        except Exception:
+            return False, [], None
+        try:
+            state = self._bag_state_or_init(rid) or {}
+            capacity = int(state.get('bag_capacity') or 0)
+        except (TypeError, ValueError):
+            return False, [], None
+        try:
+            left = int(item.count or 0)
+        except (TypeError, ValueError):
+            return False, [], None
+        if left <= 0:
+            return False, [], None
+        applied = []
+        same = sorted((s for s in slots
+                       if self._pickup_stackable(s, item, max_stack)),
+                      key=lambda s: s.get('slot_num') or 0)
+        for slot in same:
+            if left <= 0:
+                break
+            try:
+                have = int(slot.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            take = min(max_stack - have, left)
+            if take <= 0:
+                continue
+            try:
+                self.update_role_bag_slot(rid, slot.get('slot_num'),
+                                          count=have + take)
+            except Exception:
+                return False, applied, None
+            slot = dict(slot, count=have + take)
+            applied.append((slot, have))
+            left -= take
+        if left <= 0:
+            return True, applied, None
+        used = {s.get('slot_num') for s in slots}
+        free = next((n for n in range(1, capacity + 1) if n not in used),
+                    -1)
+        if free < 0:
+            return False, applied, None
+        # ItemModel fields for a drop: bind from the DropRule lottery (0
+        # here), expire 0 (hpadd002 duration 0), rare/item level from the
+        # goods row, no attributes outside the equip/skillbook branches.
+        row = {'slot_num': free, 'goods_id': item.goods_id, 'count': left,
+               'bind': int(item.bind or 0), 'expire_time': 0,
+               'rare_level': self.config.goods_rarelevel(item.goods_id),
+               'item_level': self.config.goods_item_level(item.goods_id),
+               'attributes': None}
+        try:
+            bag_id = self.insert_role_bag_slot(rid, dict(row))
+        except Exception:
+            return False, applied, None
+        if not bag_id:
+            return False, applied, None
+        if self.config is not None and self._bag_goods_autouse(
+                item.goods_id):
+            log.info('conn %d: pickup autouse goods %r (no stage bus; '
+                     'skipped)', self.conn_id, item.goods_id)
+        return True, applied, dict(row, bag_id=bag_id)
 
     def _schedule_leave(self, dead_monster):
         """Monster.deadHandle/scheduleDisappearHandle: 24002 after asheslast."""

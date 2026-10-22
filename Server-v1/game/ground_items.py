@@ -29,7 +29,8 @@ class GroundItem:
     """One dropped item on a map."""
 
     def __init__(self, item_id, goods_id, count, map_id, x, y, drop_time_ms,
-                 owner_id=None, owner_team_id=None, duration_seconds=DEFAULT_DURATION_SECONDS):
+                 owner_id=None, owner_team_id=None, duration_seconds=DEFAULT_DURATION_SECONDS,
+                 bind=0):
         self.id = item_id
         self.goods_id = goods_id
         self.count = count
@@ -40,6 +41,11 @@ class GroundItem:
         self.owner_id = owner_id
         self.owner_team_id = owner_team_id
         self.expires_at_ms = drop_time_ms + duration_seconds * 1000
+        # ItemModel.bind: 0 for ordinary monster drops (DropRule.isBind is
+        # false when the drop cell carries no bind marker, and hpadd002's
+        # obtainLocked is 0, so ItemCreatorServiceImpl.getBind yields 0).
+        # canStack compares it, so it travels with the item to the bag.
+        self.bind = bind
 
 
 def can_pick_up(item, role_id, role_team_id, now_ms):
@@ -62,13 +68,14 @@ class GroundItemStore:
         self._next = 1
 
     def add(self, goods_id, count, map_id, x, y, now_ms, owner_id=None,
-            owner_team_id=None, duration_seconds=DEFAULT_DURATION_SECONDS):
+            owner_team_id=None, duration_seconds=DEFAULT_DURATION_SECONDS,
+            bind=0):
         """Create one item with a fresh id and return it."""
         with self.lock:
             item_id = 'g%d' % self._next
             self._next += 1
             item = GroundItem(item_id, goods_id, count, map_id, x, y, now_ms,
-                              owner_id, owner_team_id, duration_seconds)
+                              owner_id, owner_team_id, duration_seconds, bind)
             self._items[item_id] = item
             return item
 
@@ -77,9 +84,25 @@ class GroundItemStore:
             return self._items.get(item_id)
 
     def remove(self, item_id):
-        """Remove an item once; returns it, or None when already gone."""
+        """Remove an item once; returns it, or None when already gone.
+
+        The one-shot claim behind pickup: whichever session pops the item
+        owns it, so two simultaneous pickups cannot both succeed.
+        """
         with self.lock:
             return self._items.pop(item_id, None)
+
+    def restore(self, item):
+        """Put a claimed item back under its original id (bag-write rollback).
+
+        Returns True when the slot was free; False leaves the store
+        untouched when something already holds the id.
+        """
+        with self.lock:
+            if item.id in self._items:
+                return False
+            self._items[item.id] = item
+            return True
 
     def expire(self, now_ms):
         """Remove every item whose lifetime has ended; returns the removed items."""

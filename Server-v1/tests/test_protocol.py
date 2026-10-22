@@ -10,15 +10,47 @@ import sys
 import tempfile
 import time
 import unittest
-import importlib.util
-
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-spec = importlib.util.spec_from_file_location(
-    'decode_tap', os.path.join(ROOT, 'tools', 'decode-tap.py'))
-decode_tap = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(decode_tap)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+
+def read_frames(data, allow_policy=False):
+    """u32be framing (ex-tools/decode-tap.py): split policy/frames."""
+    frames, offset = [], 0
+    if allow_policy and data.startswith(b'<'):
+        end = data.find(b'\x00')
+        if end < 0:
+            return frames, offset
+        frames.append(('policy', data[:end + 1]))
+        offset = end + 1
+    while len(data) - offset >= 4:
+        length = struct.unpack('>I', data[offset:offset + 4])[0]
+        if length > 48 * 1024 * 1024:
+            raise ValueError(f'invalid frame length {length} at {offset}')
+        end = offset + 4 + length
+        if end > len(data):
+            break
+        frames.append(('frame', data[offset + 4:end]))
+        offset = end
+    return frames, offset
+
+
+def decode_server(frames):
+    """Plaintext server frames to AMF (ex-tools/decode-tap.py)."""
+    from game.amf3 import Reader
+    for kind, payload in frames:
+        if kind == 'policy':
+            yield ('policy', payload)
+        elif len(payload) == 36:
+            yield ('key', payload.decode('ascii', 'replace'))
+        else:
+            reader = Reader(payload)
+            try:
+                while reader.p < len(payload):
+                    yield ('message', reader.read())
+            except Exception as exc:
+                yield ('error',
+                       f'{len(payload)} bytes at AMF offset {reader.p}: {exc}')
 
 from unittest import mock
 
@@ -414,7 +446,7 @@ class TestCaptureDecoder(unittest.TestCase):
         payload = amf3.encode(['13000', [None, ByteArray(b'opaque bootstrap'), None]])
         second = amf3.encode(['10003', [1, ['C', 56], ['5', 45, 31]]])
         framed = frame(payload + second)[4:]
-        decoded = list(decode_tap.decode_server([('frame', framed)]))
+        decoded = list(decode_server([('frame', framed)]))
         self.assertEqual(decoded[0][1][0], '13000')
         self.assertEqual(decoded[0][1][1][1], ByteArray(b'opaque bootstrap'))
         self.assertEqual(decoded[1][1][0], '10003')
@@ -426,20 +458,20 @@ class TestCaptureDecoder(unittest.TestCase):
         req = b'<policy-file-request/>\x00'
         reply = (b'<cross-domain-policy><allow-access-from domain="*" '
                  b'to-ports="8000-8889"/></cross-domain-policy>\x00')
-        frames, used = decode_tap.read_frames(req, allow_policy=True)
+        frames, used = read_frames(req, allow_policy=True)
         self.assertEqual(frames, [('policy', req)])
         self.assertEqual(used, len(req))
-        frames, used = decode_tap.read_frames(reply + frame(b'data'),
+        frames, used = read_frames(reply + frame(b'data'),
                                               allow_policy=True)
         self.assertEqual(frames[0], ('policy', reply))
         self.assertEqual(frames[1], ('frame', b'data'))
-        self.assertEqual(list(decode_tap.decode_server(frames[:1])),
+        self.assertEqual(list(decode_server(frames[:1])),
                          [('policy', reply)])
 
     def test_frame_reader_handles_fragment_and_coalesced_frames(self):
         one, two = b'first', b'second'
         data = frame(one) + frame(two) + frame(b'incomplete')[:7]
-        frames, used = decode_tap.read_frames(data)
+        frames, used = read_frames(data)
         self.assertEqual(frames, [('frame', one), ('frame', two)])
         self.assertEqual(used, len(frame(one)) + len(frame(two)))
 

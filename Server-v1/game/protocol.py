@@ -348,8 +348,23 @@ CMD_MEIREN_ADD = 82001
 CMD_MEIREN_PANEL = 82000
 CMD_MEIREN_UPGRADE = 82002
 CMD_MEIREN_CHANMIAN = 82003
-# Inbound pet routes (PetModuleInit.getInCmd: 136000-136009).
+# Inbound pet routes (PetModuleInit.getInCmd: 136000-136009; method map
+# from @EasyMapping: 136000 getPetInfo, 136001 activatePet, 136002
+# upgradePet, 136003 petJinJie, 136004 upgradeZhenFa, 136005 upDownZhen,
+# 136006 chuZhan, 136008 chuanChen, 136009 jinJieZhenFa). 136007 has no
+# handler jar-wide (dead route, like 58016); 136010/136011 are pushes.
+# 136001/136002/136003/136004/136008/136009 need the ChongWu(Biao/
+# ShengJi/ZhenFa) config tables, which do not ship in the reference
+# config tree, so they stay unported. PetErrorCode.CODE_13600x is the
+# command id itself.
 CMD_PET_INFO = 136000
+CMD_PET_UPDOWN = 136005
+CMD_PET_CHUZHAN = 136006
+CMD_PET_ZHENFA_PUSH = 136010
+CMD_PET_CHUZHAN_PUSH = 136011
+PET_ERR_NO_PET = 136005
+PET_ERR_DEPLOYED = 136006
+PET_ERR_CHUZHAN_DUP = 136010
 # Inbound email claim routes (EmailModuleInit.getInCmd: 63003/63006/63007/
 # 63008; 63005/63009 are server pushes). EmailErrorCode clinit values:
 # 60001 missing mail, 60002 no attachment, 60005/60006 empty JB/YB
@@ -1289,6 +1304,10 @@ class Session:
             return self.meiren_chanmian(msg)
         if cmd_num == CMD_PET_INFO:
             return self.pet_info()
+        if cmd_num == 136005:
+            return self.pet_updown(msg)
+        if cmd_num == 136006:
+            return self.pet_chuzhan(msg)
         if cmd_num == CMD_BAOSHI_INFO:
             return self.baoshi_info()
         if cmd_num == CMD_BAOSHI_JIHUO:
@@ -10590,6 +10609,156 @@ class Session:
             [str(CMD_PET_INFO),
              [arr, [zhenfa.get('zhenfa_id'), upgrade_exp, entries],
               zhenfa.get('pet_chuzhan_id'), upgrade_count]]))
+
+    @staticmethod
+    def _pet_zhenfa_map(zhenfa_pet):
+        """zhenfa_pet fastjson {pos: petId} as a str-keyed dict or None."""
+        if not zhenfa_pet:
+            return None
+        try:
+            data = json.loads(zhenfa_pet)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        return {str(k): v for k, v in data.items()}
+
+    def _pet_zhenfa_push(self, entries):
+        """136010 push: [[pos, petId]...] in document order (or [])."""
+        return frame(amf3_encode(
+            [str(CMD_PET_ZHENFA_PUSH),
+             [[pos, entries[pos]] for pos in entries]]))
+
+    _PET_KEEP = object()
+
+    def _pet_save_zhenfa(self, rid, row, zhenfa_pet=None,
+                         pet_chuzhan_id=_PET_KEEP):
+        """Read-modify-write the formation row (save overwrites all)."""
+        try:
+            self.save_role_pet_zhenfa(
+                rid, zhenfa_id=row.get('zhenfa_id'),
+                pet_chuzhan_id=(row.get('pet_chuzhan_id')
+                                if pet_chuzhan_id is self._PET_KEEP
+                                else pet_chuzhan_id),
+                upgrade_exp=row.get('upgrade_exp'),
+                jinjie_fail_count=row.get('jinjie_fail_count'),
+                jinjie_time=row.get('jinjie_time'),
+                jinjie_data=row.get('jinjie_data'),
+                zhenfa_pet=(zhenfa_pet if zhenfa_pet is not None
+                            else row.get('zhenfa_pet')),
+                pet_upgrade_count=row.get('pet_upgrade_count'),
+                pet_upgrade_time=row.get('pet_upgrade_time'))
+            return True
+        except Exception:
+            return False
+
+    def _pet_owned(self, rid, pet_id):
+        """True when the role owns petId (PetServiceImpl.getRolePet)."""
+        try:
+            pets = self.get_role_pets(rid) or []
+        except Exception:
+            return False
+        return any(str(p.get('pet_id')) == str(pet_id) for p in pets)
+
+    def pet_updown(self, msg):
+        """Command 136005: upDownZhen [petId, slot, 1] deploys, flag
+        other removes the slot (downZhen ignores the pet id).
+
+        Port of upZhen/_downZhen: unknown pet answers [0, 136005], an
+        already-deployed pet answers [0, 136006]; success stores the
+        slot, emits the 136010 formation push, and answers
+        [1, petId, slot, flag] (down answers [1, remainingMap, slot,
+        flag]). The upZhen containsKey(Integer) pre-clear is dead in
+        Java (String keys never equal an Integer), so put wins
+        directly. No formation row stays silent like cacheLoad miss."""
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            data = self.safe(msg, 1, [])
+            pet_id, slot, flag = (str(self.safe(data, 0)),
+                                  int(self.safe(data, 1)),
+                                  int(self.safe(data, 2)))
+        except (TypeError, ValueError):
+            return None
+        if not pet_id:
+            return None
+        try:
+            row = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        entries = self._pet_zhenfa_map(row.get('zhenfa_pet'))
+        if entries is None:
+            return None
+        if flag == 1:
+            if not self._pet_owned(rid, pet_id):
+                return frame(amf3_encode(['136005', [0, PET_ERR_NO_PET]]))
+            if pet_id in entries.values():
+                return frame(amf3_encode(['136005', [0, PET_ERR_DEPLOYED]]))
+            entries[str(slot)] = pet_id
+            self._pet_save_zhenfa(
+                rid, row, zhenfa_pet=json.dumps(entries))
+            return [self._pet_zhenfa_push(entries),
+                    frame(amf3_encode(['136005', [1, pet_id, slot, flag]]))]
+        entries.pop(str(slot), None)
+        self._pet_save_zhenfa(rid, row, zhenfa_pet=json.dumps(entries))
+        return [self._pet_zhenfa_push(entries),
+                frame(amf3_encode(['136005', [1, entries, slot, flag]]))]
+
+    def pet_chuzhan(self, msg):
+        """Command 136006: chuZhan deploys a pet to expedition (or
+        recalls with a null id).
+
+        Port of PetServiceImpl.chuZhan: an unknown pet answers
+        [0, 136005]; the pet is stripped from every formation slot
+        first (one 136010 push per removed slot); re-calling with the
+        current expedition pet answers [0, 136010]. Otherwise the
+        136011 push reports [[old, 2]] on recall, [[new, 1]] on
+        deploy, [[old, 2], [new, 1]] on switch, and the reply is [1]."""
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            raw = self.safe(msg, 1, None)
+            pet_id = None if raw is None else str(raw)
+        except Exception:
+            return None
+        if pet_id is not None and not pet_id:
+            return None
+        try:
+            row = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        entries = self._pet_zhenfa_map(row.get('zhenfa_pet'))
+        if entries is None:
+            return None
+        out = []
+        if pet_id is not None:
+            if not self._pet_owned(rid, pet_id):
+                return frame(amf3_encode(['136006', [0, PET_ERR_NO_PET]]))
+            for pos in [p for p, v in entries.items() if v == pet_id]:
+                del entries[pos]
+                self._pet_save_zhenfa(
+                    rid, row, zhenfa_pet=json.dumps(entries))
+                row = dict(row, zhenfa_pet=json.dumps(entries))
+                out.append(self._pet_zhenfa_push(entries))
+        old = row.get('pet_chuzhan_id')
+        if old is not None and old == pet_id:
+            return frame(amf3_encode(['136006', [0, PET_ERR_CHUZHAN_DUP]]))
+        if old is None:
+            push = [[pet_id, 1]]
+        elif pet_id is None:
+            push = [[old, 2]]
+        else:
+            push = [[old, 2], [pet_id, 1]]
+        out.append(frame(amf3_encode([str(CMD_PET_CHUZHAN_PUSH), push])))
+        self._pet_save_zhenfa(rid, row, pet_chuzhan_id=pet_id)
+        out.append(frame(amf3_encode(['136006', [1]])))
+        return out
 
     def meiren_panel(self):
         """Command 82000: owned [[type, level, heti]] or null when empty."""

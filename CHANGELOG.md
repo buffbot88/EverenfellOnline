@@ -21,6 +21,14 @@ Also fixed in v1.4: the baoshi family (37000/37001/37002) shipped without its
 did not persist. The table plus `get/save_role_baoshi` and server wiring
 are now in; the suite is green.
 
+Pet slice: 136005 upDownZhen (deploy/remove formation slots) and 136006
+chuZhan (expedition deploy/recall/switch) with the 136010 formation and
+136011 expedition pushes (`tests/test_pet.py`, 15). The @EasyMapping audit
+also settled the family map (136009 is jinJieZhenFa, not a gap) and proved
+136007 a dead inbound route with no handler jar-wide. 136001/136002/
+136003/136004/136008/136009 need the ChongWu config tables, which do not
+ship in the reference config tree, so they stay unported.
+
 Ported command families (each golden-tested against the Java oracle's
 bytecode shapes and error codes):
 

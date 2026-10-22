@@ -14,8 +14,12 @@ Java distribution, tooling and internal docs stay in private history
 Locked-stable internals (AMF3 codec, AI/combat formulas, scheduler,
 eventbus, stage registry, attribute/buff maps, client map parsing) are
 frozen and ship without their exhaustive golden suites (deleted; full
-history retained privately). `game/mapdat.py` is dropped — nothing at
-runtime imports it. Gameplay families keep full golden coverage.
+history retained privately).`game/mapdat.py` is dropped — nothing at runtime imports it. Gameplay families keep full golden coverage.
+
+Also fixed in v1.4: the baoshi family (37000/37001/37002) shipped without its
+`role_baoshi` Store table, so its 22 golden tests errored and gem upgrades
+did not persist. The table plus `get/save_role_baoshi` and server wiring
+are now in; the suite is green.
 
 Ported command families (each golden-tested against the Java oracle's
 bytecode shapes and error codes):

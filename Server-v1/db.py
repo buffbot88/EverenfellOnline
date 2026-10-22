@@ -382,6 +382,20 @@ CREATE TABLE IF NOT EXISTS role_meiren (
   PRIMARY KEY(role_id, meiren_id),
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Socketed-gem rows per role (legacy role_baoshi subset: one row per
+-- socketed grid; level/exp/fail_count drive jihuo/upgrade).
+CREATE TABLE IF NOT EXISTS role_baoshi (
+  role_id INTEGER NOT NULL,
+  id TEXT NOT NULL,
+  part INTEGER DEFAULT 0,
+  grid INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  exp INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Bag slots per role (legacy role_bag_slot subset: slot rows 1..150 are the
 -- bag, 151+ the storage; attributes holds the GoodsEquipVo/ExpVo JSON).
 CREATE TABLE IF NOT EXISTS role_bag_slot (
@@ -2139,6 +2153,33 @@ class Store:
                     ' meiren_heti) VALUES(?,?,?,?)',
                     (str(role_id), row.get('meiren_id'),
                      row.get('meiren_level') or 0, row.get('meiren_heti') or 0))
+            self.db.commit()
+            return True
+
+    def get_role_baoshi(self, role_id):
+        """Socketed-gem rows for a role (legacy role_baoshi subset)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, part, grid, level, fail_count, exp, update_time'
+                ' FROM role_baoshi WHERE role_id=? ORDER BY part, grid',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_role_baoshi(self, role_id, rows):
+        """Replace a role's gem rows; rows carry id/part/grid/level/exp."""
+        with self.lock:
+            self.db.execute('DELETE FROM role_baoshi WHERE role_id=?',
+                            (str(role_id),))
+            for row in rows or []:
+                if not row.get('id'):
+                    continue
+                self.db.execute(
+                    'INSERT INTO role_baoshi(role_id, id, part, grid, level,'
+                    ' fail_count, exp, update_time) VALUES(?,?,?,?,?,?,?,?)',
+                    (str(role_id), row.get('id'), row.get('part') or 0,
+                     row.get('grid') or 0, row.get('level') or 0,
+                     row.get('fail_count') or 0, row.get('exp') or 0,
+                     row.get('update_time') or 0))
             self.db.commit()
             return True
 

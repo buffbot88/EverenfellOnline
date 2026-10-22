@@ -9,7 +9,13 @@ from `Server-v1/`.
 Public-launch release. The repository now ships **only the Python server**
 (`Server-v1/`, plus `README.md`, `CHANGELOG.md`, `LICENSE`); legacy client,
 Java distribution, tooling and internal docs stay in private history
-(`backup/pre-v1.4-full`). 1083 server tests, all passing.
+(`backup/pre-v1.4-full`). 945 server tests, all passing.
+
+Locked-stable internals (AMF3 codec, AI/combat formulas, scheduler,
+eventbus, stage registry, attribute/buff maps, client map parsing) are
+frozen and ship without their exhaustive golden suites (deleted; full
+history retained privately). `game/mapdat.py` is dropped — nothing at
+runtime imports it. Gameplay families keep full golden coverage.
 
 Ported command families (each golden-tested against the Java oracle's
 bytecode shapes and error codes):

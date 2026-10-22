@@ -15,9 +15,43 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from game import amf3  # noqa: E402
+from game.amf3 import Obj  # noqa: E402
+from game.config import GameConfig  # noqa: E402
 from game.protocol import Session  # noqa: E402
 from game.stage_registry import StageRegistry  # noqa: E402
-from test_ai import synthetic_config, write_bytes  # noqa: E402
+
+
+def write_bytes(directory, rel, data):
+    path = os.path.join(directory, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'wb') as f:
+        f.write(data)
+    return path
+
+
+def synthetic_config(root):
+    write_bytes(root, 'sys_config/JiNengBiao.jat', amf3.encode([
+        Obj(skilltype='normal003', level=1, damageformule='T21', formulea=0.8,
+            formuleb=10, formulec='', formuleg=0.75, criticalcalculate=1,
+            voltcalculate=1, cd1='t070')]))
+    write_bytes(root, 'sys_config/GuaiWuBiao.jat', amf3.encode([
+        Obj(id='T1', name='mob', level=3, hitpoints=100, mana=50,
+            velocity=200, physicdamage=20, physicdefence=0, critical=5,
+            volt=5, basicexp=400, eyeshot=5, maxrange=9, ifactive=1,
+            asheslast=2, creattime=3)]))
+    write_bytes(root, 'map_config/7/monster.mm', amf3.encode([
+        Obj(id='T1', team=0, createPoints=[[1, 2, 0]], createTime=1,
+            bossCreateTime=None, maxCount=9, name='mob', monsterType=1)]))
+    write_bytes(root, 'map_config/7/path.mm',
+                struct.pack('>ii', 8, 8) + bytes([0x1F] * 64))
+    write_bytes(root, 'sys_config/ZhuJueShuXingBiao.jat', amf3.encode([
+        Obj(level=1, mana=60, physicdamage=120, physicdefence=0,
+            critical=9, volt=9, attackrate=0, velocity=0, dunshudian=1)]))
+    write_bytes(root, 'sys_config/JingYanShuaiJianBiao.jat', amf3.encode([
+        Obj(lvdifference=0, subtractfactor=1)]))
+    write_bytes(root, 'sys_config/ShaGuaiXiuZhengBiao.jat', amf3.encode([
+        Obj(hurtpercentage=100, solorevise='1.00', rankrevise='1.00')]))
+    return GameConfig(root)
 
 
 def make_config():

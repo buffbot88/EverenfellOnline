@@ -87,4 +87,4 @@ tests (153 persisted to SQLite) plus 71 server-push IDs.
 - `game/amf3.py` — AMF3 codec (incl. anonymous objects)
 - `game/cipher.py` — `SimpleEncrypt`
 - `auth.py` / `db.py` / `web.py` — sign, SQLite store, account API
-- `tests/` — `python3 -m unittest discover -s tests` (1083 tests, all passing; oracle-dependent cases skip when the legacy config tree is absent)
+- `tests/` — `python3 -m unittest discover -s tests` (945 tests, all passing; oracle-dependent cases skip when the legacy config tree is absent). Long-stable internals (AMF3 codec, AI/combat formulas, scheduler, eventbus, stage registry, attribute/buff maps, client map parsing) are frozen and ship without exhaustive golden suites; gameplay families keep full golden coverage

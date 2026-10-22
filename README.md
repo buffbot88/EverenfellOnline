@@ -8,7 +8,7 @@ accounts, sessions and characters persist in **SQLite**.
 
 This is a preservation project: every reply shape and error code is ported
 from the legacy server's bytecode and golden-tested (`Server-v1/tests/`,
-1083 tests). v1.4 routes 164 command IDs with tests (153 persisted to
+945 tests). v1.4 routes 164 command IDs with tests (153 persisted to
 SQLite) plus 71 server-push IDs.
 
 ## Quickstart

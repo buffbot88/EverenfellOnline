@@ -1,9 +1,0 @@
-users: stress
-accounts_added: 1
-accounts_skipped: 0
-roles_added: 1
-roles_skipped: 0
-stages_written: 1
-currency_written: 1
-roles_missing_account: []
-notes: ['backup: C:\\Users\\buffb\\Desktop\\GitHub\\MonkeyKingOnline\\Server-v1\\data\\mko.db.pre-migration-20261008-231607']

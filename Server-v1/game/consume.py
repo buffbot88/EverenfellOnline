@@ -32,6 +32,17 @@ CONSUME_TYPE_TILI = 2
 CONSUME_TYPE_MP_PERCENT = 4
 
 
+def java_f2i(x):
+    """JVM f2i / Float.intValue: NaN -> 0, truncate toward zero, saturate to int32."""
+    if x != x:
+        return 0
+    if x >= 2147483647.0:
+        return 2147483647
+    if x <= -2147483648.0:
+        return -2147483648
+    return int(x)
+
+
 def _consume_value(skill):
     """SkillConfig.getConsume1 as a float32 (missing or blank -> 0)."""
     raw = skill.get('config', {}).get('consume1')
@@ -49,7 +60,7 @@ def is_satisfied(consume_type, fighter, skill):
     if consume_type == CONSUME_TYPE_MP_PERCENT:
         return f32(fighter['cur_mp']) >= f32(f32(fighter['max_mp']) * value)
     if consume_type == CONSUME_TYPE_TILI:
-        return int(fighter['tili']) >= int(value)
+        return int(fighter['tili']) >= java_f2i(value)
     if consume_type == CONSUME_TYPE_EMPTY:
         return True
     return False
@@ -61,7 +72,8 @@ def special_effect_mp(fighter, pct, flat, on_attribute_change=None):
     Returns the new current MP, or None when both values are non-positive
     (no state change, no broadcast).
     """
-    if not (f32(pct) > 0 or f32(flat) > 0):
+    # Java: fcmpg + ifgt jumps on NaN, so return only when both are <= 0 (not NaN).
+    if f32(pct) <= 0 and f32(flat) <= 0:
         return None
     cur = f32(fighter['cur_mp'])
     cost = f32(f32(f32(fighter['max_mp']) * f32(pct)) + f32(flat))
@@ -86,7 +98,7 @@ def consume(consume_type, fighter, skill, on_attribute_change=None):
     if consume_type == CONSUME_TYPE_MP_PERCENT:
         return special_effect_mp(fighter, value, 0.0, on_attribute_change) is not None
     if consume_type == CONSUME_TYPE_TILI:
-        amount = int(value)
+        amount = java_f2i(value)
         tili = int(fighter['tili']) - amount
         fighter['tili'] = tili if tili >= 0 else 0
         return True

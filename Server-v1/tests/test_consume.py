@@ -134,6 +134,29 @@ class TestTiLiDeduction(unittest.TestCase):
         self.assertEqual(f['tili'], 0)
 
 
+class TestNumericEdgeCases(unittest.TestCase):
+    def test_java_f2i_nan_and_saturation(self):
+        from game.consume import java_f2i
+        nan = float('nan')
+        self.assertEqual(java_f2i(nan), 0)
+        self.assertEqual(java_f2i(float('inf')), 2147483647)
+        self.assertEqual(java_f2i(float('-inf')), -2147483648)
+        self.assertEqual(java_f2i(2.9), 2)
+        self.assertEqual(java_f2i(-2.9), -2)
+
+    def test_nan_pct_is_not_an_early_return(self):
+        # fcmpg yields 1 for NaN, so ifgt jumps on: the handler does not return early.
+        f = fighter(cur_mp=100, max_mp=200)
+        result = special_effect_mp(f, float('nan'), 0.0)
+        self.assertIsNotNone(result)
+
+    def test_tili_nan_cost_is_zero(self):
+        f = fighter(tili=3)
+        self.assertTrue(is_satisfied(CONSUME_TYPE_TILI, f, skill(float('nan'))))
+        consume(CONSUME_TYPE_TILI, f, skill(float('nan')))
+        self.assertEqual(f['tili'], 3)
+
+
 class TestBroadcastAndFailure(unittest.TestCase):
     def test_attribute_change_called_once_on_mp_change(self):
         seen = []

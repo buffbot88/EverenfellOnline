@@ -176,6 +176,15 @@ class KillLifecycleTest(unittest.TestCase):
         # No S:DROP_GOODS or other invented frame is emitted by the drop step.
         self.assertFalse(any(f for f in frames if b'DROP_GOODS' in f))
 
+    def test_failed_roll_through_death_hook_records_no_item(self):
+        self.seed(hp=50.0)
+        with mock.patch('game.protocol.random.randrange', return_value=101):
+            self.swing(self.a, self.role)
+        results = self.a._world.drop_results[MID]
+        self.assertEqual([r['goods_id'] for r in results if r['outcome'] == 'dropped'], [])
+        self.assertEqual({r['goods_id']: r['outcome'] for r in results},
+                         {'hpadd002': 'missed', 'mpadd002': 'missed'})
+
     def test_second_attack_on_corpse_does_not_reevaluate(self):
         self.seed(hp=50.0)
         with mock.patch('game.protocol.random.randrange', return_value=100):

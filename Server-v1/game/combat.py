@@ -35,11 +35,13 @@ Provenance (all shapes/order verified against output/orig-stack/tap-decoded.txt)
     clamp: v > 2147483648.0 -> 2047483648.0; Harm value is (int)v.
   Crit chance (T7): role->monster baojiAtt/(baojiAtt+baojiTgt) * lvAtt/(sum)
     * 0.7; monster->role the same * 0.3; otherwise * 0.7; clamped to
-    [0.05, 0.95], rolled with Lottery.isSuccess.
-  Miss chance (T8.isMingZhong, only when skill.voltCalculate): role->monster
+    [0.05, 0.95], rolled with Lottery.isSuccess.    Miss chance (T8.isMingZhong, only when skill.voltCalculate): role->monster
     shanbiTgt/(shanbiAtt+shanbiTgt) * lvTgt/(sum) * 0.5; monster->role * 0.2;
-    otherwise * 0.7; clamped to [0.05, 0.95]; the swing misses when the roll
-    FAILS (inverted: isMingZhong returns true on lottery failure).
+    otherwise * 0.7; clamped to [0.05, 0.95]. isMingZhong returns
+    !Lottery.isSuccess(chance), so the swing misses when Lottery.isSuccess
+    succeeds (nextFloat() < chance).
+    Elemental (the monster branch, offsets 493-540, before putong): harm +=
+    formulea * (damageAtt_e - defenceTgt_e) for lei, mu, shui, huo, tu.
 - AbsFightResultCalculator.calculate order: fixed-harm target, fixed-harm
   attacker, DiKang resist, miss check (!checkMingZhong -> SHANBI harm),
   skill resist, then buffs + harmCalculate. Only the miss path is ported;
@@ -165,15 +167,12 @@ def resolve_hit(att, tgt, skill, force=None, roll=None):
         fc = 0.0
     outcome = force
     if outcome is None:
-        if skill.get('voltcalculate') and \
-                roll() >= 1.0 - miss_chance(att.get('shanbi', 0.0),
-                                           tgt.get('shanbi', 0.0),
-                                           att.get('level', 0),
-                                           tgt.get('level', 0),
-                                           att.get('is_role', False),
-                                           tgt.get('is_monster', False),
-                                           tgt.get('is_role', False)):
-            # isMingZhong returns true (a hit) when the lottery FAILS.
+        if skill.get('voltcalculate') and roll() < miss_chance(
+                att.get('shanbi', 0.0), tgt.get('shanbi', 0.0),
+                att.get('level', 0), tgt.get('level', 0),
+                att.get('is_role', False), tgt.get('is_monster', False),
+                tgt.get('is_role', False)):
+            # T8.isMingZhong returns !Lottery.isSuccess(chance): success means a miss.
             outcome = 'miss'
         else:
             outcome = 'hit'
@@ -187,6 +186,10 @@ def resolve_hit(att, tgt, skill, force=None, roll=None):
     skill_harm *= damage_multiplier(0.0, att.get('damage', 0.0),
                                     tgt.get('defence', 0.0), 0.0)
     value = max(skill_harm, max(att.get('level', 0) * fg, 0.0))
+    elem_att = att.get('elem_damage') or (0.0,) * 5
+    elem_tgt = tgt.get('elem_defence') or (0.0,) * 5
+    for dmg, dfn in zip(elem_att, elem_tgt):
+        value += fa * (float(dmg) - float(dfn))
     value = putong_scale(value, fc, att.get('level', 0))
     harm_type = HARM_PUTONG
     if outcome not in ('hit', 'crit', 'bihu'):
@@ -199,7 +202,9 @@ def resolve_hit(att, tgt, skill, force=None, roll=None):
             att.get('is_role', False), tgt.get('is_monster', False),
             tgt.get('is_role', False))
     if want_crit:
-        value = baoji_value(value)
+        value = baoji_value(value, att.get('criticalb', 0.0),
+                            tgt.get('criticalc', 0.0),
+                            att.get('eff19', 0.0), tgt.get('eff20', 0.0))
         harm_type = HARM_BAOJI
     if force == 'bihu' or (force is None and _roll_bihu(att, tgt, roll)):
         value *= BIHU_SCALE
@@ -213,9 +218,15 @@ def resolve_hit(att, tgt, skill, force=None, roll=None):
 
 
 def _roll_bihu(att, tgt, roll):
-    """T9.isBiHu: max(geDangTgt - poJiAtt, 0) per-mille block roll."""
+    """T9.isBiHu: Lottery.roll(odds, THOUSAND), odds = max(geDangTgt - poJiAtt, 0).
+
+    Lottery.roll(p, L) succeeds when p > 0 and nextInt(L.val) <= (int)(p * L.val);
+    int(roll() * 1000) stands in for nextInt(1000).
+    """
     odds = max(float(tgt.get('gedang', 0.0)) - float(att.get('poji', 0.0)), 0.0)
-    return roll() * 1000.0 < odds
+    if odds <= 0.0:
+        return False
+    return int(roll() * 1000) <= int(odds * 1000)
 
 
 def hit_record(target_id, harm_type, harm_val, dead):

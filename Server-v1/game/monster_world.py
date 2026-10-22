@@ -19,6 +19,8 @@ class MonsterWorld:
         self.hatred = {}        # monster id -> attacker fighter id
         self.leaving = {}       # dead id -> ticks until the 24002 leave
         self.spawning = []      # [template_id, map, born, ticks] until 23002
+        self.drop_done = set()  # monster ids whose death drops were evaluated
+        self.drop_results = {}  # monster id -> structured drop results (no packets)
         self.respawn_next = {}  # map id -> next fresh-id index
         self._driven = False    # True once a scheduler has started rounds
         self._round = 0

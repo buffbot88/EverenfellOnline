@@ -46,6 +46,7 @@ from .amf3 import ByteArray, Obj, SealedObj
 from .attributes import entry_attribute_map
 from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from . import ai as ai_lib
+from . import loot as loot_lib
 from . import combat as combat_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
@@ -2385,6 +2386,7 @@ class Session:
                 self._hatred.pop(target['id'], None)
                 if target['kind'] == 'monster':
                     self._schedule_leave(target)
+                    self._record_drop_result(target, actor)
                 if actor['kind'] == 'pet':
                     frames.append(frame(amf3_encode(combat_lib.dead_notice(
                         target['id'], actor['id'], actor.get('name'), action,
@@ -2502,6 +2504,37 @@ class Session:
             return list(reg['pos']) if reg is not None else None
         pos = fighter.get('pos')
         return list(pos) if pos is not None else None
+
+    def _record_drop_result(self, dead_monster, killer):
+        """Evaluate a monster's direct-item drops once, at its authoritative death.
+
+        Results are kept on the shared world as structured records (no packet). The
+        monster id is marked in drop_done, so a repeat hit on the corpse adds nothing.
+        """
+        mid = dead_monster['id']
+        if mid in self._world.drop_done or self.config is None:
+            return
+        self._world.drop_done.add(mid)
+        if killer.get('kind') != 'role':
+            return
+        role = killer['role']
+        template = dead_monster['template']
+        level_diff = self.config.drop_level_difference(template.get('monstertype'))
+        if level_diff is None:
+            results = [{'outcome': loot_lib.OUTCOME_UNSUPPORTED, 'slot': None,
+                        'goods_id': None, 'count': 0,
+                        'reason': 'DiaoLuoShuaiJianBiao row missing'}]
+        else:
+            results = []
+            for slot in loot_lib.direct_slots(template):
+                results.append(loot_lib.evaluate_direct_drop(
+                    template, slot, role_level=role.get('level') or 0,
+                    level_difference=level_diff,
+                    daily_limit=loot_lib.daily_limit_applies(
+                        template.get('countlimit'),
+                        self.config.goods_count(slot['goods_id'])),
+                    roll=random.randrange(loot_lib.LOTTERY_TENTHOUSAND)))
+        self._world.drop_results[mid] = results
 
     def _schedule_leave(self, dead_monster):
         """Monster.deadHandle/scheduleDisappearHandle: 24002 after asheslast."""

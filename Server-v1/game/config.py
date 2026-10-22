@@ -1112,6 +1112,7 @@ class GameConfig:
         self._jineng = None
         self._skillbook = None
         self._jingyan = None
+        self._diaoluo = None
         self._shaguai = None
         self._goods = None
         self._dan = None
@@ -1854,6 +1855,29 @@ class GameConfig:
         return self._jingyan.get(max(int(lv_diff), 0),
                                  self._jingyan[max(self._jingyan)])
 
+    def drop_level_difference(self, monster_type):
+        """DiaoLuoShuaiJianBiao levelDifference for a monstertype, or None when unknown.
+
+        Feeds the drop level gate (DropGoodsShuaiJianConfig.getLevelDifference), keyed by
+        monstertype as the Java loader stores it. A missing row returns None, not a guess.
+        """
+        if self._diaoluo is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'DiaoLuoShuaiJianBiao.jat')
+            rows = _load(path) if os.path.isfile(path) else []
+            self._diaoluo = {int(r['monstertype']): int(r['lvdifference'])
+                             for r in rows
+                             if isinstance(r, dict)
+                             and r.get('monstertype') is not None
+                             and r.get('lvdifference') is not None}
+            if not self._diaoluo:
+                log.warning('no DiaoLuoShuaiJianBiao table at %s; drop level gate unknown',
+                            path)
+        try:
+            return self._diaoluo.get(int(monster_type))
+        except (TypeError, ValueError):
+            return None
+
     def exp_revise(self, harm_percent, solo=True):
         """ShaGuaiXiuZhengBiao correction for a killer's harm share.
 
@@ -2118,6 +2142,17 @@ class GameConfig:
                 'open_time': open_time, 'add_exp': add_exp,
                 'add_attr_name': str(row.get('property') or ''),
                 'add_attr_value': add_attr}
+
+    def goods_count(self, goods_id):
+        """Goods `count` cell (daily-limit count), 0 when blank or unknown (object2int)."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return 0
+        raw = row.get('count')
+        try:
+            return int(str(raw).strip()) if raw not in (None, '') else 0
+        except ValueError:
+            return 0
 
     def goods_max_stack(self, goods_id):
         """Max stack (maxstack cell) for a goods id, or None when unknown."""

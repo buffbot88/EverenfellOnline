@@ -7,7 +7,7 @@ and the parity audit per phase. No servers start/stop without the user asking.
 
 ## Completion tracker (primary denominator: 861 command IDs in docs/command-ledger.md — 886 jar IDs minus 25 non-command IDs (24 error codes + 82004 broadcast data); module count secondary)
 
-ID track (ledger header: 633 not started, 0 dispatched-only, 11 golden-only, 152 persisted, 0 emitted, 65 push-golden-tested): 163 of 861 routed (18.9%) — 163 routed-with-tests (152 persisted, 11 golden-only), 0 dispatched-only; 65 server-push IDs emitted (65 with a test mention); 633 not started. Module track: 45 of 71 `*Commands` modules touched (~63%). Tables: 31 SQLite vs 176 MySQL (162 unmapped; 14 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
+ID track (ledger header: 621 not started, 0 dispatched-only, 11 golden-only, 153 persisted, 0 emitted, 71 push-golden-tested): 164 of 856 routed (19.2%) — 164 routed-with-tests (153 persisted, 11 golden-only), 0 dispatched-only; 71 server-push IDs emitted (71 with a test mention); 621 not started. Module track: 45 of 71 `*Commands` modules touched (~63%). Tables: 31 SQLite vs 176 MySQL (162 unmapped; 14 mapped per `tools/architecture_audit.py` `MYSQL_TO_SQLITE`). Family counts overlap (IDs repeat across modules); phase totals are approximate. `public_` (183 IDs) is unassigned shared surface needing triage — many entries may be notify/client-only numbers, not server commands.
 
 | Plan phase | Families (IDs) | Golden | Dispatched-only | Left |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@ ID track (ledger header: 633 not started, 0 dispatched-only, 11 golden-only, 152
 | 1 core loop (72) | bag 21, equip 13, vip 12, vipqq 3, setting 5, role 5, mall 4, account 3, skill 3, skillbook 3 | 60 persisted (+9 push-golden) | 0 | 0 (closed: vip 62003/62006 push-golden-tested; mall 2000 excluded as a non-command; vipqq 88003/88004 persisted, 88005 push-golden-tested; 1003/1006/430405/794000-794002 excluded as error codes) |
 | 2 scene (210) | stage | 9 persisted, 8 golden-only | 0 | 180 not started (+13 push-golden); scheduler mirror landed (Phase 2a: tick loop + Session.tick); event bus landed (`game/eventbus.py`); chat/presence 10050/10051/11000 landed (`tests/test_chat.py`, 7); teleport/face 40100/40201 landed (`tests/test_teleport.py`, 9); town revive 43001 landed (`tests/test_revive.py`, 9); one-step cross-map change landed (`tests/test_change_map.py`, 3); pet teleport-to-owner landed (`tests/test_pet_teleport.py`, 4: Chebyshev > 10 teleports to a free owner-adjacent cell, 40100 echo to the new surround); inner fly 40101 landed (`tests/test_inner_fly.py`, 6: same-map teleport echoes `[x, y, 0, roleId]` to the surround, other maps change map one-step, bad args silent); 179 open |
 | 3 progression (116) | task 26, chengjiu 2, jiangli 29, shenjiang 18, zuoqi 13, pet 12, baoshi 4, xianjiechenhao 7, meiren 5 | 53 persisted (+13 push-golden) | 0 | 32 not started (jiangli 5, shenjiang 5, zuoqi 3, pet 12, xianjiechenhao 7, meiren 0); yingyin slice landed: 58017/58018/58019 persisted (`tests/test_yingyin.py`, 13), 82004 excluded as broadcast-data non-command (meiren family complete); qiandao slice landed: 58012/58013/58014/58015 persisted (`tests/test_qiandao.py`, 23), 58016 a dead inbound route with no handler jar-wide, 592000-592010 excluded as error-code non-commands; chengjiu slice landed: 89000/89005 persisted (`tests/test_chengjiu.py`, 16); shenjiang slice landed: 41001/41002/41003/41004/41021 persisted (`tests/test_shenjiang.py`, 26), 41000 push-golden-tested, 423000/423001/423002/423004/423005/423006 excluded as error-code non-commands |
-| 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | 92 not started |
+| 4 social/events (~130) | email 9, huodong 31, hefuhuodong 7, qianfuhuodong 5, gonghuitask 11, marry 8, guildfuben 7, juqingfuben 8, zuwufuben 9, + wheels/gacha/rankings/pozhen/toubao | 0 | 3 | 90 not started (email claims landed: 63003/63006/63007/63008 push-golden-tested via `tests/test_email.py`, 8; 63005/63009 stay server pushes; role_email gained jb/yb columns) |
 | 5 GM/framework (~35) | gm 18, jinfeng 5, kuafu 6, + messageswap/eventservice/configure | 0 | 0 | all; needs event-dispatch + multi-node design note first |
 | triage | public_ 183, gamerule 13, xunbao 6, shenqi/shenmi/zhouhuan/jijin/xianshi* | 0 | 0 | classify before assigning to a phase (vipqq done: 3 routed, 3 error codes excluded) |
 
@@ -24,7 +24,8 @@ Module history (how the 42 touched modules landed): socket framing/login/enter-w
 (+3), zuoqi panel/ride/claim 33001/33000/33004 (+3), zuoqi jinjie 33003
 (+1), meiren panel/obtain/upgrade/chanmian 82000/82001/82002/82003 (+4),
 shenjiang activate/skillup/canjihuo/jihuo/jinjie 41001/41002/41003/41004/41021 (+5),
-chengjiu panel/claim 89000/89005 (+2).
+chengjiu panel/claim 89000/89005 (+2),
+email attachment/JB/YB/onekey claims 63003/63006/63007/63008 (+4).
 Evidence logs below are unchanged.
 
 ## What's left (updated 2026-10-14)

@@ -14211,9 +14211,13 @@ class Session:
                           'expire': entry.get('expireTime') or None})
         return items
 
-    def _email_fail(self, cmd, code):
-        """lingqu*/onekey gate reply: [0, EmailErrorCode]."""
-        return frame(amf3_encode([str(cmd), [0, code]]))
+    @staticmethod
+    def _email_fail(cmd, code):
+        """lingqu*/onekey gate reply: [0, EmailErrorCode].
+
+        cmd is the literal reply id string ('63003', ...) so the
+        command ledger can see the route's emission."""
+        return frame(amf3_encode([cmd, [0, code]]))
 
     def email_attachment(self, msg):
         """63003: lingquAttachment(emailId, index) grants one item.
@@ -14237,16 +14241,16 @@ class Session:
         except Exception:
             row = None
         if row is None:
-            return self._email_fail(63003, EMAIL_ERR_NOT_FOUND)
+            return self._email_fail('63003', EMAIL_ERR_NOT_FOUND)
         items = self._email_items(row.get('attachment'))
         if not items:
-            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+            return self._email_fail('63003', EMAIL_ERR_NO_ATTACHMENT)
         try:
             pos = int(index)
         except (TypeError, ValueError):
-            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+            return self._email_fail('63003', EMAIL_ERR_NO_ATTACHMENT)
         if pos < 0 or pos >= len(items):
-            return self._email_fail(63003, EMAIL_ERR_NO_ATTACHMENT)
+            return self._email_fail('63003', EMAIL_ERR_NO_ATTACHMENT)
         item = items[pos]
         try:
             fits = self._prop_fits(role.get('id'),
@@ -14255,11 +14259,11 @@ class Session:
         except Exception:
             fits = False
         if not fits:
-            return self._email_fail(63003, EMAIL_ERR_BAG_LESS)
+            return self._email_fail('63003', EMAIL_ERR_BAG_LESS)
         try:
             self._task_grant(role.get('id'), [item])
         except Exception:
-            return self._email_fail(63003, EMAIL_ERR_BAG_LESS)
+            return self._email_fail('63003', EMAIL_ERR_BAG_LESS)
         import json as _json
         rest = [e for n, e in enumerate(items) if n != pos]
         kept = []
@@ -14312,16 +14316,20 @@ class Session:
             self.update_role_email(rid, mid, **{kind: 0})
         except Exception:
             pass
-        return frame(amf3_encode([str(cmd), [1, amount]]))
+        # Literal reply heads so the command ledger sees each route's
+        # emission (shared helper, one frame per route).
+        if cmd == '63006':
+            return frame(amf3_encode(['63006', [1, amount]]))
+        return frame(amf3_encode(['63007', [1, amount]]))
 
     def email_jb(self, msg):
         """63006: lingquJb moves mail JB into tongqian."""
-        return self._email_money(63006, msg, 'jb', 'tongqian',
+        return self._email_money('63006', msg, 'jb', 'tongqian',
                                  EMAIL_ERR_NO_JB)
 
     def email_yb(self, msg):
         """63007: lingquYb moves mail YB into lingshi."""
-        return self._email_money(63007, msg, 'yb', 'lingshi',
+        return self._email_money('63007', msg, 'yb', 'lingshi',
                                  EMAIL_ERR_NO_YB)
 
     def email_onekey(self, msg):
@@ -14343,21 +14351,21 @@ class Session:
         except Exception:
             row = None
         if row is None:
-            return self._email_fail(63008, EMAIL_ERR_NOT_FOUND)
+            return self._email_fail('63008', EMAIL_ERR_NOT_FOUND)
         items = self._email_items(row.get('attachment'))
         try:
             for item in items:
                 if not self._prop_fits(
                         role.get('id'), {'goods': item['goods_id'],
                                        'count': item['count']}, item['bind']):
-                    return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+                    return self._email_fail('63008', EMAIL_ERR_BAG_LESS)
         except Exception:
-            return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+            return self._email_fail('63008', EMAIL_ERR_BAG_LESS)
         if items:
             try:
                 self._task_grant(role.get('id'), items)
             except Exception:
-                return self._email_fail(63008, EMAIL_ERR_BAG_LESS)
+                return self._email_fail('63008', EMAIL_ERR_BAG_LESS)
         rid = role.get('id')
         try:
             jb = int(row.get('jb') or 0)

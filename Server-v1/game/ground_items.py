@@ -13,11 +13,20 @@ Verified Java rules (dntg_start.jar bytecode):
 - Goods.checkIdentity: after 20 seconds from drop time anyone may pick it up.
   Before that, a null owner is open to everyone; otherwise the owner id or the
   owner's team id must match.
-- Expiry is scheduled as S:GOODS_DIS and removes the element once.
+- Expiry is scheduled as S:GOODS_DIS (StageServiceImpl.goodsDisappear) and
+  removes the element once.
 
-Not verified here: the id source (Java derives it from a zubao roll index, not
-  a global counter) and the S:DROP_GOODS wire format. Ids come from a monotonic
-  counter so they cannot collide within this server process.
+Client wire (AoiMsgListener + AbsAoiMsgListener bytecode):
+- Appearance is 23004 [Goods.getMsgData] to the item's surround (enter).
+- Disappearance (pickup leave, expiry, S:GOODS_DIS) is 24004 [itemId].
+- S:DROP_GOODS / S:GOODS_DIS are internal stage messages (StageMsgQueue
+  StageMsg -> send2StageInner -> goodsEnterStage/goodsDisappear), never
+  client packets.
+
+Ids: Java builds them as 'goods_' + IdUtil.nextString (AiServiceImpl
+  goodsPrefix), an opaque unique string the client echoes back in C:30103.
+  Ours are process-unique 'g<N>' strings under the same contract (unique,
+  echoed verbatim); the Id suffix scheme itself is unverified.
 """
 import threading
 

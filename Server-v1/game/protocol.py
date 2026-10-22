@@ -2028,6 +2028,9 @@ class Session:
         snapshot = self.monster_snapshot_frame(map_id, x, y)
         if snapshot is not None:
             frames.append(snapshot)
+        for item in self.ground_snapshot_items(map_id, x, y):
+            frames.append(frame(amf3_encode(
+                ['23004', [self.goods_msg_data(item, first_drop=0)]])))
         return frames
 
     def town_revive(self, msg):
@@ -2390,7 +2393,8 @@ class Session:
                 self._hatred.pop(target['id'], None)
                 if target['kind'] == 'monster':
                     self._schedule_leave(target)
-                    self._record_drop_result(target, actor)
+                    frames.extend(self._record_drop_result(target, actor)
+                                  or [])
                 if actor['kind'] == 'pet':
                     frames.append(frame(amf3_encode(combat_lib.dead_notice(
                         target['id'], actor['id'], actor.get('name'), action,
@@ -2512,8 +2516,9 @@ class Session:
     def _record_drop_result(self, dead_monster, killer):
         """Evaluate a monster's direct-item drops once, at its authoritative death.
 
-        Results are kept on the shared world as structured records (no packet). The
+        Results are kept on the shared world as structured records. The
         monster id is marked in drop_done, so a repeat hit on the corpse adds nothing.
+        Returns this session's own 23004 appearance copies from placement.
         """
         mid = dead_monster['id']
         if mid in self._world.drop_done or self.config is None:
@@ -2539,25 +2544,29 @@ class Session:
                         self.config.goods_count(slot['goods_id'])),
                     roll=random.randrange(loot_lib.LOTTERY_TENTHOUSAND)))
         self._world.drop_results[mid] = results
-        self._place_ground_items(dead_monster, role, results)
+        return self._place_ground_items(dead_monster, role, results)
 
     def _world_now_ms(self):
         """Server clock for ground-item creation and expiry; patchable in tests."""
         return int(time.time() * 1000)
 
     def _place_ground_items(self, dead_monster, role, results):
-        """Create one shared ground item per supported successful drop (no packets).
+        """Create one shared ground item per supported successful drop.
 
         Placement follows AoiStage.getSurroundValidPoint(point, true, GOODS): the
         monster tile when free, else the first free surround, else nothing when
         the tile has no path node (Java logs and skips the item). The whole
         drop is owner-protected (formatDrop's constant 1): the killer owns it
         and the killer's team shares it; a null team stays null, as in Java.
-        Lifetime is the template's dropitemlast in seconds.
+        Lifetime is the template's dropitemlast in seconds. Each item is
+        announced as 23004 [msgData] to its 3x3 AOI (AoiMsgListener enter
+        for GOODS, payload Goods.getMsgData); this session's own copies
+        are returned so the killer's swing carries them, peers are pushed.
         """
         store = self._world.ground_items
         if store is None or self.config is None:
-            return
+            return []
+        own = []
         template = dead_monster.get('template') or {}
         duration = self.config.drop_goods_duration(template)
         reg = self._monster_reg.get(dead_monster['id']) or {}
@@ -2583,6 +2592,28 @@ class Session:
                              owner_team_id=None,  # Python roles carry no team id yet
                              duration_seconds=duration, bind=0)
             result['point'] = (item.x, item.y)
+            own.extend(self._point_broadcast(
+                map_id, (item.x, item.y), '23004',
+                [self.goods_msg_data(item)]))
+        return own
+
+    def goods_msg_data(self, item, first_drop=1):
+        """Goods.getMsgData 13-field array for one ground item.
+
+        [x, y, goodsId, name, itemId, rareLevel, count, ownerId,
+        ownTeamId, dropTimeMs, itemLevel, firstDrop, displayName].
+        Fresh drops report firstDrop 1: AOI.add notifies the listener
+        before AbsAoiStage.addHandle runs enterStageHandle, which is what
+        clears the flag. Snapshots of settled items pass 0.
+        """
+        return [int(item.x), int(item.y), str(item.goods_id),
+                self.config.goods_name(item.goods_id), str(item.id),
+                int(self.config.goods_rarelevel(item.goods_id)),
+                int(item.count or 0), item.owner_id, item.owner_team_id,
+                int(item.drop_time_ms),
+                int(self.config.goods_item_level(item.goods_id)),
+                int(first_drop),
+                int(self.config.goods_display_name(item.goods_id))]
 
     def pickup_goods(self, msg):
         """Command 30103: RoleBehaviourAction.pickUp -> goodsPickUp -> 30103.
@@ -2674,6 +2705,11 @@ class Session:
         for row, _old in applied:
             frames.append(frame(amf3_encode(
                 ['30104', [[[row.get('bag_id'), row.get('count')]]]])))
+        # Stage.leave -> AOI delete -> 24004 [itemId] to the item's 3x3
+        # surround (AoiMsgListener leave for GOODS); the picker keeps its
+        # own copies inline, peers are pushed.
+        frames.extend(self._point_broadcast(
+            claimed.map_id, (claimed.x, claimed.y), '24004', [claimed.id]))
         return True, tuple(frames)
 
     @staticmethod
@@ -2878,7 +2914,12 @@ class Session:
         """
         frames = []
         if self._world.claim_round():
-            self._world.ground_items.expire(self._world_now_ms())
+            # The S:GOODS_DIS leave removes each expired item once; its
+            # 24004 [itemId] goes to the item's 3x3 surround like a pickup.
+            for gone in self._world.ground_items.expire(
+                    self._world_now_ms()):
+                frames.extend(self._point_broadcast(
+                    gone.map_id, (gone.x, gone.y), '24004', [gone.id]))
             frames.extend(self.deliver_world_frames(self.monster_world_step()))
         frames.extend(self.pet_ai_step())
         return tuple(frames) if frames else None
@@ -3797,6 +3838,11 @@ class Session:
         snapshot = self.monster_snapshot_frame(map_id, x, y)
         if snapshot is not None:
             frames.append(snapshot)
+        # Settled ground items enter with the scene like the AOI role-enter
+        # burst (one 23004 [msgData] per item, firstDrop already cleared).
+        for item in self.ground_snapshot_items(map_id, x, y):
+            frames.append(frame(amf3_encode(
+                ['23004', [self.goods_msg_data(item, first_drop=0)]])))
         # The mount pet enters the stage right after the AOI snapshot
         # and before the stats pushes (old tap order).
         pet = self.zuoqi_pet_frame(role, map_id)
@@ -3895,6 +3941,27 @@ class Session:
                     rec[4] = float(self._monster_hp[mid])
                 records.append(rec)
             return records
+
+    def ground_snapshot_items(self, map_id, x=None, y=None, now_ms=None):
+        """Unexpired ground items on a map for scene entry, AOI-box scoped.
+
+        Mirrors the role-enter goods burst (getElementInfos for GOODS): only
+        items Java would still hold on the stage, around the entering role.
+        """
+        store = self._world.ground_items
+        if store is None or self.config is None:
+            return []
+        now = now_ms if now_ms is not None else self._world_now_ms()
+        from .config import _in_aoi
+        items = []
+        for item in store.on_map(map_id):
+            if now >= item.expires_at_ms:
+                continue
+            if x is not None and y is not None and not _in_aoi(
+                    x, y, item.x, item.y):
+                continue
+            items.append(item)
+        return items
 
     def monster_snapshot_frame(self, map_id, x=None, y=None):
         """23002 monster snapshot, or None when no spawn is in range.

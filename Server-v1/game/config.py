@@ -2169,6 +2169,33 @@ class GameConfig:
         except (TypeError, ValueError):
             return 0
 
+    def goods_name(self, goods_id):
+        """Display name (name cell) for a goods id; '' when unknown.
+
+        GoodsFactory names every Goods element from GoodsConfig.getName
+        (hpadd002 carries its Thai potion name); the 23004 appearance
+        payload reports it as field 3.
+        """
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return ''
+        return str(row.get('name') or '')
+
+    def goods_display_name(self, goods_id):
+        """Display-name flag for a goods id: 1 when dropxianshi is set.
+
+        GoodsConfigExportServiceImpl feeds the dropxianshi cell through
+        object2boolean into GoodsConfig.displayName (hpadd002 leaves it
+        blank, so it reports 0); the 23004 payload carries it as field 12.
+        The live table only ever holds '1', blank or missing, so only an
+        explicit '1' (or 'true') counts as set.
+        """
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return 0
+        return 1 if str(row.get('dropxianshi') or '').strip().lower() \
+            in ('1', 'true') else 0
+
     def goods_max_stack(self, goods_id):
         """Max stack (maxstack cell) for a goods id, or None when unknown."""
         row = self._goods_table().get(str(goods_id))

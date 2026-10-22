@@ -153,9 +153,10 @@ class PickupLifecycleTest(unittest.TestCase):
         self.assertTrue(ok)
         got = cmds(frames)
         self.assertEqual(got[0], ['30103', [1, 'hpadd002', 1, item.id]])
-        # New-slot award: exactly the 30103 reply plus one 30105 push,
-        # and no invented packet ids.
-        self.assertEqual([c for c, _b in got], ['30103', '30105'])
+        # New-slot award: the 30103 reply, one 30105 push and the 24004
+        # removal, and no invented packet ids.
+        self.assertEqual([c for c, _b in got], ['30103', '30105', '24004'])
+        self.assertEqual(got[2], ['24004', [item.id]])
         formart = got[1][1][0]
         assoc = formart.get('__assoc__', formart)
         self.assertEqual(assoc['0'], 'hpadd002')
@@ -223,8 +224,9 @@ class PickupLifecycleTest(unittest.TestCase):
                                         now_ms=2000)
         self.assertTrue(ok)
         got = cmds(frames)
-        self.assertEqual([c for c, _b in got], ['30103', '30104'])
+        self.assertEqual([c for c, _b in got], ['30103', '30104', '24004'])
         self.assertEqual(got[0], ['30103', [1, 'hpadd002', 1, item.id]])
+        self.assertEqual(got[2], ['24004', [item.id]])
         rows = self.bag(self.killer_id)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['count'], 6)

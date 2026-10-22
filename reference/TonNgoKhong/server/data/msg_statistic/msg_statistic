@@ -20,11 +20,11 @@ cmd:44001	count:1	total:454100	max:454100	min:454100	avg:454100
 cmd:105003	count:1	total:453500	max:453500	min:453500	avg:453500
 cmd:32010	count:8	total:107806500	max:70881200	min:208000	avg:13475812
 cmd:21000	count:3	total:843100	max:491900	min:137100	avg:281033
-cmd:AI:HANDLE	count:33537372	total:2537897134500	max:1764074500	min:4100	avg:75673
+cmd:AI:HANDLE	count:33661359	total:2546631364600	max:1764074500	min:4100	avg:75654
 cmd:105000	count:1	total:1092700	max:1092700	min:1092700	avg:1092700
 cmd:58011	count:1	total:107100	max:107100	min:107100	avg:107100
 cmd:130000	count:1	total:319700	max:319700	min:319700	avg:319700
-cmd:boss:QISHENGBOSS_CHECK_COPY	count:117	total:10485500	max:1494300	min:41900	avg:89619
+cmd:boss:QISHENGBOSS_CHECK_COPY	count:122	total:11048500	max:1494300	min:41900	avg:90561
 cmd:inner_close_prepare	count:27	total:4296300	max:738900	min:9500	avg:159122
 cmd:82022	count:1	total:75700	max:75700	min:75700	avg:75700
 cmd:88003	count:1	total:7757800	max:7757800	min:7757800	avg:7757800
@@ -81,7 +81,7 @@ cmd:MW:STAGE_CREATE	count:145	total:41193300	max:6983600	min:16100	avg:284091
 cmd:107000	count:1	total:576700	max:576700	min:576700	avg:576700
 cmd:101000	count:1	total:138000	max:138000	min:138000	avg:138000
 cmd:109000	count:1	total:256900	max:256900	min:256900	avg:256900
-cmd:AI:PRODUCE	count:94669	total:25405564300	max:23826100	min:11100	avg:268362
+cmd:AI:PRODUCE	count:95019	total:25498493600	max:23826100	min:11100	avg:268351
 cmd:MW:TIMER_CLEAR	count:1	total:675700	max:675700	min:675700	avg:675700
 cmd:53021	count:1	total:2270500	max:2270500	min:2270500	avg:2270500
 cmd:20000	count:5	total:991700	max:398800	min:121200	avg:198340
@@ -93,7 +93,7 @@ cmd:10060	count:1	total:121100	max:121100	min:121100	avg:121100
 cmd:122002	count:1	total:296800	max:296800	min:296800	avg:296800
 cmd:124001	count:1	total:1346300	max:1346300	min:1346300	avg:1346300
 cmd:113000	count:1	total:155400	max:155400	min:155400	avg:155400
-cmd:AI:RETRIEVE	count:142521	total:16025637200	max:7316400	min:3900	avg:112444
+cmd:AI:RETRIEVE	count:143272	total:16088580400	max:7316400	min:3900	avg:112293
 cmd:86000	count:1	total:293400	max:293400	min:293400	avg:293400
 cmd:30005	count:1	total:1537000	max:1537000	min:1537000	avg:1537000
 cmd:F:51014	count:3	total:1737600	max:1531200	min:102500	avg:579200
@@ -122,7 +122,7 @@ cmd:JQ:LOGIN	count:5	total:244600	max:82300	min:29300	avg:48920
 cmd:102000	count:1	total:135600	max:135600	min:135600	avg:135600
 cmd:32000	count:6	total:749700	max:221000	min:36700	avg:124950
 cmd:-1	count:5	total:116433100	max:58927900	min:8425000	avg:23286620
-cmd:io_msg_out	count:28077775	total:72549756400	max:31945100	min:200	avg:2583
+cmd:io_msg_out	count:28181672	total:72788849000	max:31945100	min:200	avg:2582
 cmd:82000	count:1	total:229100	max:229100	min:229100	avg:229100
 cmd:74000	count:1	total:256600	max:256600	min:256600	avg:256600
 cmd:95000	count:1	total:4978800	max:4978800	min:4978800	avg:4978800

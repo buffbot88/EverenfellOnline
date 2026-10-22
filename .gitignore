@@ -52,3 +52,6 @@ agents.json
 knowledge.md
 brain-install.js
 package.json
+/reference
+*.MYI
+*.MYD

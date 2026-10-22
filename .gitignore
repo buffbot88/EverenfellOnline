@@ -4,6 +4,7 @@
 # Legacy distribution, client, tooling, internal docs (private history).
 /reference/*
 /MKO_Client/*
+/.survey/*
 /tools/*
 /docs/*
 /output/*

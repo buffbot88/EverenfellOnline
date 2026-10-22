@@ -82,6 +82,23 @@ class SkillReadiness:
         """The SkillStatus for a category, or None."""
         return self._by_category.get(category)
 
+    def wave_check(self, skill):
+        """SkillManager.skillWaveCheck: consume one wave, or drop the entry when none remain.
+
+        Java: no category entry -> false. Entry with remainWaveNum > 0 -> decrement,
+        true. Otherwise remove the category entry, false. The lasting reference is
+        not touched here.
+        """
+        category = skill['category']
+        status = self._by_category.get(category)
+        if status is None:
+            return False
+        if status.remain_wave_num > 0:
+            status.remain_wave_num -= 1
+            return True
+        del self._by_category[category]
+        return False
+
     def is_ready(self, skill, now_ms):
         """SkillManager.isReadyForFire: lasting instance (identity), or elapsed >= casttime."""
         if self._lasting is not None and skill is self._lasting:

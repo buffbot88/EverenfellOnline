@@ -32,6 +32,48 @@ class TestObject2Int(unittest.TestCase):
         self.assertEqual(object2int('abc'), 0)
 
 
+class TestWaveCheck(unittest.TestCase):
+    def test_no_entry_is_false(self):
+        r = SkillReadiness()
+        self.assertFalse(r.wave_check(skill('x', 'catA', jinengboshu=3)))
+
+    def test_consumes_one_wave_per_check(self):
+        r = SkillReadiness()
+        s = skill('x', 'catA', jinengboshu=3)
+        r.set_ready(s, 0)
+        self.assertTrue(r.wave_check(s))
+        self.assertEqual(r.get('catA').remain_wave_num, 2)
+        self.assertTrue(r.wave_check(s))
+        self.assertTrue(r.wave_check(s))
+        self.assertEqual(r.get('catA').remain_wave_num, 0)
+
+    def test_exhausted_entry_is_removed_and_false(self):
+        r = SkillReadiness()
+        s = skill('x', 'catA', jinengboshu=1)
+        r.set_ready(s, 0)
+        self.assertTrue(r.wave_check(s))
+        self.assertFalse(r.wave_check(s))
+        self.assertIsNone(r.get('catA'))
+        self.assertFalse(r.is_ready(s, 10**9))
+
+    def test_default_wave_of_one_when_column_blank(self):
+        r = SkillReadiness()
+        s = skill('x', 'catA', jinengboshu=None)
+        r.set_ready(s, 0)
+        self.assertTrue(r.wave_check(s))
+        self.assertFalse(r.wave_check(s))
+
+    def test_other_category_untouched(self):
+        r = SkillReadiness()
+        a = skill('a', 'catA', jinengboshu=1)
+        b = skill('b', 'catB', jinengboshu=5)
+        r.set_ready(a, 0)
+        r.set_ready(b, 0)
+        r.wave_check(a)
+        r.wave_check(a)
+        self.assertEqual(r.get('catB').remain_wave_num, 5)
+
+
 class TestWaveDefault(unittest.TestCase):
     def test_positive_kept_else_one(self):
         self.assertEqual(wave_num(3), 3)

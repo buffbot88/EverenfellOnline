@@ -47,6 +47,23 @@ class TestWaveCheck(unittest.TestCase):
         self.assertTrue(r.wave_check(s))
         self.assertEqual(r.get('catA').remain_wave_num, 0)
 
+    def test_entry_survives_final_success_and_is_removed_on_next_attempt(self):
+        # Java skillWaveCheck: ifle 58 jumps to removal only when remainWaveNum <= 0.
+        r = SkillReadiness()
+        s = skill('x', 'catA', jinengboshu=3)
+        r.set_ready(s, 0)
+        self.assertTrue(r.wave_check(s))
+        self.assertTrue(r.wave_check(s))
+        self.assertTrue(r.wave_check(s))
+        # Third success leaves the entry in place at zero waves.
+        self.assertIsNotNone(r.get('catA'))
+        self.assertEqual(r.get('catA').remain_wave_num, 0)
+        self.assertTrue(r.is_ready(s, 0))
+        # Fourth attempt finds zero, removes the entry, and fails.
+        self.assertFalse(r.wave_check(s))
+        self.assertIsNone(r.get('catA'))
+        self.assertFalse(r.is_ready(s, 0))
+
     def test_exhausted_entry_is_removed_and_false(self):
         r = SkillReadiness()
         s = skill('x', 'catA', jinengboshu=1)

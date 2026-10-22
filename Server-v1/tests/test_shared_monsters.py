@@ -162,6 +162,36 @@ class SharedMonsterTest(unittest.TestCase):
         ids = [m for m in a._monster_reg]
         self.assertEqual(len(ids), len(set(ids)))
 
+    # Monster retaliates on a player in another session, ticked by the other session.
+    def test_monster_retaliates_on_player_in_other_session(self):
+        a, b = self.make_pair()
+        self.seed_monster(a, hp=200.0)
+        # Adjacent to the role at (10, 10), so the monster attacks rather than walks.
+        a._monster_reg[MID]['pos'] = [11, 10]
+        with mock.patch('random.random', return_value=0.5):
+            self.swing(a, self.role_a)
+        self.assertEqual(str(a._hatred[MID]), '1')
+        a._world.begin_round()
+        # Every session writes through the same store, so the stepping session's
+        # writer stands in for the shared HP write to Player A's role.
+        with mock.patch.object(b, 'save_role_state') as save_b, \
+                mock.patch('random.random', return_value=0.5):
+            frames = b.ai_tick()
+        self.assertIsNotNone(frames)
+        save_b.assert_called_once()
+        self.assertEqual(str(save_b.call_args.args[0]), '1')
+        self.assertLess(save_b.call_args.kwargs['hp'], 500)
+
+    # A player on another map is not an eligible target.
+    def test_monster_drops_hatred_for_player_on_other_map(self):
+        a, b = self.make_pair()
+        self.seed_monster(a, hp=200.0)
+        self.swing(a, self.role_a)
+        self.role_a['map_id'] = '8'
+        a._world.begin_round()
+        b.ai_tick()
+        self.assertNotIn(MID, a._hatred)
+
     def round_tick(self, a, b):
         """One server round: the scheduler starts it, then every session ticks."""
         a._world.begin_round()

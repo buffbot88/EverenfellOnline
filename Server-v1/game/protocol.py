@@ -2142,6 +2142,8 @@ class Session:
             return None
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = _find_role(roles, fid)
+        if role is None:
+            role = self._registry_role(fid)
         if role is not None:
             return {'kind': 'role', 'id': _wire_id(role), 'role': role}
         pet = self._pet_state.get(fid)
@@ -2167,6 +2169,23 @@ class Session:
                     return {'kind': 'monster', 'id': fid, 'template': tpl,
                             'record': rec, 'hp': hp}
         return None
+
+    def _registry_role(self, role_id):
+        """Role record owned by another session on the shared registry, or None.
+
+        Monster AI steps in whichever session claims the round, so a target may
+        belong to a different connection. The owner re-reads its own roles from
+        the store, so HP, position and map are current. None when the role is not
+        placed or its owner is this session.
+        """
+        if self.stage_registry is None:
+            return None
+        owner = self.stage_registry.session_of(role_id)
+        if owner is None or owner is self:
+            return None
+        return _find_role(
+            owner.get_roles(owner.authed_user or '', owner.server_id or ''),
+            str(role_id))
 
     def _fighter_attrs(self, fighter):
         """combat.lib attribute dict for a fighter.
@@ -2575,6 +2594,15 @@ class Session:
                 by_map[map_id] = frames
             return by_map
 
+    def _target_off_map(self, target, map_id):
+        """True when a role target is not alive on the monster's map."""
+        if target['kind'] != 'role':
+            return False
+        role = target['role']
+        if str(role.get('map_id')) != str(map_id):
+            return True
+        return self._fighter_hp(target)[0] <= 0
+
     def _monster_ai_map(self, map_id, frames):
         """Hatred, leave and respawn for the monsters of one map."""
         for mid in sorted(self._hatred):
@@ -2585,7 +2613,8 @@ class Session:
                 self._hatred.pop(mid, None)
                 continue
             target = self._stage_fighter(self._hatred[mid])
-            if target is None or target['id'] in self._dead:
+            if (target is None or target['id'] in self._dead
+                    or self._target_off_map(target, map_id)):
                 # refreshState FIGHT -> BACK: hatred lost, walk home.
                 self._hatred.pop(mid, None)
                 if list(reg['pos']) != list(reg['born']):

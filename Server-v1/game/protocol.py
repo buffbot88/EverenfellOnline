@@ -1917,11 +1917,16 @@ class Session:
             log.info('conn %d: tile step for unowned %r (ignored)', self.conn_id, actor)
             return None
         log.info('conn %d: tile role=%r -> (%s, %s)', self.conn_id, actor, x, y)
+        old = [role.get('map_x'), role.get('map_y')]
         self.save_role_state(_wire_id(role), map_x=int(x), map_y=int(y))
         if self.stage_registry is not None:
             self.stage_registry.set_position(_wire_id(role), x, y)
         self._presence_aggro(role, int(x), int(y))
-        return None
+        frames = list(self._dazuo_cancel_frames(role) or ())
+        enter = self._aoi_enter_frames(role, old, [int(x), int(y)])
+        if enter is not None:
+            frames.extend(enter)
+        return tuple(frames) if frames else None
 
     def jump(self, msg):
         """Command 40001: log only; no Java reply captured."""
@@ -2005,8 +2010,9 @@ class Session:
         self.save_role_state(rid, map_x=x, map_y=y)
         if self.stage_registry is not None:
             self.stage_registry.set_position(rid, x, y)
-        out = self._dazuo_broadcast(rid, CMD_TELEPORT, args)
-        return tuple(out) if out else None
+        frames = list(self._dazuo_cancel_frames(role) or ())
+        frames.extend(self._dazuo_broadcast(rid, CMD_TELEPORT, args))
+        return tuple(frames) if frames else None
 
     def change_map(self, rid, map_id, x, y):
         """Move a placed role to another map at (x, y): leave the old map, enter the new one.
@@ -2136,7 +2142,11 @@ class Session:
         role = _find_role(roles, str(actor))
         if role is not None and role.get('map_x') is not None:
             self._presence_aggro(role, int(role['map_x']), int(role['map_y']))
-        return frame(amf3_encode(['42001', [1, actor, action, pos, path, flag, None]]))
+        echo = frame(amf3_encode(['42001', [1, actor, action, pos, path, flag, None]]))
+        cancel = self._dazuo_cancel_frames(role) if role is not None else None
+        if cancel is None:
+            return echo
+        return tuple(list(cancel) + [echo])
 
     def _stage_fighter(self, fighter_id):
         """Resolve a combat actor/target to a fighter dict, or None.
@@ -2383,6 +2393,10 @@ class Session:
                 combat_lib.buff_flush_frame(target['id']))))
             frames.append(frame(amf3_encode(
                 combat_lib.buff_flush_frame(actor['id']))))
+            if target['kind'] == 'role' and harm_val > 0:
+                cancel = self._dazuo_cancel_frames(target['role'])
+                if cancel is not None:
+                    frames.extend(cancel)
             if (actor['kind'] in ('role', 'pet')
                     and target['kind'] == 'monster' and not dead):
                 # fireAttackedEvent -> MonsterHatredManager: the monster
@@ -2448,7 +2462,10 @@ class Session:
             log.info('conn %d: 42002 from dead %r (ignored)',
                      self.conn_id, actor_id)
             return None
-        frames = self._resolve_fire(actor, action, index, targets, arg4, arg5)
+        cancel = None
+        if actor['kind'] == 'role':
+            cancel = self._dazuo_cancel_frames(actor['role'])
+        frames = list(cancel or ()) + self._resolve_fire(actor, action, index, targets, arg4, arg5)
         if not frames:
             return None
         if actor['kind'] == 'role':
@@ -2881,6 +2898,58 @@ class Session:
             if ai_lib.in_aggro(reg['pos'], [x, y], eyeshot):
                 self._hatred[mid] = wid
 
+    def _aoi_enter_frames(self, role, old_pos, new_pos):
+        """23002 + born-flag tiles for monsters newly inside the role's AOI.
+
+        Mirrors the AoiMsgListener element-enter burst the scene entry sends
+        (scene_tail_frames): a role that walks into a monster's AOI sees the
+        same 23002 record + 40000 tile it would have gotten entering there,
+        except field 15 is True on enter (legacy Java tap: entry snapshots
+        carry False, every movement-enter burst carries True). Steps inside
+        one AOI box, unknown positions and dead monsters stay silent.
+        Returns a frame tuple, or None when nothing new is visible.
+        """
+        if self.config is None:
+            return None
+        try:
+            old = [int(old_pos[0]), int(old_pos[1])]
+            new = [int(new_pos[0]), int(new_pos[1])]
+        except (TypeError, ValueError):
+            return None
+        if old == new:
+            return None
+        map_id = str(role.get('map_id'))
+        before = {r[0] for r in
+                  self.world_snapshot_records(map_id, *old)}
+        entered = [list(r) for r in
+                   self.world_snapshot_records(map_id, *new)
+                   if r[0] not in before]
+        for r in entered:
+            r[15] = True
+        if not entered:
+            return None
+        frames = [frame(amf3_encode(['23002', entered]))]
+        for rec in entered:
+            try:
+                frames.append(frame(amf3_encode(ai_lib.tile_move_frame(
+                    rec[0], [rec[11], rec[12]], True))))
+            except (IndexError, TypeError, ValueError):
+                continue
+        return tuple(frames)
+
+    def _dazuo_cancel_frames(self, role):
+        """44003 exit when a moving role is meditating, else None.
+
+        The Flash client never sends 44003 for the move itself (live
+        capture): the server cancels the _dazuo_state, its tick timer and
+        any partner link, exactly like an explicit dazuo_exit.
+        """
+        wid = _wire_id(role)
+        state = self._dazuo.get(wid)
+        if state is None or not state.get('daZuo'):
+            return None
+        return self.dazuo_exit(['44003', [wid]])
+
     def _walkable(self, map_id):
         """Walkability predicate for AI steps, or None without a grid."""
         grid = self.config.path_grid(map_id) if self.config is not None else None
@@ -3285,7 +3354,9 @@ class Session:
             if partner_sess is not None:
                 partner_sess.push_op(
                     lambda: partner_sess._dazuo_unlink(partner, rid))
-        out = self._dazuo_broadcast(rid, CMD_DAZUO_EXIT, None)
+        # Java daZuoExit addMsg(surround, "44003", roleId): the payload is
+        # the exiting role, not null (RoleBehaviourServiceImpl bytecode).
+        out = self._dazuo_broadcast(rid, CMD_DAZUO_EXIT, rid)
         return tuple(out) if out else None
 
     def dazuo_timing(self, role_id):
@@ -3916,7 +3987,7 @@ class Session:
         """
         if self.config is None:
             return []
-        from .config import _in_aoi
+        from .config import _in_surround
         with self._world.lock:
             spawn_records = self.config.monster_snapshot(map_id, x, y)
             spawn_ids = {r[0] for r in self.config.monster_snapshot(map_id)}
@@ -3933,7 +4004,7 @@ class Session:
                         or mid in self._dead):
                     continue
                 pos = reg['pos']
-                if x is not None and y is not None and not _in_aoi(
+                if x is not None and y is not None and not _in_surround(
                         x, y, pos[0], pos[1]):
                     continue
                 rec = ai_lib.respawn_record(mid, reg['template'], pos)

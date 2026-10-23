@@ -73,11 +73,10 @@ GUANGGAO_KEYS = ('finishtime', 'id', 'kaifudays', 'jiemian', 'time',
                  'starttime', 'hefudays', 'name', 'img', 'hefustart',
                  'startday')
 
-# AOI half-extents in tiles for scene-entry snapshots. The stage properties
+# AOI half-extents in tiles for NPC/goods snapshots. The stage properties
 # carry aoi_width = 600 by aoi_height = 400 (pixels); at 32 px per tile the
 # box is |dx| <= 9 by |dy| <= 6. A map-2 role at (10,150) sees N020001 at
-# (6,152) but not N020002 at (26,150), and none of the far monster spawns
-# (session-20261018-040230).
+# (6,152) but not N020002 at (26,150) (session-20261018-040230).
 AOI_X_RANGE = 9
 AOI_Y_RANGE = 6
 
@@ -87,6 +86,25 @@ def _in_aoi(x, y, px, py, x_range=AOI_X_RANGE, y_range=AOI_Y_RANGE):
     try:
         return abs(int(px) - int(x)) <= x_range and \
             abs(int(py) - int(y)) <= y_range
+    except (TypeError, ValueError):
+        return False
+
+
+def _in_surround(x, y, px, py):
+    """True when point (px, py) shares the role's 3x3 stage-cell surround.
+
+    Monster snapshots use the stage-cell surround (StageAoi /
+    AOI.getElements(ROLE, 9), the same audience rule as frame broadcasts),
+    not the tile box: Java's map-5 entry 23002 at (44,33) carries spawns
+    at dy -9/+8 (legacy tap), outside the |dy| <= 6 tile box, while the
+    map-2 entry at (10,150) correctly stays empty
+    (session-20261018-040230). Cells are 600x400 px, tiles 60x30 px.
+    """
+    try:
+        from .stage_registry import aoi_cell
+        cx, cy = aoi_cell(int(x), int(y))
+        ex, ey = aoi_cell(int(px), int(py))
+        return abs(ex - cx) <= 1 and abs(ey - cy) <= 1
     except (TypeError, ValueError):
         return False
 
@@ -4644,8 +4662,8 @@ class GameConfig:
                 spawn_no += 1
                 if tpl is None:
                     continue
-                if x is not None and y is not None and not _in_aoi(
-                        x, y, px, py, x_range, y_range):
+                if x is not None and y is not None and not _in_surround(
+                        x, y, px, py):
                     continue
                 # Layout copied from a captured 23002 record (output/orig-stack/tap-decoded.txt).
                 # Verified: 0-4 (id, template, name, level, hp), 11-12 (x, y against spawn points).

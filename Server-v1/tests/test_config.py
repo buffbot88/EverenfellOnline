@@ -375,10 +375,13 @@ class RealSnapshotTest(unittest.TestCase):
             self.assertEqual(rec[13:], CAPTURED_D040011[13:])
 
     def test_map5_entry_snapshot_is_aoi_filtered(self):
-        # Role at the captured map-5 position (44, 33): 8 of the 47 spawn
-        # points fall in the AOI box.
+        # Role at the captured map-5 position (44, 33): 14 of the 47 spawn
+        # points fall in the 3x3 stage-cell surround, including the
+        # legacy-tap points (47, 41), (44, 34), (45, 31) and (48, 35).
         recs = GameConfig(str(REAL_CONFIG)).monster_snapshot('5', 44, 33)
-        self.assertEqual(len(recs), 8)
+        self.assertEqual(len(recs), 14)
+        pts = {(r[11], r[12]) for r in recs}
+        self.assertTrue({(47, 41), (44, 34), (45, 31), (48, 35)} <= pts)
 
     def test_map2_entry_sees_only_n020001(self):
         # The fresh map-2 capture carries exactly this 23003 frame for a

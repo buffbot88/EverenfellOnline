@@ -129,7 +129,9 @@ class MeditationTest(unittest.TestCase):
         b.tick(now_ms=0)
         a.tick(now_ms=0)
         out = a.dazuo_exit([44003, '1'])
-        self.assertEqual(decode(out), [['44003', None]])
+        # Java daZuoExit addMsg(surround, "44003", roleId): the payload is
+        # the exiting role, not null (RoleBehaviourServiceImpl bytecode).
+        self.assertEqual(decode(out), [['44003', '1']])
         self.assertFalse(a._dazuo['1']['daZuo'])
         self.assertIsNone(a._dazuo['1']['target'])
         self.assertNotIn('timing_dazuo_get:1', a.stage_scheduler.pending())

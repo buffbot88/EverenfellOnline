@@ -774,14 +774,19 @@ class Store:
                 return None
 
     def update_character_state(self, role_id, **state):
-        """Persist authoritative gameplay fields for an owned role ID."""
+        """Persist authoritative gameplay fields for an owned role ID.
+
+        Migrated roles are known to the client by legacy_id while the row id
+        stays numeric, and callers pass the wire id, so match either one.
+        """
         if not state or set(state) - set(CHARACTER_COLUMNS):
             raise ValueError('state must contain known gameplay fields')
         fields = list(state)
         with self.lock:
             cur = self.db.execute(
                 'UPDATE characters SET ' + ', '.join(f'{f}=?' for f in fields)
-                + ' WHERE CAST(id AS TEXT)=?', [*state.values(), str(role_id)])
+                + ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                [*state.values(), str(role_id), str(role_id)])
             self.db.commit()
             return cur.rowcount == 1
 

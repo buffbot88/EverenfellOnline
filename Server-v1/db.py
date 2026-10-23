@@ -292,6 +292,19 @@ CREATE TABLE IF NOT EXISTS role_baixian (
   last_day TEXT DEFAULT '',
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Story-dungeon progress (RoleJuqingfuben subset: highest cleared chapter,
+-- daily clear counts, sweep state, best times, pending awards, progress).
+CREATE TABLE IF NOT EXISTS role_juqingfuben (
+  role_id INTEGER PRIMARY KEY,
+  passed_highest_id INTEGER,
+  passed_ids_daily TEXT,
+  auto_pass_info TEXT,
+  best_passed_info TEXT,
+  refresh_time INTEGER,
+  award_info TEXT,
+  tiaozhan_jindu TEXT,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Kapai reward states (per-entry [got, canClaim] markers backing 121001;
 -- card counts themselves live in role_bag_dummy like Java's getCount).
 CREATE TABLE IF NOT EXISTS role_kapai (
@@ -986,6 +999,36 @@ class Store:
             self.db.execute(
                 f'INSERT INTO role_vip(role_id,{names}) VALUES(?,{placeholders}) '
                 f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_juqing(self, role_id):
+        """Story-dungeon row for a role, or None when never challenged."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT passed_highest_id, passed_ids_daily, auto_pass_info,'
+                ' best_passed_info, refresh_time, award_info, tiaozhan_jindu'
+                ' FROM role_juqingfuben WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_juqing(self, role_id, **fields):
+        """Upsert a role's story-dungeon row; only known columns."""
+        allowed = {'passed_highest_id', 'passed_ids_daily', 'auto_pass_info',
+                   'best_passed_info', 'refresh_time', 'award_info',
+                   'tiaozhan_jindu'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown juqing fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_juqingfuben(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
             self.db.commit()
             return True

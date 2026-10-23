@@ -189,6 +189,12 @@ BUYBACK_ERR_NO_SLOT = '1006'
 BUYBACK_MAX_ROWS = 27
 CMD_JUQING_AWARD = 64010
 CMD_JUQING_INFO = 64001
+CMD_JUQING_CHALLENGE = 64002
+CMD_JUQING_SAODANG = 64004
+CMD_JUQING_FINISH = 64006
+CMD_JUQING_ACCEL = 64007
+CMD_JUQING_LINGQU = 64012
+CMD_JUQING_ONEKEY = 64013
 CMD_VIP = 62000
 CMD_ZUWU = 111000
 CMD_ZUWUFUBEN = 108001
@@ -762,6 +768,7 @@ class Session:
                  get_role_dengluqi=None, save_role_dengluqi=None,
                  get_role_online_reward=None, save_role_online_reward=None,
                  get_role_husong=None, save_role_husong=None,
+                 get_role_juqing=None, save_role_juqing=None,
                  get_role_jianding=None, save_role_jianding=None,
                  save_role_vip=None, get_role_vip_kaifu=None,
                  save_role_vip_kaifu=None,
@@ -909,6 +916,9 @@ class Session:
             (lambda *a, **k: False)
         self.get_role_husong = get_role_husong or (lambda r: None)
         self.save_role_husong = save_role_husong or \
+            (lambda *a, **k: False)
+        self.get_role_juqing = get_role_juqing or (lambda r: None)
+        self.save_role_juqing = save_role_juqing or \
             (lambda *a, **k: False)
         self.update_role_bag_slot = update_role_bag_slot or (lambda *a, **k: False)
         self.delete_role_bag_slot = delete_role_bag_slot or (lambda *a: False)
@@ -1393,6 +1403,18 @@ class Session:
             return self.juqing_award()
         if cmd_num == CMD_JUQING_INFO:
             return self.juqing_info()
+        if cmd_num == CMD_JUQING_CHALLENGE:
+            return self.juqing_challenge(msg)
+        if cmd_num == CMD_JUQING_SAODANG:
+            return self.juqing_saodang(msg)
+        if cmd_num == CMD_JUQING_FINISH:
+            return self.juqing_finish(msg)
+        if cmd_num == CMD_JUQING_ACCEL:
+            return self.juqing_accelerate(msg)
+        if cmd_num == CMD_JUQING_LINGQU:
+            return self.juqing_lingqu(msg)
+        if cmd_num == CMD_JUQING_ONEKEY:
+            return self.juqing_onekey(msg)
         if cmd_num == CMD_VIP:
             return self.vip_info()
         if cmd_num == CMD_ZUWU:
@@ -16362,21 +16384,340 @@ class Session:
         entries = (self.config.zuwu_info()[0] if self.config is not None else [])
         return frame(amf3_encode(['111000', [entries, 0]]))
 
-    def juqing_info(self):
-        """Command 64001: [1, [highestOr0, daily, best, offline]].
+    def _juqing_actor(self, msg):
+        """Role for a story-dungeon request, else None."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        arg = self.safe(msg, 1, None)
+        if isinstance(arg, list):
+            arg = self.safe(arg, 0, None)
+        role = _find_role(roles, str(arg)) if arg is not None else None
+        if role is None and len(roles) == 1:
+            role = roles[0]
+        return role
 
-        JuQingFuBenAction.getInfo for a fresh role: no progress row is
-        migrated, so highest is 0 and the award slots read back null.
-        """
-        return frame(amf3_encode(['64001', [1, [0, None, None, None]]]))
+    def _juqing_row(self, rid):
+        """Story-dungeon entity, defaulted when the role never challenged."""
+        row = self.get_role_juqing(rid)
+        if row is None:
+            return {'passed_highest_id': None, 'passed_ids_daily': None,
+                    'auto_pass_info': None, 'best_passed_info': None,
+                    'refresh_time': None, 'award_info': None,
+                    'tiaozhan_jindu': None}
+        return dict(row)
+
+    def _juqing_save(self, rid, row):
+        """Persist the story-dungeon entity (skips None columns)."""
+        fields = {k: v for k, v in row.items() if v is not None}
+        if fields:
+            self.save_role_juqing(rid, **fields)
+
+    def _juqing_cfg(self, chapter_id):
+        """Chapter config row, or None when unconfigured."""
+        if self.config is None:
+            return None
+        return self.config.juqing_row(chapter_id)
+
+    def _juqing_active(self, row):
+        """Active attempt (chapter, startMs, kills) from tiaozhan_jindu."""
+        raw = str(row.get('tiaozhan_jindu') or '')
+        if '|' not in raw:
+            return None
+        head, _, tail = raw.partition('|')
+        try:
+            cid, _, start = head.partition(':')
+            kills = {}
+            for part in tail.split(','):
+                if '=' in part:
+                    mid, _, num = part.partition('=')
+                    kills[mid.strip()] = int(num.strip())
+            return {'chapter': str(cid), 'start': int(start), 'kills': kills}
+        except (TypeError, ValueError):
+            return None
+
+    def _juqing_idle(self, rid, row):
+        """Clear the active attempt marker and persist."""
+        row['tiaozhan_jindu'] = None
+        self._juqing_save(rid, row)
+
+    def _juqing_settle_sweep(self, rid, row, now_ms=None):
+        """Settle an elapsed sweep into award_info (finishAutoPass)."""
+        from . import juqing as juqing_lib
+        now = int(now_ms if now_ms is not None else self._world_now_ms())
+        auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+        if auto is None:
+            return None
+        best = juqing_lib.decode_best(row.get('best_passed_info'),
+                                      auto['curid'])
+        if best is None:
+            return None
+        if now - auto['start'] + auto.get('usetime', 0) * 1000 < \
+                best['fast']:
+            return None
+        row['auto_pass_info'] = ''
+        row['award_info'] = juqing_lib.award_incr(
+            row.get('award_info'), auto['curid'], best['pingjia'], now)
+        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
+            row.get('passed_ids_daily'), auto['curid'], 2)
+        self._juqing_save(rid, row)
+        return auto
+
+    def juqing_info(self):
+        """Command 64001: [1, [highest, daily, best, offline]]."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(['64001', None])
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._juqing_row(rid)
+        settled = self._juqing_settle_sweep(rid, row)
+        if settled is not None:
+            row = self._juqing_row(rid)
+        highest = row.get('passed_highest_id')
+        offline = ([[settled['curid'],
+                     (juqing_lib.decode_best(row.get('best_passed_info'),
+                                            settled['curid']) or {})
+                     .get('pingjia', 0)]] if settled else None)
+        return frame(amf3_encode(['64001', [1, [
+            int(highest) if highest is not None else 0,
+            juqing_lib.daily_info_rows(row.get('passed_ids_daily')) or None,
+            juqing_lib.best_time_rows(row.get('best_passed_info')) or None,
+            offline]]]))
 
     def juqing_award(self):
-        """Command 64010: null when no awardInfo exists.
+        """Command 64010: null or [[chapterId, pingjia]] pending awards."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(['64010', None])
+        if role is None:
+            return None
+        rows = juqing_lib.award_entries(
+            self._juqing_row(_wire_id(role)).get('award_info'))
+        if not rows:
+            return frame(amf3_encode(['64010', None]))
+        return frame(amf3_encode(
+            ['64010', [[r[1], r[2]] for r in rows]]))
 
-        JuQingFuBenAction.getAwards with no progress or award rows
-        migrated, so there is never an award to return.
-        """
-        return frame(amf3_encode(['64010', None]))
+    def juqing_challenge(self, msg):
+        """Command 64002 [chapterId]: gates, dungeon entry, [1, id]/[0, code]."""
+        from . import juqing as juqing_lib
+        args = self.safe(msg, 1, [])
+        try:
+            cid = int(self.safe(args, 0, 0) if isinstance(args, list)
+                      else args)
+        except (TypeError, ValueError):
+            cid = 0
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        cfg = self._juqing_cfg(cid)
+        if cfg is None:
+            return frame(amf3_encode(
+                ['64002', [0, juqing_lib.ERR_NOT_EXIST]]))
+        row = self._juqing_row(rid)
+        active = self._juqing_active(row)
+        err = juqing_lib.check_can_challenge(
+            cfg, role.get('level'), row.get('passed_highest_id'),
+            row.get('passed_ids_daily'), active is not None)
+        if err is not None:
+            return frame(amf3_encode(['64002', [0, err]]))
+        pos = cfg.get('pos') or []
+        frames = list(self.change_map(
+            rid, str(cfg.get('map') or role.get('map_id')),
+            int(pos[0]) if len(pos) > 0 else int(role.get('map_x') or 0),
+            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0)))
+        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
+            row.get('passed_ids_daily'), cid, 1)
+        row['refresh_time'] = int(self._world_now_ms())
+        row['tiaozhan_jindu'] = \
+            f'{cid}:{row["refresh_time"]}|' + ','.join(
+                f'{mid}=0' for mid, _n in cfg.get('complete') or [])
+        self._juqing_save(rid, row)
+        frames.append(frame(amf3_encode(['64002', [1, cid]])))
+        return tuple(frames)
+
+    def juqing_saodang(self, msg):
+        """Command 64004 [chapterId, oneKey]: start a sweep, [1, id, key, ms]."""
+        from . import juqing as juqing_lib
+        args = self.safe(msg, 1, [])
+        cid, onekey = 0, False
+        if isinstance(args, list) and args:
+            try:
+                cid = int(args[0])
+            except (TypeError, ValueError):
+                cid = 0
+            onekey = bool(args[1]) if len(args) > 1 else False
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        cfg = self._juqing_cfg(cid)
+        row = self._juqing_row(rid)
+        auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+        best = juqing_lib.decode_best(row.get('best_passed_info'), cid)
+        vip = self.get_role_vip(role.get('id')) or {}
+        err = juqing_lib.check_can_saodang(
+            cfg, auto, best, row.get('passed_ids_daily'), onekey,
+            vip.get('vip_level'))
+        if err is not None:
+            return frame(amf3_encode(['64004', [0, err]]))
+        now = int(self._world_now_ms())
+        row['auto_pass_info'] = juqing_lib.encode_auto(onekey, cid, now)
+        self._juqing_save(rid, row)
+        self.schedule_stage(f'juqing_sweep:{rid}', '64006',
+                            lambda: self._juqing_settle_sweep(rid, self._juqing_row(rid)),
+                            delay=max(best['fast'] // 1000, 1),
+                            unit='SECONDS')
+        return frame(amf3_encode(
+            ['64004', [1, cid, onekey, best['fast']]]))
+
+    def juqing_finish(self, msg):
+        """Command 64006: collect a finished sweep, else [-1, id, remain]."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._juqing_row(rid)
+        auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+        if auto is None:
+            return frame(amf3_encode(
+                ['64006', [0, juqing_lib.ERR_NO_AUTOPASS]]))
+        if self._juqing_settle_sweep(rid, row) is None:
+            best = juqing_lib.decode_best(row.get('best_passed_info'),
+                                          auto['curid']) or {}
+            remain = max(int(best.get('fast', 0)) - (
+                int(self._world_now_ms()) - auto['start']) - auto.get('usetime', 0) * 1000, 0)
+            return frame(amf3_encode(['64006', [-1, auto['curid'], remain]]))
+        return frame(amf3_encode(['64006', [1, auto['curid'],
+                                           auto['onekey']]]))
+
+    def juqing_accelerate(self, msg):
+        """Command 64007: spend YB to finish a sweep now, [1, id]."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._juqing_row(rid)
+        auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+        if auto is None:
+            return frame(amf3_encode(
+                ['64007', [0, juqing_lib.ERR_NO_AUTOPASS]]))
+        cfg = self._juqing_cfg(auto['curid'])
+        cost = int((cfg or {}).get('accel_yb') or 0)
+        yb = int(role.get('lingshi') or 0)
+        if yb < cost:
+            return frame(amf3_encode(['64007', [0, juqing_lib.ERR_YB_LESS]]))
+        self.save_role_state(role.get('id'), lingshi=yb - cost)
+        row['auto_pass_info'] = ''
+        best = juqing_lib.decode_best(row.get('best_passed_info'),
+                                      auto['curid']) or {}
+        row['award_info'] = juqing_lib.award_incr(
+            row.get('award_info'), auto['curid'],
+            int(best.get('pingjia') or 1))
+        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
+            row.get('passed_ids_daily'), auto['curid'], 2)
+        self._juqing_save(rid, row)
+        try:
+            self.stage_scheduler.cancel(f'juqing_sweep:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        return frame(amf3_encode(['64007', [1, auto['curid']]]))
+
+    def _juqing_grant(self, role, awards, fixed, rolls):
+        """Apply exp/zhenqi/tongqian plus bag goods; returns granted totals."""
+        rid = role.get('id')
+        exp = int(role.get('exp') or 0) + int(awards.get('exp') or 0)
+        zhenqi = int(role.get('zhenqi') or 0) + int(awards.get('zhenqi') or 0)
+        tongqian = int(role.get('tongqian') or 0) + int(awards.get('yxb') or 0)
+        self.save_role_state(rid, exp=exp, zhenqi=zhenqi, tongqian=tongqian)
+        granted = []
+        for gid, count, bind in fixed + rolls:
+            if not gid or int(count or 0) <= 0:
+                continue
+            self.insert_role_bag_slot(rid, {
+                'slot_num': 0, 'goods_id': str(gid),
+                'count': int(count), 'bind': int(bind or 0),
+                'expire_time': 0, 'rare_level': 0, 'item_level': 0,
+                'attributes': None})
+            granted.append([str(gid), int(count)])
+        return granted
+
+    def _juqing_roll(self, cfg):
+        """Weighted roll over the chapter DropVo list (zubao odds)."""
+        import random
+        drops = [d for d in (cfg.get('drops') or []) if d and d[0]]
+        if not drops:
+            return []
+        total = sum(float(d[1]) for d in drops)
+        if total <= 0:
+            return []
+        pick = random.random() * total
+        for gid, odds in drops:
+            pick -= float(odds)
+            if pick <= 0:
+                return [[str(gid), 1, int(cfg.get('roll_bind') or 0)]]
+        return [[str(drops[-1][0]), 1, int(cfg.get('roll_bind') or 0)]]
+
+    def juqing_lingqu(self, msg):
+        """Command 64012: claim the staged manual-victory award."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        pending = getattr(self, '_juqing_pending', {}).get(
+            str(_wire_id(role)))
+        if pending is None:
+            return frame(amf3_encode(
+                ['64012', [0, juqing_lib.ERR_NO_AWARD]]))
+        cfg = self._juqing_cfg(pending['chapter']) or {}
+        factor = float((cfg.get('award_odds') or {}).get(
+            int(pending.get('pingjia') or 1), 1.0))
+        pending['awards'] = juqing_lib.pass_awards(
+            cfg, role.get('level'), factor)
+        fixed = [[g[0], g[1], g[2]] for g in pending.get('fixed') or []]
+        rolls = self._juqing_roll(cfg)
+        self._juqing_grant(role, pending['awards'], fixed, rolls)
+        granted = {str(g[0]): {'count': int(g[1]), 'bind': int(g[2])}
+                   for g in fixed + rolls}
+        getattr(self, '_juqing_pending', {}).pop(
+            str(_wire_id(role)), None)
+        return frame(amf3_encode(['64012', [
+            1, int(pending['awards'].get('exp') or 0),
+            int(pending['awards'].get('yxb') or 0),
+            int(pending['awards'].get('zhenqi') or 0), fixed, granted]]))
+
+    def juqing_onekey(self, msg):
+        """Command 64013: claim every pending sweep award."""
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._juqing_row(rid)
+        entries = juqing_lib.award_entries(row.get('award_info'))
+        if not entries:
+            return frame(amf3_encode(
+                ['64013', [0, juqing_lib.ERR_NO_AWARD]]))
+        total = {'exp': 0, 'yxb': 0, 'zhenqi': 0}
+        for _idx, cid, pingjia, _ms in entries:
+            cfg = self._juqing_cfg(cid) or {}
+            factor = float((cfg.get('award_odds') or {}).get(
+                int(pingjia), 1.0))
+            awards = juqing_lib.pass_awards(cfg, role.get('level'), factor)
+            self._juqing_grant(role, awards,
+                               [[g[0], g[1], g[2]]
+                                for g in cfg.get('fixed_goods') or []],
+                               self._juqing_roll(cfg))
+            for key in total:
+                total[key] += int(awards.get(key) or 0)
+            role = dict(role, exp=int(role.get('exp') or 0) + int(
+                awards.get('exp') or 0))
+        row['award_info'] = ''
+        self._juqing_save(rid, row)
+        return frame(amf3_encode(['64013', [1, total['exp'],
+                                           total['yxb'],
+                                           total['zhenqi']]]))
 
     def zuwufuben_info(self):
         """Command 108001: [1, [passMax, everyday[], saodangOrNull]].

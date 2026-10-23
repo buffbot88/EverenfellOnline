@@ -3424,6 +3424,107 @@ class GameConfig:
         return [[[zid, 0, 0, 0, kind]
                  for kind, zid in sorted(self.zuwu_table().items())], 0]
 
+    def juqing_table(self):
+        """JuQingFuBen.jat rows keyed by mainid (str); empty when absent."""
+        if getattr(self, '_juqing', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'JuQingFuBen.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad juqing table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('mainid') is not None:
+                    table[str(row['mainid'])] = row
+            self._juqing = table
+        return self._juqing
+
+    @staticmethod
+    def _juqing_pairs(cell):
+        """Split 'a:5;b:3' cells into [(a, 5), (b, 3)] items."""
+        out = []
+        for part in str(cell or '').split(';'):
+            part = part.strip()
+            if not part or ':' not in part:
+                continue
+            key, _, val = part.partition(':')
+            try:
+                out.append((key.strip(), int(val.strip())))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    def juqing_row(self, chapter_id):
+        """Normalized story-dungeon chapter, or None when unconfigured.
+
+        Key mapping from JuQingFuBenConfigExportServiceImpl bytecode:
+        map->mapId, initial(x_y)->rolePosition, openrenwu->openLevel,
+        time->expireDelay, gold->accelerateYb, interval->autoFightInterval,
+        complete(mon:count)->wantedList+monsterIds, exp/money/zhenqi
+        factor1/2, pingjiatime(a;b;c)->rating cutoffs, jiangli->fixed
+        goods, zubao+jilv->drop lottery, bound->rollBind.
+        """
+        row = self.juqing_table().get(str(chapter_id))
+        if row is None:
+            return None
+        try:
+            pos = [int(v) for v in str(row.get('initial') or '').split('_')]
+        except (TypeError, ValueError):
+            pos = []
+        try:
+            cutoffs = [int(v) for v in
+                       str(row.get('pingjiatime') or '').split(';')]
+        except (TypeError, ValueError):
+            cutoffs = []
+        fixed = []
+        for part in str(row.get('gditem') or '').split(';'):
+            cells = part.split('|')
+            if len(cells) >= 2:
+                try:
+                    fixed.append([cells[0], int(cells[1]),
+                                 int(cells[2]) if len(cells) > 2 else 0])
+                except (TypeError, ValueError):
+                    continue
+        odds = {}
+        for idx, part in enumerate(
+                str(row.get('jiangli') or '').split(';'), 1):
+            try:
+                odds[idx] = float(part)
+            except (TypeError, ValueError):
+                continue
+        drops = []
+        for key in ('zubao1', 'zubao2'):
+            gid = str(row.get(key) or '').strip()
+            if gid:
+                drops.append([gid, config_float(
+                    row.get('jilv1' if key == 'zubao1' else 'jilv2'))])
+        return {
+            'id': str(row.get('mainid')),
+            'map': str(row.get('map') or ''),
+            'pos': pos[:2] if len(pos) >= 2 else [],
+            'open_level': config_int(row.get('openrenwu')),
+            'expire': config_int(row.get('time')),
+            'sweep_interval': config_int(row.get('interval')),
+            'accel_yb': config_int(row.get('gold')),
+            'exp_factor': config_float(row.get('expfactor1')),
+            'exp_base': config_float(row.get('expfactor2')),
+            'yxb_factor': config_float(row.get('moneyfactor1')),
+            'yxb_base': config_float(row.get('moneyfactor2')),
+            'zhenqi_factor': config_float(row.get('zhenqi1')),
+            'zhenqi_base': config_float(row.get('zhenqi2')),
+            'pingjia': (cutoffs + [0, 0, 0])[:3],
+            'complete': self._juqing_pairs(row.get('complete')),
+            'wanted': [k for k, _n in self._juqing_pairs(row.get('complete'))],
+            'max_monsters': config_int(row.get('amount')),
+            'fixed_goods': fixed,
+            'award_odds': odds,
+            'drops': drops,
+            'shenwang': config_int(row.get('prestige')),
+            'roll_bind': config_int(row.get('bound')),
+        }
+
     def chat_level(self):
         """chat_level from config/localization.properties; 0 (no gate) when unreadable."""
         path = os.path.join(self.config_dir, '..', 'localization.properties')

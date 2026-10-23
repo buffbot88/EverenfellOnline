@@ -642,10 +642,10 @@ class TestWorldInit(unittest.TestCase):
             [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0])
         self.assertEqual(self.reply(35011)[1], 0)
         self.assertIsNone(self.reply(32000, [None, None]))
-        self.assertIsNone(self.reply(64010)[1])
-        self.assertEqual(self.reply(64001)[1], [1, [0, None, None, None]])
+        self.assertIsNone(self.reply(64010))
+        self.assertIsNone(self.reply(64001))
         self.assertEqual(self.reply(62000)[1], [0, 0, [], 0, 0])
-        self.assertEqual(self.reply(108001)[1], [1, [0, [['1', 0, 1]], None]])
+        self.assertIsNone(self.reply(108001))
         self.assertEqual(self.reply(13000, 'slot')[1], [None, None, None, None])
 
 

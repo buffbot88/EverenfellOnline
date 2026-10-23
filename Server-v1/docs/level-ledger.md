@@ -24,8 +24,8 @@ genuine-Java-no-op, not-an-inbound-command.
 | RoleExportService.incrExp | complete+tested | `_role_gain_exp`: persists level/exp/max_hp/max_mp, refreshes the role dict, 12001 `[expTotal, level]` leads, then one fan-out per gain |
 | RoleLevelUpgradeEvent xN | complete+tested | one event per gained level in Java; the port loops intermediate levels for skill learns and checks the quest gate at the final level (outcome-equivalent: the gate is monotonic in level) |
 | roleUpgrade | complete+tested | level row swap + max_hp/max_mp persist; 12000 full map (Java sends changed-attrs only: superset), 12004 unconditional (Java sends only on hp/mp change: superset), 12002, skill learns, quest unlock; current hp/mp unchanged (no refill in Java) |
-| outputAttributeChange | partial | 12004/12000 shapes ported; 12005 (shanbiVal) not pushed (no ported consumer tracks it) |
-| 12002 routing | partial | Java sends to surround roles; the port session-directs to self (no surround bus exists) |
+| outputAttributeChange | complete+tested | 12004/12000 shapes ported; 12005 `[shanbiVal]` self-only on change (dunshandian is flat across all 95 shipped rows, so it stays silent in practice, like Java's conditional); the SHANBI_RECOVERY schedule has no ported scheduler |
+| 12002 routing | complete+tested | surround-routed via the registry broadcast (own copy returned), like roleUpgrade's surround 12002; 12004 likewise surround, 12000/12005 self-only |
 | roleLevelUpgradeSkill | complete+tested | per-level learnskill tokens, unknown categories save level 1, 42004 `[skilltype, 1]`; owned categories skipped like autoStudySkill-false; AddSkillEvent has no ported subscribers |
 | shengJiRecevieMainTask | complete+tested | `_task_on_level`: paid quest whose next recevie_level is met receives through the shared cascade (`_task_receive_next`, also used by dataCheck) |
 | upgradeLevel | deferred | GM-style direct-level path; no GM commands exist in the port |
@@ -61,8 +61,22 @@ recomputation through `_fighter_attrs`.
 
 Focused suites run: test_level, test_task, test_taofa, test_richang,
 test_combat, test_equip, test_effect_bags, test_baoshi, test_skill,
-test_shenjiang, test_juqing_fuben, test_zuoqi, test_bag (all green).
-test_protocol has one pre-existing failure
-(TestWorldInit.test_java_capture_role_stage_and_money_values, 64010
-award reply is None) that reproduces on the clean tree and is
-unrelated to this batch.
+test_shenjiang, test_juqing_fuben, test_juqing_zuwu, test_zuoqi,
+test_zuwufuben, test_bag (all green). test_protocol had one stale
+failure (TestWorldInit asserted storeless 64010/64001/108001 bodies,
+but those handlers have required a role since the story-dungeon port;
+role-backed coverage lives in test_juqing_zuwu/test_juqing_fuben/
+test_zuwufuben): fixed to assertIsNone without touching code.
+
+## Equipment/attribute gap survey (this batch)
+
+Merged real bags for a geared role (capture gear + xianjie + chenghao
++ dan + zuoqi + vip10): only the 8 flat keys plus tiny fujia
+mb/mbdk/yxdk/bhdk/xxdk control cells. No shipped source carries
+pojia/qiege/shishen/damage/defence/criticalb/c/gedang/poji or
+lei/mu/shui/hu/tu elementals, so the combat pipeline's zero defaults
+match what Java computes from the same tables. The remaining exotic
+sources are active fight buffs (unmigrated buff wiring, a separate
+subsystem) — not a small gap, so no new stat system was built.
+Monster dodge/dodgedefence/mbdk cells likewise feed only the unported
+DiKang path; T7/T8 use baoji/volt, already ported.

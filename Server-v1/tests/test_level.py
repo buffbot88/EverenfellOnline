@@ -125,7 +125,10 @@ class RoleGainExpTest(unittest.TestCase):
         self.assertEqual((total, level, gained), (0, 2, 1))
         self.assertEqual(got[0], ['12001', [0.0, 2]])
         cmds = [f[0] for f in got]
-        self.assertEqual(cmds[:4], ['12001', '12000', '12004', '12002'])
+        # Java order: 12004/12000 self+surround, then the 12002 notice;
+        # 12005 stays silent because dunshandian never moves.
+        self.assertEqual(cmds[:4], ['12001', '12004', '12000', '12002'])
+        self.assertNotIn('12005', cmds)
         wire = str(self.role_id)
         self.assertEqual(got[3], ['12002', [wire, 'Wukong', 2]])
         # No refill: current hp stays, max follows the level-2 row.
@@ -137,7 +140,7 @@ class RoleGainExpTest(unittest.TestCase):
         # pushed 12000 carries the new level-2 base attack.
         from game.attributes import entry_attribute_map  # noqa: E402
         bare2 = entry_attribute_map(self.cfg.role_attribute_row(2))
-        self.assertEqual(got[1][1]['2'], bare2['2'])
+        self.assertEqual(got[2][1]['2'], bare2['2'])
         self.assertEqual(self.sess.role_attribute_map(row)['2'],
                          bare2['2'])
         # Reconnect sees the persisted level and max values.
@@ -207,6 +210,70 @@ class RoleGainExpTest(unittest.TestCase):
         self.store.save_role_equip(str(self.role_id), [])
         self.assertEqual(
             self.sess.role_attribute_map(self.role())['2'], bare)
+
+
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class LevelRoutingTest(unittest.TestCase):
+    """12004/12002 ride the 3x3 surround; 12001/12000 stay self-only."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(os.path.join(self.tmp.name, 't.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        self.a_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=1, exp=0,
+            hp=144, max_hp=144, mp=96, max_mp=96)
+        self.b_id = self.store.create_character(
+            'hero', 'fu1304', 'Bajie', job='C', level=1, exp=0,
+            hp=144, max_hp=144, mp=96, max_mp=96)
+        self.cfg = GameConfig(str(REAL_CONFIG))
+        from game.stage_registry import StageRegistry  # noqa: E402
+        self.reg = StageRegistry()
+        self.sess = {}
+        for conn, rid in ((1, self.a_id), (2, self.b_id)):
+            sess = Session(
+                conn_id=conn, check_sign=lambda *a: False,
+                get_roles=lambda u, s: [dict(r) for r in
+                                        self.store.list_roles(u, s)],
+                server_start_ms=0,
+                save_role_state=self.store.update_character_state,
+                get_role_skills=self.store.get_role_skills,
+                save_role_skill=self.store.save_role_skill,
+                get_task_main=self.store.get_task_main,
+                save_task_main=self.store.save_task_main,
+                get_role_equip=self.store.get_role_equip,
+                get_role_attr_buffs=self.store.get_role_attr_buffs,
+                get_role_vip=self.store.get_role_vip,
+                get_role_xianjiechenhao=
+                self.store.get_role_xianjiechenhao,
+                get_role_meiren=self.store.get_role_meiren,
+                get_role_baoshi=self.store.get_role_baoshi,
+                get_role_zuoqi=self.store.get_role_zuoqi,
+                config=self.cfg, stage_registry=self.reg)
+            sess.authed_user, sess.server_id = 'hero', 'fu1304'
+            self.reg.register(str(rid), '7', sess, x=1, y=3)
+            self.sess[rid] = sess
+
+    def test_level_up_reaches_surround_but_not_self_only_frames(self):
+        a = self.sess[self.a_id]
+        role = [r for r in self.store.list_roles('hero', 'fu1304')
+                if str(r['id']) == str(self.a_id)][0]
+        total, level, gained, frames = a._role_gain_exp(
+            role, str(self.a_id), 100)
+        self.assertEqual((total, level, gained), (0, 2, 1))
+        own = [decode(f[4:]) for f in frames]
+        self.assertEqual([f[0] for f in own][:4],
+                         ['12001', '12004', '12000', '12002'])
+        b = self.sess[self.b_id]
+        heard = [decode(f[4:]) for f in b.tick(now_ms=0)]
+        cmds = [f[0] for f in heard]
+        self.assertIn('12004', cmds)
+        self.assertIn('12002', cmds)
+        self.assertNotIn('12001', cmds)
+        self.assertNotIn('12000', cmds)
+        self.assertNotIn('12005', cmds)
 
 
 if __name__ == '__main__':

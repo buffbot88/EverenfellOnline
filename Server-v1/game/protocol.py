@@ -9549,30 +9549,13 @@ class Session:
         return total, fields.get('level', old_level), gained, frames
 
     def _role_level_frames(self, role, rid, old_level=0):
-        """Per-gain fan-out: 12000/12004/12002, skill learns, quest unlock."""
+        """Per-gain fan-out: 12004/12005/12000, 12002, learns, unlock.
+
+        Mirrors roleUpgrade + outputAttributeChange routing: 12004 and
+        12002 ride the 3x3 surround while 12000/12005 go to self only,
+        and 12005 fires only when the shanbi value actually changed.
+        """
         frames = []
-        try:
-            attrs = self.role_attribute_map(role)
-        except Exception:
-            attrs = None
-        if attrs is not None:
-            frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
-        try:
-            wire = _wire_id(role)
-            hp = role.get('hp')
-            max_hp = role.get('max_hp')
-            mp = role.get('mp')
-            max_mp = role.get('max_mp')
-            if max_hp is not None and max_mp is not None:
-                frames.append(frame(amf3_encode(
-                    ['12004', [wire, hp, max_hp, mp, max_mp]])))
-        except Exception:
-            pass
-        try:
-            frames.append(frame(amf3_encode(
-                ['12002', [wire, role.get('name'), role.get('level')]])))
-        except Exception:
-            pass
         try:
             level = int(role.get('level') or 0)
         except (TypeError, ValueError):
@@ -9581,12 +9564,76 @@ class Session:
             old_level = int(old_level or 0)
         except (TypeError, ValueError):
             old_level = level
+        try:
+            attrs = self.role_attribute_map(role)
+        except Exception:
+            attrs = None
+        try:
+            wire = _wire_id(role)
+        except Exception:
+            wire = None
+        # Vitals to the surround (own copy returned; Java's isHpMpChanged
+        # is always true here because maxHp moved with the level row).
+        try:
+            hp = role.get('hp')
+            max_hp = role.get('max_hp')
+            mp = role.get('mp')
+            max_mp = role.get('max_mp')
+            if wire is not None and max_hp is not None \
+                    and max_mp is not None:
+                frames.extend(self._dazuo_broadcast(
+                    rid, 12004, [wire, hp, max_hp, mp, max_mp]))
+        except Exception:
+            pass
+        # Shanbi to self, only on change (dunshandian is flat across the
+        # shipped rows, so this rarely fires, like Java's conditional).
+        try:
+            new_val = int(float((attrs or {}).get('10') or 0))
+            old_val = self._role_shanbi_at(role, old_level)
+            if old_val is not None and old_val != new_val:
+                frames.append(frame(amf3_encode(['12005', [new_val]])))
+        except Exception:
+            pass
+        if attrs is not None:
+            frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
+        # Level notice to the surround, like roleUpgrade's 12002.
+        try:
+            if wire is not None:
+                frames.extend(self._dazuo_broadcast(
+                    rid, 12002, [wire, role.get('name'), level]))
+        except Exception:
+            pass
         # One RoleLevelUpgradeEvent per gained level in Java, so each
         # intermediate level's learnskill tokens get their turn.
         for lv in range(old_level + 1, level + 1):
             frames.extend(self._skill_level_learn(rid, lv))
         frames.extend(self._task_on_level(role, rid))
         return frames
+
+    def _role_shanbi_at(self, role, level):
+        """MaxShanbiVal for a role at a past level, or None when unknown."""
+        if self.config is None:
+            return None
+        row = self.config.role_attribute_row(level)
+        if row is None:
+            return None
+        try:
+            old_role = dict(role, level=int(level or 0))
+        except (TypeError, ValueError):
+            old_role = role
+        try:
+            bags = self.role_bags(old_role)
+        except Exception:
+            return None
+        try:
+            effect = self.role_effect_slots(role)
+        except Exception:
+            effect = {}
+        try:
+            return int(float(entry_attribute_map(
+                row, None, bags=bags, effect=effect).get('10') or 0))
+        except (TypeError, ValueError):
+            return None
 
     def _skill_level_learn(self, rid, level):
         """roleLevelUpgradeSkill: learnskill tokens at the new level.

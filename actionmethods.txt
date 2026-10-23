@@ -1,0 +1,980 @@
+## com.xianling.bus.account.easyaction.AccountAction
+  public void getInfoMoneyData(com.kernel.pool.executor.Message);
+  public void getReciveYb(com.kernel.pool.executor.Message);
+  public void reciveReciveYb(com.kernel.pool.executor.Message);
+## com.xianling.bus.attributebuff.easyaction.AttributebuffAction
+  public void getBaixianCount(com.kernel.pool.executor.Message);
+## com.xianling.bus.bag.easyaction.BagEasyAction
+  public void getBagGoods(com.kernel.pool.executor.Message);
+  public void getStorageGoods(com.kernel.pool.executor.Message);
+  public void getXunBaoGoods(com.kernel.pool.executor.Message);
+  public void clearUp(com.kernel.pool.executor.Message);
+  public void clearUpStorage(com.kernel.pool.executor.Message);
+  public void clearUpXunBaoBag(com.kernel.pool.executor.Message);
+  public void split(com.kernel.pool.executor.Message);
+  public void deleteBagGoods(com.kernel.pool.executor.Message);
+  public void discardBagGoods(com.kernel.pool.executor.Message);
+  public void activationBagSlot(com.kernel.pool.executor.Message);
+  public void activationBagSlotStorage(com.kernel.pool.executor.Message);
+  public void bagSlotCZ(com.kernel.pool.executor.Message);
+  public void storageSlotZC(com.kernel.pool.executor.Message);
+  public void hornChat(com.kernel.pool.executor.Message);
+  public void move(com.kernel.pool.executor.Message);
+  public void selGoods(com.kernel.pool.executor.Message);
+  public void giftCodeAward(com.kernel.pool.executor.Message);
+## com.xianling.bus.bagdummy.easyaction.BagdummyAction
+  public void duiHuan(com.kernel.pool.executor.Message);
+## com.xianling.bus.baixian.easyaction.BaiXianAction
+  public void getBaixianCount(com.kernel.pool.executor.Message);
+  public void baixian(com.kernel.pool.executor.Message);
+## com.xianling.bus.baoshi.easyaction.BaoShiAction
+  public void jihuo(com.kernel.pool.executor.Message);
+  public void upgrade(com.kernel.pool.executor.Message);
+  public void info(com.kernel.pool.executor.Message);
+## com.xianling.bus.changest.easyaction.Change72Action
+  public void getClientConfig(com.kernel.pool.executor.Message);
+  public void buy(com.kernel.pool.executor.Message);
+## com.xianling.bus.chengjiu.easyaction.ChengjiuAction
+  public void getChengJiu(com.kernel.pool.executor.Message);
+  public void getLingQu(com.kernel.pool.executor.Message);
+## com.xianling.bus.client.io.easyaction.BusInitAction
+  public void roleIn(com.kernel.pool.executor.Message);
+## com.xianling.bus.client.io.easyaction.BusOutAction
+  public void roleOut(com.kernel.pool.executor.Message);
+## com.xianling.bus.dafuwong.easyaction.DafuwongAction
+  public void getClientData(com.kernel.pool.executor.Message);
+  public void getDaFuWongInfo(com.kernel.pool.executor.Message);
+  public void yaoJiang(com.kernel.pool.executor.Message);
+  public void duiHuan(com.kernel.pool.executor.Message);
+  public void guangGao(com.kernel.pool.executor.Message);
+## com.xianling.bus.duihuangoods.easyaction.DuihuangoodsAction
+  public void getData(com.kernel.pool.executor.Message);
+  public void duiHuan(com.kernel.pool.executor.Message);
+  public void getDuiHuanVal(com.kernel.pool.executor.Message);
+## com.xianling.bus.email.easyaction.EmailAction
+  public void list(com.kernel.pool.executor.Message);
+  public void info(com.kernel.pool.executor.Message);
+  public void delete(com.kernel.pool.executor.Message);
+  public void attachment(com.kernel.pool.executor.Message);
+  public void jb(com.kernel.pool.executor.Message);
+  public void yb(com.kernel.pool.executor.Message);
+  public void onekey(com.kernel.pool.executor.Message);
+  public void checkNew(com.kernel.pool.executor.Message);
+## com.xianling.bus.equip.easyaction.EquipAction
+  public void getEquipInfo(com.kernel.pool.executor.Message);
+  public void dressEquip(com.kernel.pool.executor.Message);
+  public void equipQianghua(com.kernel.pool.executor.Message);
+  public void equipJinjie(com.kernel.pool.executor.Message);
+  public void qiangHuaClear(com.kernel.pool.executor.Message);
+  public void jianDingClear(com.kernel.pool.executor.Message);
+  public void jianDing(com.kernel.pool.executor.Message);
+  public void getjianDing(com.kernel.pool.executor.Message);
+  public void cailiaohechen(com.kernel.pool.executor.Message);
+  public void gethehengCount(com.kernel.pool.executor.Message);
+  public void qiangHuaMax(com.kernel.pool.executor.Message);
+## com.xianling.bus.giftcode.easyaction.GiftAction
+  public void useCode(com.kernel.pool.executor.Message);
+  public void use5Code(com.kernel.pool.executor.Message);
+## com.xianling.bus.gm.easyaction.GMAction
+  public void addExp(com.kernel.pool.executor.Message);
+  public void addJB(com.kernel.pool.executor.Message);
+  public void addYb(com.kernel.pool.executor.Message);
+  public void addZhenqi(com.kernel.pool.executor.Message);
+  public void autoFight(com.kernel.pool.executor.Message);
+  public void task(com.kernel.pool.executor.Message);
+  public void recharge(com.kernel.pool.executor.Message);
+  public void openGuozhan(com.kernel.pool.executor.Message);
+  public void closeGuozhan(com.kernel.pool.executor.Message);
+  public void openLingdizhan(com.kernel.pool.executor.Message);
+  public void closeLingdizhan(com.kernel.pool.executor.Message);
+  public void superman(com.kernel.pool.executor.Message);
+  public void clearBag(com.kernel.pool.executor.Message);
+  public void addHuoYueDu(com.kernel.pool.executor.Message);
+  public void addGoods(com.kernel.pool.executor.Message);
+  public void updateLevel(com.kernel.pool.executor.Message);
+  public void addgoodsBag(com.kernel.pool.executor.Message);
+  public void handleOneGroup(com.kernel.pool.executor.Message);
+## com.xianling.bus.gonghuitask.easyaction.GonghuitaskAction
+  public void getTaskRichangeInfo(com.kernel.pool.executor.Message);
+  public void decreaseDifficulty(com.kernel.pool.executor.Message);
+  public void increaseThick(com.kernel.pool.executor.Message);
+  public void zhijieCompleteCurrentLoop(com.kernel.pool.executor.Message);
+  public void completeAllLoop(com.kernel.pool.executor.Message);
+  public void completeBestAllLoop(com.kernel.pool.executor.Message);
+  public void notifyServerLoop(com.kernel.pool.executor.Message);
+## com.xianling.bus.goodsbuyback.easyaction.GoodsBuyBackAction
+  public void getGoodsBuyBack(com.kernel.pool.executor.Message);
+  public void sellGoodsBuyBack(com.kernel.pool.executor.Message);
+  public void goodsHuiGou(com.kernel.pool.executor.Message);
+## com.xianling.bus.goodsexchange.easyaction.GoodsexchangeAction
+## com.xianling.bus.guangyi.easyaction.GuangyiAction
+  public void getinfo(com.kernel.pool.executor.Message);
+  public void upgrade(com.kernel.pool.executor.Message);
+  public void buyGuangYi(com.kernel.pool.executor.Message);
+  public void qiehuan(com.kernel.pool.executor.Message);
+## com.xianling.bus.guildfuben.easyaction.GuildFuBenAction
+  public void getinfo(com.kernel.pool.executor.Message);
+  public void getReward(com.kernel.pool.executor.Message);
+  public void inFuBen(com.kernel.pool.executor.Message);
+  public void quitFuBen(com.kernel.pool.executor.Message);
+  public void relieveSeal(com.kernel.pool.executor.Message);
+  public void bossDie(com.kernel.pool.executor.Message);
+## com.xianling.bus.hecheng.easyaction.GoodsHeChengAction
+  public void heCheng(com.kernel.pool.executor.Message);
+  public void heChengEq(com.kernel.pool.executor.Message);
+  public void inherit(com.kernel.pool.executor.Message);
+  public void shenDan(com.kernel.pool.executor.Message);
+  public void getNinglianCishu(com.kernel.pool.executor.Message);
+## com.xianling.bus.hefuhuodong.easyaction.HefuhuodongAction
+  public void getdata(com.kernel.pool.executor.Message);
+  public void getSevenDay(com.kernel.pool.executor.Message);
+  public void getDuiHuanInfo(com.kernel.pool.executor.Message);
+  public void getReward(com.kernel.pool.executor.Message);
+  public void getRankInfo(com.kernel.pool.executor.Message);
+  public void getGuoZhanInfo(com.kernel.pool.executor.Message);
+  public void getLingDiInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.huodong.easyaction.HuodongAction
+  public void getRechargeInfo(com.kernel.pool.executor.Message);
+  public void getHuodongInfo(com.kernel.pool.executor.Message);
+  public void getAccumulateRecharge(com.kernel.pool.executor.Message);
+  public void getAccumulateComsume(com.kernel.pool.executor.Message);
+  public void getForeverRecharge(com.kernel.pool.executor.Message);
+  public void getLimitedMall(com.kernel.pool.executor.Message);
+  public void getLimitedExchange(com.kernel.pool.executor.Message);
+  public void getQibingRank(com.kernel.pool.executor.Message);
+  public void getZuoqiRank(com.kernel.pool.executor.Message);
+  public void getkingMine(com.kernel.pool.executor.Message);
+  public void buyHuodongMallGoods(com.kernel.pool.executor.Message);
+  public void getHuodongReward(com.kernel.pool.executor.Message);
+  public void lingquRechargeReward(com.kernel.pool.executor.Message);
+  public void initRoleHuodong(com.kernel.pool.executor.Message);
+  public void getRechage(com.kernel.pool.executor.Message);
+  public void getTimeHuodongInfo(com.kernel.pool.executor.Message);
+  public void getTimeHuodongReward(com.kernel.pool.executor.Message);
+  public void rank94002(com.kernel.pool.executor.Message);
+  public void rank94003(com.kernel.pool.executor.Message);
+  public void rank94004(com.kernel.pool.executor.Message);
+  public void rank94005(com.kernel.pool.executor.Message);
+  public void rank94100(com.kernel.pool.executor.Message);
+  public void rank94101(com.kernel.pool.executor.Message);
+  public void rank94102(com.kernel.pool.executor.Message);
+  public void rank94103(com.kernel.pool.executor.Message);
+  public void killBoss(com.kernel.pool.executor.Message);
+  public void roleUpgrade(com.kernel.pool.executor.Message);
+  public void vipLevel(com.kernel.pool.executor.Message);
+  public void cmd_101000(com.kernel.pool.executor.Message);
+  public void xiaoFeiRank(com.kernel.pool.executor.Message);
+  public void xiaoFeiFanliInfo(com.kernel.pool.executor.Message);
+  public void xiaoFeiFanliRew(com.kernel.pool.executor.Message);
+## com.xianling.bus.jchuodong.easyaction.JchuodongAction
+  public void getClient(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void rew(com.kernel.pool.executor.Message);
+## com.xianling.bus.jiangli.easyaction.JiangliAction
+  public void loginInit(com.kernel.pool.executor.Message);
+  public void disposeDayOnlineData(com.kernel.pool.executor.Message);
+  public void getOnlineTimeRewardInfo(com.kernel.pool.executor.Message);
+  public void yaoJiang(com.kernel.pool.executor.Message);
+  public void lingquOnlineRewardBindYb(com.kernel.pool.executor.Message);
+  public void getQiandaoInfo(com.kernel.pool.executor.Message);
+  public void qiandao(com.kernel.pool.executor.Message);
+  public void buqian(com.kernel.pool.executor.Message);
+  public void lingquQiandaoReward(com.kernel.pool.executor.Message);
+  public void lingquMeiren(com.kernel.pool.executor.Message);
+  public void getWeiDanState(com.kernel.pool.executor.Message);
+  public void getWeiDanReward(com.kernel.pool.executor.Message);
+  public void yingyinreward(com.kernel.pool.executor.Message);
+  public void getYingYinState(com.kernel.pool.executor.Message);
+  public void yingyinXiaZaiReward(com.kernel.pool.executor.Message);
+## com.xianling.bus.jijin.easyaction.JiJinAction
+  public void getClient(com.kernel.pool.executor.Message);
+  public void gouMai(com.kernel.pool.executor.Message);
+  public void getReward(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.jindi.easyaction.JindiAction
+  public void info(com.kernel.pool.executor.Message);
+  public void challenge(com.kernel.pool.executor.Message);
+## com.xianling.bus.jinfeng.easyaction.JinfengAction
+  public void info(com.kernel.pool.executor.Message);
+## com.xianling.bus.jingyanyu.easyaction.JingYanYuAction
+  public void use(com.kernel.pool.executor.Message);
+  public void getUseCount(com.kernel.pool.executor.Message);
+## com.xianling.bus.juqingfuben.easyaction.JuQingFuBenAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void challenge(com.kernel.pool.executor.Message);
+  public void autoChallenge(com.kernel.pool.executor.Message);
+  public void finishSaoDang(com.kernel.pool.executor.Message);
+  public void accelerateAutoChallenge(com.kernel.pool.executor.Message);
+  public void getAwards(com.kernel.pool.executor.Message);
+  public void lingquAward(com.kernel.pool.executor.Message);
+  public void oneKeylingquAward(com.kernel.pool.executor.Message);
+  public void roleLogin(com.kernel.pool.executor.Message);
+  public void roleLogout(com.kernel.pool.executor.Message);
+## com.xianling.bus.kapai.easyaction.KapaiAction
+  public void getClientData(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void duiHuan(com.kernel.pool.executor.Message);
+  public void duiHuanGoods(com.kernel.pool.executor.Message);
+## com.xianling.bus.kuafu.easyaction.KuafuAction
+  public void getKuafuInfo(com.kernel.pool.executor.Message);
+  public void sourceKuafuRoomList(com.kernel.pool.executor.Message);
+  public void getShenjiangzhengduoAward(com.kernel.pool.executor.Message);
+  public void kuafuIsOpen(com.kernel.pool.executor.Message);
+  public void hasKuafuAward(com.kernel.pool.executor.Message);
+  public void receiveShenjiangzhengduoAwardData(com.kernel.pool.executor.Message);
+## com.xianling.bus.lianchou.easyaction.LianchouAction
+  public void getConfig(com.kernel.pool.executor.Message);
+  public void getThings(com.kernel.pool.executor.Message);
+  public void flush(com.kernel.pool.executor.Message);
+  public void fanpai(com.kernel.pool.executor.Message);
+  public void choupai(com.kernel.pool.executor.Message);
+## com.xianling.bus.loginlibao.easyaction.LoginlibaoAction
+  public void getConfig(com.kernel.pool.executor.Message);
+  public void lingqu(com.kernel.pool.executor.Message);
+## com.xianling.bus.loginlingjaing.easyaction.LoginlingjaingAction
+  public void getinfo(com.kernel.pool.executor.Message);
+  public void lingQu(com.kernel.pool.executor.Message);
+## com.xianling.bus.lvlibao.easyaction.LvlibaoAction
+  public void laQuLvLiBao(com.kernel.pool.executor.Message);
+  public void lingQuLvLiBao(com.kernel.pool.executor.Message);
+## com.xianling.bus.mall.easyaction.MallAction
+  public void shopList(com.kernel.pool.executor.Message);
+  public void buyGoods(com.kernel.pool.executor.Message);
+  public void backBuyGoods(com.kernel.pool.executor.Message);
+## com.xianling.bus.marry.easyaction.MarryAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void qiuhun(com.kernel.pool.executor.Message);
+  public void acceptQiuhun(com.kernel.pool.executor.Message);
+  public void lihun(com.kernel.pool.executor.Message);
+  public void chuansong(com.kernel.pool.executor.Message);
+  public void scheduleQingmidu(com.kernel.pool.executor.Message);
+  public void qianghua(com.kernel.pool.executor.Message);
+## com.xianling.bus.meiren.easyaction.MeirenAction
+  public void getMeiRenMessage(com.kernel.pool.executor.Message);
+  public void getMeiRen(com.kernel.pool.executor.Message);
+  public void MeiRenupgrade(com.kernel.pool.executor.Message);
+  public void getMeiRenChanMian(com.kernel.pool.executor.Message);
+## com.xianling.bus.mingrentang.easyaction.MingrentangAction
+  public void getData(com.kernel.pool.executor.Message);
+  public void getRankData(com.kernel.pool.executor.Message);
+  public void getRoleData(com.kernel.pool.executor.Message);
+  public void getReward(com.kernel.pool.executor.Message);
+  public void getRewardState(com.kernel.pool.executor.Message);
+## com.xianling.bus.movie.easyaction.MovieAction
+  public void fillInMessage(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.pet.easyaction.PetAction
+  public void getPetInfo(com.kernel.pool.executor.Message);
+  public void activatePet(com.kernel.pool.executor.Message);
+  public void upgradePet(com.kernel.pool.executor.Message);
+  public void petJinJie(com.kernel.pool.executor.Message);
+  public void upgradeZhenFa(com.kernel.pool.executor.Message);
+  public void jinJieZhenFa(com.kernel.pool.executor.Message);
+  public void upDownZhen(com.kernel.pool.executor.Message);
+  public void chuZhan(com.kernel.pool.executor.Message);
+  public void chuanChen(com.kernel.pool.executor.Message);
+## com.xianling.bus.phone.easyaction.PhoneAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void reward(com.kernel.pool.executor.Message);
+## com.xianling.bus.pozhen.easyaction.PoZhenAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void start(com.kernel.pool.executor.Message);
+  public void saodang(com.kernel.pool.executor.Message);
+  public void refresh(com.kernel.pool.executor.Message);
+  public void buyPozhen(com.kernel.pool.executor.Message);
+  public void quickly(com.kernel.pool.executor.Message);
+  public void sdOver(com.kernel.pool.executor.Message);
+  public void move(com.kernel.pool.executor.Message);
+  public void recovery(com.kernel.pool.executor.Message);
+  public void stop(com.kernel.pool.executor.Message);
+  public void getGoods(com.kernel.pool.executor.Message);
+## com.xianling.bus.qianfuhuodong.easyaction.QianfuhuodongAction
+  public void getClientData(com.kernel.pool.executor.Message);
+  public void getVipRewardInfo(com.kernel.pool.executor.Message);
+  public void getReward(com.kernel.pool.executor.Message);
+  public void getRankInfo(com.kernel.pool.executor.Message);
+  public void getXfRewardInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.qizhanbinqi.easyaction.QizhanbinqiAction
+  public void getdata(com.kernel.pool.executor.Message);
+  public void upgrade(com.kernel.pool.executor.Message);
+  public void getbinqi(com.kernel.pool.executor.Message);
+  public void schedule(com.kernel.pool.executor.Message);
+## com.xianling.bus.recharge.easyaction.RechargeAction
+## com.xianling.bus.role.easyaction.ChenmiAction
+  public void chenmi(com.kernel.pool.executor.Message);
+  public void halfChenmi(com.kernel.pool.executor.Message);
+## com.xianling.bus.role.easyaction.RoleAction
+  public void online(com.kernel.pool.executor.Message);
+  public void ewaiInfo(com.kernel.pool.executor.Message);
+  public void fangWaiGua(com.kernel.pool.executor.Message);
+  public void queryRoleByName(com.kernel.pool.executor.Message);
+## com.xianling.bus.rolebusinessdata.easyaction.RolebusinessdataAction
+## com.xianling.bus.setting.easyaction.SettingAction
+  public void changeQuickbar(com.kernel.pool.executor.Message);
+  public void saveUiInfo(com.kernel.pool.executor.Message);
+  public void savePanel(com.kernel.pool.executor.Message);
+  public void saveGuaJi(com.kernel.pool.executor.Message);
+## com.xianling.bus.shenjiang.easyaction.ShenjiangAction
+  public void getShenjiangInfo(com.kernel.pool.executor.Message);
+  public void activateShenjiang(com.kernel.pool.executor.Message);
+  public void skillUpgrade(com.kernel.pool.executor.Message);
+  public void canJihuoJiangxingtu(com.kernel.pool.executor.Message);
+  public void jihuoJiangxingtu(com.kernel.pool.executor.Message);
+  public void loginInit(com.kernel.pool.executor.Message);
+  public void jinjie(com.kernel.pool.executor.Message);
+  public void useWuHun(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void move(com.kernel.pool.executor.Message);
+## com.xianling.bus.shenmishop.easyaction.ShengmishopAction
+  public void getConfig(com.kernel.pool.executor.Message);
+  public void getThings(com.kernel.pool.executor.Message);
+  public void buy(com.kernel.pool.executor.Message);
+## com.xianling.bus.shenmizhuanpan.easyaction.ShenmizhuanpanAction
+  public void getConfig(com.kernel.pool.executor.Message);
+  public void getLog(com.kernel.pool.executor.Message);
+  public void zhuan(com.kernel.pool.executor.Message);
+## com.xianling.bus.shenqi.easyaction.ShenqiAction
+  public void getShenQi(com.kernel.pool.executor.Message);
+  public void jinJie(com.kernel.pool.executor.Message);
+  public void move(com.kernel.pool.executor.Message);
+  public void activiteSlot(com.kernel.pool.executor.Message);
+## com.xianling.bus.sixzhuanpan.easyaction.SixzhuanpanAction
+  public void getConfig(com.kernel.pool.executor.Message);
+  public void getThings(com.kernel.pool.executor.Message);
+  public void flush(com.kernel.pool.executor.Message);
+  public void zhuan(com.kernel.pool.executor.Message);
+  public void getLog(com.kernel.pool.executor.Message);
+## com.xianling.bus.skill.easyaction.SkillAction
+  public void upgradeSkill(com.kernel.pool.executor.Message);
+  public void getSkill(com.kernel.pool.executor.Message);
+## com.xianling.bus.skillbook.easyaction.SkillbookAction
+  public void getSkillBookInfo(com.kernel.pool.executor.Message);
+  public void moveSkillBook(com.kernel.pool.executor.Message);
+  public void yjTunshi(com.kernel.pool.executor.Message);
+## com.xianling.bus.stagecontroll.easyaction.StageControllAction
+  public void login(com.kernel.pool.executor.Message);
+  public void applyChangeMap(com.kernel.pool.executor.Message);
+  public void change(com.kernel.pool.executor.Message);
+  public void changeLine(com.kernel.pool.executor.Message);
+  public void innerChangeMap(com.kernel.pool.executor.Message);
+  public void innerChangeGuozhan(com.kernel.pool.executor.Message);
+  public void applyChangeLine(com.kernel.pool.executor.Message);
+  public void applyChangeJuqingCopy(com.kernel.pool.executor.Message);
+  public void applyChangeChallenge(com.kernel.pool.executor.Message);
+  public void applyEnterKuafuCopy(com.kernel.pool.executor.Message);
+  public void kuafuOffline1(com.kernel.pool.executor.Message);
+  public void kuafuOffline2(com.kernel.pool.executor.Message);
+  public void enterKuafuCopyLocalMap(com.kernel.pool.executor.Message);
+  public void returnLastStage(com.kernel.pool.executor.Message);
+  public void getMapLines(com.kernel.pool.executor.Message);
+## com.xianling.bus.task.easyaction.TaskMainAction
+  public void getRunMainTask(com.kernel.pool.executor.Message);
+  public void getChapterTipsAttribute(com.kernel.pool.executor.Message);
+  public void getChapters(com.kernel.pool.executor.Message);
+  public void getSubChapterInfo(com.kernel.pool.executor.Message);
+  public void getSelectTaskInfo(com.kernel.pool.executor.Message);
+  public void completeMainTask(com.kernel.pool.executor.Message);
+## com.xianling.bus.task.easyaction.TaskPublicAction
+  public void changeTaskMonsterCount(com.kernel.pool.executor.Message);
+## com.xianling.bus.task.easyaction.TaskRiChangAction
+  public void getTaskRichangeInfo(com.kernel.pool.executor.Message);
+  public void decreaseDifficulty(com.kernel.pool.executor.Message);
+  public void increaseThick(com.kernel.pool.executor.Message);
+  public void zhijieCompleteCurrentLoop(com.kernel.pool.executor.Message);
+  public void completeAllLoop(com.kernel.pool.executor.Message);
+  public void completeBestAllLoop(com.kernel.pool.executor.Message);
+  public void notifyServerLoop(com.kernel.pool.executor.Message);
+## com.xianling.bus.task.easyaction.TaskTaoFaAction
+  public void getTaskTaofaList(com.kernel.pool.executor.Message);
+  public void tunshiTaoFaTask(com.kernel.pool.executor.Message);
+## com.xianling.bus.toubao.easyaction.ToubaoAction
+  public void online(com.kernel.pool.executor.Message);
+  public void getRoleToubaoInfo(com.kernel.pool.executor.Message);
+  public void toubao(com.kernel.pool.executor.Message);
+  public void lingquToutaoReward(com.kernel.pool.executor.Message);
+  public void getToubaoInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.touxian.easyaction.TouxianAction
+  public void getinfo(com.kernel.pool.executor.Message);
+  public void jiHuoTouXian(com.kernel.pool.executor.Message);
+  public void changeTouXian(com.kernel.pool.executor.Message);
+  public void touxianTaskTiming(com.kernel.pool.executor.Message);
+## com.xianling.bus.vip.easyaction.VipAction
+  public void getVipInfo(com.kernel.pool.executor.Message);
+  public void getVipDay(com.kernel.pool.executor.Message);
+  public void getVipWeek(com.kernel.pool.executor.Message);
+  public void getVipTeJia(com.kernel.pool.executor.Message);
+  public void getVipHuoDongData(com.kernel.pool.executor.Message);
+  public void getVipHuoDongGuDing(com.kernel.pool.executor.Message);
+  public void getVipHuoDongChouJiang(com.kernel.pool.executor.Message);
+  public void getkaifu(com.kernel.pool.executor.Message);
+  public void kaiFuLotter(com.kernel.pool.executor.Message);
+  public void lingQuReward(com.kernel.pool.executor.Message);
+## com.xianling.bus.vipqq.easyaction.VipQqAction
+  public void vipqqInfo(com.kernel.pool.executor.Message);
+  public void vipqqRewards(com.kernel.pool.executor.Message);
+## com.xianling.bus.xianjiechenhao.easyaction.XianjiechenhaoAction
+  public void getXianJieHuoYuedu(com.kernel.pool.executor.Message);
+  public void upgradeChengHao(com.kernel.pool.executor.Message);
+  public void qiyongchneghao(com.kernel.pool.executor.Message);
+  public void getLog(com.kernel.pool.executor.Message);
+  public void clientJinDu(com.kernel.pool.executor.Message);
+  public void jishaLog(com.kernel.pool.executor.Message);
+  public void jiHuoChengHao(com.kernel.pool.executor.Message);
+## com.xianling.bus.xianjiehuoyuedu.easyaction.XianjiehuoyueduAction
+  public void getXianJieHuoYuedu(com.kernel.pool.executor.Message);
+  public void miaosha(com.kernel.pool.executor.Message);
+  public void jiangli(com.kernel.pool.executor.Message);
+## com.xianling.bus.xianshibuy.easyaction.XianshibuyAction
+  public void getClientData(com.kernel.pool.executor.Message);
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void buy(com.kernel.pool.executor.Message);
+  public void clearCd(com.kernel.pool.executor.Message);
+## com.xianling.bus.xianshituangou.easyaction.XianshituangouAction
+  public void get(com.kernel.pool.executor.Message);
+  public void duihuan(com.kernel.pool.executor.Message);
+  public void getConfig(com.kernel.pool.executor.Message);
+## com.xianling.bus.xunbao.easyaction.XunbaoAction
+  public void info(com.kernel.pool.executor.Message);
+  public void roleinfo(com.kernel.pool.executor.Message);
+  public void xunbaoStart(com.kernel.pool.executor.Message);
+  public void xunbaolog(com.kernel.pool.executor.Message);
+  public void activate(com.kernel.pool.executor.Message);
+## com.xianling.bus.yuanshen.easyaction.YuanshenAction
+  public void getYuanShenInfo(com.kernel.pool.executor.Message);
+  public void yuanShenUpgradeLevel(com.kernel.pool.executor.Message);
+  public void yuanShenJinJie(com.kernel.pool.executor.Message);
+## com.xianling.bus.zhandouli.easyaction.ZhanDouLiAction
+  public void getRoleFight(com.kernel.pool.executor.Message);
+  public void equipFightChange(com.kernel.pool.executor.Message);
+  public void baoShiFightChange(com.kernel.pool.executor.Message);
+  public void skillFightChange(com.kernel.pool.executor.Message);
+  public void roleLevelFightChange(com.kernel.pool.executor.Message);
+  public void zuoQiJiChuFightChange(com.kernel.pool.executor.Message);
+  public void zuoQiEquipFightChange(com.kernel.pool.executor.Message);
+  public void shengJiangJIangXinChange(com.kernel.pool.executor.Message);
+  public void shengJiangSkillChange(com.kernel.pool.executor.Message);
+  public void shengJiangSkillShengJi(com.kernel.pool.executor.Message);
+  public void vipFight(com.kernel.pool.executor.Message);
+  public void poZHenFight(com.kernel.pool.executor.Message);
+  public void meirenFight(com.kernel.pool.executor.Message);
+  public void attributeDan(com.kernel.pool.executor.Message);
+  public void getQiZHanBinQi(com.kernel.pool.executor.Message);
+  public void getlonglinglonghun(com.kernel.pool.executor.Message);
+  public void getxianjie(com.kernel.pool.executor.Message);
+  public void getchenghao(com.kernel.pool.executor.Message);
+  public void getBingHun(com.kernel.pool.executor.Message);
+  public void getZuoQiSkillBook(com.kernel.pool.executor.Message);
+  public void getQiBinSkillBook(com.kernel.pool.executor.Message);
+  public void getguangYiBook(com.kernel.pool.executor.Message);
+  public void guangyi(com.kernel.pool.executor.Message);
+  public void wuHuan(com.kernel.pool.executor.Message);
+  public void touXian(com.kernel.pool.executor.Message);
+  public void baoZhu(com.kernel.pool.executor.Message);
+  public void zuWu(com.kernel.pool.executor.Message);
+  public void guildZhanLi(com.kernel.pool.executor.Message);
+  public void yuanShen(com.kernel.pool.executor.Message);
+  public void shenqi(com.kernel.pool.executor.Message);
+  public void hunjie(com.kernel.pool.executor.Message);
+  public void petZhanFa(com.kernel.pool.executor.Message);
+  public void petHeti(com.kernel.pool.executor.Message);
+## com.xianling.bus.zhizuntequan.easyaction.ZhizuntequanAction
+  public void _131000(com.kernel.pool.executor.Message);
+  public void _131001(com.kernel.pool.executor.Message);
+  public void _131002(com.kernel.pool.executor.Message);
+  public void _131004(com.kernel.pool.executor.Message);
+  public void _131003(com.kernel.pool.executor.Message);
+## com.xianling.bus.zhouhuan.easyaction.ZhouhuanAction
+  public void getTaskList(com.kernel.pool.executor.Message);
+  public void refreshTaskReward(com.kernel.pool.executor.Message);
+  public void immediatelyFinishTask(com.kernel.pool.executor.Message);
+  public void getTaskReward(com.kernel.pool.executor.Message);
+  public void getLoopTaskReward(com.kernel.pool.executor.Message);
+## com.xianling.bus.zuoqi.easyaction.ZuoQiAction
+  public void ZuoqiMianban(com.kernel.pool.executor.Message);
+  public void lingquZuoqi(com.kernel.pool.executor.Message);
+  public void zuoqiJinjie(com.kernel.pool.executor.Message);
+  public void rideZuoQi(com.kernel.pool.executor.Message);
+  public void sendZhanli(com.kernel.pool.executor.Message);
+  public void zuoqiFanhuan(com.kernel.pool.executor.Message);
+  public void zuoqiJiangliMeiren(com.kernel.pool.executor.Message);
+  public void zuoqiFanhuanList(com.kernel.pool.executor.Message);
+  public void zuoqiAwardInfo(com.kernel.pool.executor.Message);
+## com.xianling.bus.zuwu.easyaction.ZuwuAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void upgrade(com.kernel.pool.executor.Message);
+  public void jingjie(com.kernel.pool.executor.Message);
+  public void yijingUpgrade(com.kernel.pool.executor.Message);
+## com.xianling.bus.zuwufuben.easyaction.ZuwufubenAction
+  public void getInFo(com.kernel.pool.executor.Message);
+  public void enterFuBen(com.kernel.pool.executor.Message);
+  public void finishFuBen(com.kernel.pool.executor.Message);
+  public void quitFuben(com.kernel.pool.executor.Message);
+  public void refreshFubenCd(com.kernel.pool.executor.Message);
+  public void saoDangFuben(com.kernel.pool.executor.Message);
+  public void saoDangFinish(com.kernel.pool.executor.Message);
+  public void buyFightCount(com.kernel.pool.executor.Message);
+  public void buyFightCountAll(com.kernel.pool.executor.Message);
+## com.xianling.bus.zyzhuihui.easyaction.ZyzhuihuiAction
+  public void getinfo(com.kernel.pool.executor.Message);
+  public void zhuiHui(com.kernel.pool.executor.Message);
+  public void centerTiming(com.kernel.pool.executor.Message);
+## com.xianling.io.easyaction.FengHaoAction
+  public void fenghao(com.xianling.io.Message.IoMessage);
+## com.xianling.io.easyaction.IoMsgOutAction
+  public void ioMsgOut(com.xianling.io.Message.IoMessage);
+  public void leaveStage(com.xianling.io.Message.IoMessage);
+## com.xianling.io.easyaction.PingAction
+  public void pingCheck(com.xianling.io.Message.IoMessage);
+## com.xianling.login.io.easyaction.LoginAction
+  public void in(com.kernel.pool.executor.Message);
+  public void createRole(com.kernel.pool.executor.Message);
+## com.xianling.public_.booth.easyaction.BoothAction
+  public void getOnlineBooths(com.kernel.pool.executor.Message);
+  public void getOnlineBoothDetails(com.kernel.pool.executor.Message);
+  public void inBooth(com.kernel.pool.executor.Message);
+  public void outBooth(com.kernel.pool.executor.Message);
+  public void changeBoothSellPrice(com.kernel.pool.executor.Message);
+  public void changeBoothSellIndex(com.kernel.pool.executor.Message);
+  public void seachBooth(com.kernel.pool.executor.Message);
+  public void getBoothInfo(com.kernel.pool.executor.Message);
+  public void buyBoothGoods(com.kernel.pool.executor.Message);
+  public void modifyBoothName(com.kernel.pool.executor.Message);
+  public void getBoothLog(com.kernel.pool.executor.Message);
+  public void getTradeLog(com.kernel.pool.executor.Message);
+  public void ybSell(com.kernel.pool.executor.Message);
+  public void jbSell(com.kernel.pool.executor.Message);
+  public void buySellYb(com.kernel.pool.executor.Message);
+  public void buySellJb(com.kernel.pool.executor.Message);
+  public void roleOnline(com.kernel.pool.executor.Message);
+  public void getBoothMoney(com.kernel.pool.executor.Message);
+  public void lingquBoothMoney(com.kernel.pool.executor.Message);
+## com.xianling.public_.friend.easyaction.FriendAction
+  public void getFriend(com.kernel.pool.executor.Message);
+  public void addFriend(com.kernel.pool.executor.Message);
+  public void delFriend(com.kernel.pool.executor.Message);
+  public void addFoe(com.kernel.pool.executor.Message);
+  public void delFoe(com.kernel.pool.executor.Message);
+  public void addBlacklist(com.kernel.pool.executor.Message);
+  public void delBlacklist(com.kernel.pool.executor.Message);
+  public void addContacts(com.kernel.pool.executor.Message);
+  public void delContacts(com.kernel.pool.executor.Message);
+  public void roleFight(com.kernel.pool.executor.Message);
+  public void updateXinqing(com.kernel.pool.executor.Message);
+  public void changeMap(com.kernel.pool.executor.Message);
+  public void levelUpgrade(com.kernel.pool.executor.Message);
+  public void loginInit(com.kernel.pool.executor.Message);
+## com.xianling.public_.guild.easyaction.GuildAction
+  public void createGuild(com.kernel.pool.executor.Message);
+  public void applyAddGuild(com.kernel.pool.executor.Message);
+  public void applyIsAddGuild(com.kernel.pool.executor.Message);
+  public void inviteAddGuild(com.kernel.pool.executor.Message);
+  public void inviteIsAddGuild(com.kernel.pool.executor.Message);
+  public void exitGuild(com.kernel.pool.executor.Message);
+  public void getGuildByRoleId(com.kernel.pool.executor.Message);
+  public void getGuildInfo(com.kernel.pool.executor.Message);
+  public void getGuilds(com.kernel.pool.executor.Message);
+  public void delGuild(com.kernel.pool.executor.Message);
+  public void changeBannerStyle(com.kernel.pool.executor.Message);
+  public void changeBannerName(com.kernel.pool.executor.Message);
+  public void upgradeBanner(com.kernel.pool.executor.Message);
+  public void setGuildSetting(com.kernel.pool.executor.Message);
+  public void updateGuildMessage(com.kernel.pool.executor.Message);
+  public void updatePosition(com.kernel.pool.executor.Message);
+  public void contributeMoney(com.kernel.pool.executor.Message);
+  public void contributeGoods(com.kernel.pool.executor.Message);
+  public void addDiplomacy(com.kernel.pool.executor.Message);
+  public void isAddDiplomacy(com.kernel.pool.executor.Message);
+  public void delDiplomacy(com.kernel.pool.executor.Message);
+  public void roleLoginSuccess(com.kernel.pool.executor.Message);
+  public void getGuildByGuildId(com.kernel.pool.executor.Message);
+  public void roleDead(com.kernel.pool.executor.Message);
+  public void bossKillRole(com.kernel.pool.executor.Message);
+  public void bossDead(com.kernel.pool.executor.Message);
+  public void getBannerConditions(com.kernel.pool.executor.Message);
+  public void getGongxianInfo(com.kernel.pool.executor.Message);
+  public void getGuildByLikeName(com.kernel.pool.executor.Message);
+  public void changeMap(com.kernel.pool.executor.Message);
+  public void getGuildById(com.kernel.pool.executor.Message);
+  public void guildCall(com.kernel.pool.executor.Message);
+  public void guildCallCD(com.kernel.pool.executor.Message);
+  public void guildChat(com.kernel.pool.executor.Message);
+## com.xianling.public_.jingji.easyaction.JingjiAction
+  public void getInfo(com.kernel.pool.executor.Message);
+  public void getRankList(com.kernel.pool.executor.Message);
+  public void buyCount(com.kernel.pool.executor.Message);
+  public void clearCd(com.kernel.pool.executor.Message);
+  public void refreshZhanLi(com.kernel.pool.executor.Message);
+  public void tiaoZhan(com.kernel.pool.executor.Message);
+  public void gerReward(com.kernel.pool.executor.Message);
+  public void everydayHour(com.kernel.pool.executor.Message);
+  public void tiaoZhanStop(com.kernel.pool.executor.Message);
+## com.xianling.public_.nodecontrol.easyaction.NodeControlAction
+  public void roleIn(com.kernel.pool.executor.Message);
+  public void roleOut(com.kernel.pool.executor.Message);
+## com.xianling.public_.pnotice.easyaction.PnoticeAction
+  public void useCode(com.kernel.pool.executor.Message);
+## com.xianling.public_.question.easyaction.QuestionAction
+  public void gmQuestion(com.kernel.pool.executor.Message);
+## com.xianling.public_.rank.easyaction.RankAction
+  public void roleUpgradeLevel(com.kernel.pool.executor.Message);
+  public void changeTotalZhandouli(com.kernel.pool.executor.Message);
+  public void changeEquipZhandouli(com.kernel.pool.executor.Message);
+  public void upgradeZuoqi(com.kernel.pool.executor.Message);
+  public void upgradeBaoshiLevel(com.kernel.pool.executor.Message);
+  public void killBoss(com.kernel.pool.executor.Message);
+  public void rankVipChange(com.kernel.pool.executor.Message);
+  public void rankGuangYiChange(com.kernel.pool.executor.Message);
+  public void rankShenQiChange(com.kernel.pool.executor.Message);
+  public void rankChargeYb(com.kernel.pool.executor.Message);
+  public void rankQibing(com.kernel.pool.executor.Message);
+  public void roleLoginInit(com.kernel.pool.executor.Message);
+  public void getRankInfo(com.kernel.pool.executor.Message);
+  public void chongbai(com.kernel.pool.executor.Message);
+  public void aidai(com.kernel.pool.executor.Message);
+  public void searchRoleRank(com.kernel.pool.executor.Message);
+  public void getRoleRankInfo(com.kernel.pool.executor.Message);
+  public void changeShenjiangZhandouli(com.kernel.pool.executor.Message);
+## com.xianling.public_.robot.easyaction.RobotLoginAction
+  public void response_10003(com.kernel.pool.executor.Message);
+  public void response_20000(com.kernel.pool.executor.Message);
+## com.xianling.public_.shenshu.easyaction.ShenshuAction
+  public void activateShenshu(com.kernel.pool.executor.Message);
+  public void getRoleShenshu(com.kernel.pool.executor.Message);
+  public void gatherGuoshi(com.kernel.pool.executor.Message);
+  public void watering(com.kernel.pool.executor.Message);
+  public void accelerated(com.kernel.pool.executor.Message);
+  public void cuishu(com.kernel.pool.executor.Message);
+  public void guildShenshu(com.kernel.pool.executor.Message);
+  public void getShenshuInfo(com.kernel.pool.executor.Message);
+  public void stealGuoshi(com.kernel.pool.executor.Message);
+  public void guildWatering(com.kernel.pool.executor.Message);
+  public void getGuoshi(com.kernel.pool.executor.Message);
+  public void online(com.kernel.pool.executor.Message);
+  public void getChengshuGuoshi(com.kernel.pool.executor.Message);
+  public void getDryGuoshi(com.kernel.pool.executor.Message);
+## com.xianling.public_.statistics.easyaction.StatisticsAction
+## com.xianling.public_.team.easyaction.TeamAction
+  public void createTeam(com.kernel.pool.executor.Message);
+  public void getTeam(com.kernel.pool.executor.Message);
+  public void exitTeam(com.kernel.pool.executor.Message);
+  public void applyChangeLeader(com.kernel.pool.executor.Message);
+  public void changeLeader(com.kernel.pool.executor.Message);
+  public void invitebegAddTeam(com.kernel.pool.executor.Message);
+  public void addTeam(com.kernel.pool.executor.Message);
+  public void yaoqingAddTeam(com.kernel.pool.executor.Message);
+  public void shenqingAddTeam(com.kernel.pool.executor.Message);
+  public void changeStageTeam(com.kernel.pool.executor.Message);
+  public void teamChat(com.kernel.pool.executor.Message);
+## com.xianling.public_.teamfuben.easyaction.TeamfubenAction
+  public void getTeamsByGuanKaId(com.kernel.pool.executor.Message);
+  public void getTongGuanData(com.kernel.pool.executor.Message);
+  public void getRankData(com.kernel.pool.executor.Message);
+  public void getTeamList(com.kernel.pool.executor.Message);
+  public void createTeam(com.kernel.pool.executor.Message);
+  public void addTeam(com.kernel.pool.executor.Message);
+  public void quitTeam(com.kernel.pool.executor.Message);
+  public void putAway(com.kernel.pool.executor.Message);
+  public void jieSan(com.kernel.pool.executor.Message);
+  public void changeZhanDouLi(com.kernel.pool.executor.Message);
+  public void prepare(com.kernel.pool.executor.Message);
+  public void jinRuFuBen(com.kernel.pool.executor.Message);
+  public void killMonster(com.kernel.pool.executor.Message);
+  public void fuBenFinish(com.kernel.pool.executor.Message);
+  public void leave(com.kernel.pool.executor.Message);
+  public void qieHuanGuanKa(com.kernel.pool.executor.Message);
+  public void cacheRole(com.kernel.pool.executor.Message);
+  public void countDown(com.kernel.pool.executor.Message);
+  public void teamYaoqing(com.kernel.pool.executor.Message);
+  public void lotteyReward(com.kernel.pool.executor.Message);
+## com.xianling.public_.trade.easyaction.TradeAction
+  public void launch(com.kernel.pool.executor.Message);
+  public void agree(com.kernel.pool.executor.Message);
+  public void reject(com.kernel.pool.executor.Message);
+  public void modifyMoney(com.kernel.pool.executor.Message);
+  public void modifyGoods(com.kernel.pool.executor.Message);
+  public void cancel(com.kernel.pool.executor.Message);
+  public void confirm1(com.kernel.pool.executor.Message);
+  public void confirm2(com.kernel.pool.executor.Message);
+  public void confirm3(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.AiAction
+  public void retrieve(com.kernel.pool.executor.Message);
+  public void elementProduce(com.kernel.pool.executor.Message);
+  public void elementDisapear(com.kernel.pool.executor.Message);
+  public void monsterGoodsDrop(com.kernel.pool.executor.Message);
+  public void monsterExpDrop(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.AIFightAction
+  public void defaultHandle(com.kernel.pool.executor.Message);
+  public void advanceAiHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.BossTiaozhanAction
+  public void getTiaozhanInfo(com.kernel.pool.executor.Message);
+  public void getTiaozhanInfoSingle(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.BuffAction
+  public void buffEnd(com.kernel.pool.executor.Message);
+  public void buffOver(com.kernel.pool.executor.Message);
+  public void buffTrigger(com.kernel.pool.executor.Message);
+  public void addBuff(com.kernel.pool.executor.Message);
+  public void getBuff(com.kernel.pool.executor.Message);
+  public void addInnerBuff(com.kernel.pool.executor.Message);
+  public void addInnerPropBuff(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.ChallengeAction
+  public void challengeOver(com.kernel.pool.executor.Message);
+  public void challengeForce(com.kernel.pool.executor.Message);
+  public void challengeExpire(com.kernel.pool.executor.Message);
+  public void jingJileave(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.GuaiWuGongChengAction
+  public void refresh(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.GuilFuBenAction
+  public void flushHarms(com.kernel.pool.executor.Message);
+  public void refreshHarms(com.kernel.pool.executor.Message);
+  public void guildFubenExpireCheck(com.kernel.pool.executor.Message);
+  public void removeStage(com.kernel.pool.executor.Message);
+  public void quitGuild(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.KuangZhanAction
+  public void startCaiji(com.kernel.pool.executor.Message);
+  public void caijiWanchen(com.kernel.pool.executor.Message);
+  public void kuangZhanClosePrepare(com.kernel.pool.executor.Message);
+  public void kuangZhanClose(com.kernel.pool.executor.Message);
+  public void applyEnterKuangZhanMap(com.kernel.pool.executor.Message);
+  public void getKuangZhanMapInfo(com.kernel.pool.executor.Message);
+  public void exitKuangZhanMap(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.PetFightAction
+  public void defaultHandle(com.kernel.pool.executor.Message);
+  public void guildCallMonsterHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.PetStageAction
+  public void petChuZhan(com.kernel.pool.executor.Message);
+  public void petHeTi(com.kernel.pool.executor.Message);
+  public void petHeTiEnd(com.kernel.pool.executor.Message);
+  public void refreshBaoBaoAttribute(com.kernel.pool.executor.Message);
+  public void refreshRoleAttribute(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.RoleAttributeAction
+  public void equipChange(com.kernel.pool.executor.Message);
+  public void equipAttributeChange(com.kernel.pool.executor.Message);
+  public void equipQiangHua(com.kernel.pool.executor.Message);
+  public void equipJinjie(com.kernel.pool.executor.Message);
+  public void levelChange(com.kernel.pool.executor.Message);
+  public void vipLevelChange(com.kernel.pool.executor.Message);
+  public void bagStoreSlotChange(com.kernel.pool.executor.Message);
+  public void zuoqiUpgradeRank(com.kernel.pool.executor.Message);
+  public void zuoqiUseAttributeProp(com.kernel.pool.executor.Message);
+  public void zuoqiUpgradeSkill(com.kernel.pool.executor.Message);
+  public void upgradeSkill(com.kernel.pool.executor.Message);
+  public void guildChange(com.kernel.pool.executor.Message);
+  public void guildBuff(com.kernel.pool.executor.Message);
+  public void taskMainFinish(com.kernel.pool.executor.Message);
+  public void baoshiAttribute(com.kernel.pool.executor.Message);
+  public void shuxingdanChange(com.kernel.pool.executor.Message);
+  public void qizhanbinqi(com.kernel.pool.executor.Message);
+  public void xianjie(com.kernel.pool.executor.Message);
+  public void chengHao(com.kernel.pool.executor.Message);
+  public void guangYi(com.kernel.pool.executor.Message);
+  public void touXian(com.kernel.pool.executor.Message);
+  public void taoZhaung(com.kernel.pool.executor.Message);
+  public void wuhun(com.kernel.pool.executor.Message);
+  public void zuWu(com.kernel.pool.executor.Message);
+  public void baoZhu(com.kernel.pool.executor.Message);
+  public void yuanShen(com.kernel.pool.executor.Message);
+  public void shenqi(com.kernel.pool.executor.Message);
+  public void hunjieMove(com.kernel.pool.executor.Message);
+  public void shenJiangJiHuo(com.kernel.pool.executor.Message);
+  public void guildZhiweiChange(com.kernel.pool.executor.Message);
+  public void guildZhiweiCreate(com.kernel.pool.executor.Message);
+  public void xianJieChenHaoGuangBo(com.kernel.pool.executor.Message);
+  public void touXianGuangBo(com.kernel.pool.executor.Message);
+  public void guangyiTongbu(com.kernel.pool.executor.Message);
+  public void goldEqup(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.RoleBehaviourAction
+  public void move(com.kernel.pool.executor.Message);
+  public void teleport(com.kernel.pool.executor.Message);
+  public void jump(com.kernel.pool.executor.Message);
+  public void jumpEnd(com.kernel.pool.executor.Message);
+  public void changeFaceTo(com.kernel.pool.executor.Message);
+  public void applyWayPointTeleport(com.kernel.pool.executor.Message);
+  public void applyNPCTeleport(com.kernel.pool.executor.Message);
+  public void applyFeixieTeleport(com.kernel.pool.executor.Message);
+  public void innerFly(com.kernel.pool.executor.Message);
+  public void enterBossMiJin(com.kernel.pool.executor.Message);
+  public void huicheng(com.kernel.pool.executor.Message);
+  public void dazuoSingle(com.kernel.pool.executor.Message);
+  public void dazuoBoth(com.kernel.pool.executor.Message);
+  public void daZuoExit(com.kernel.pool.executor.Message);
+  public void timingDazuoGet(com.kernel.pool.executor.Message);
+  public void normalChat(com.kernel.pool.executor.Message);
+  public void pickUp(com.kernel.pool.executor.Message);
+  public void timerRecoveryShanbiVal(com.kernel.pool.executor.Message);
+  public void startCaiji(com.kernel.pool.executor.Message);
+  public void caijiWanchen(com.kernel.pool.executor.Message);
+  public void zhongduanCaiji(com.kernel.pool.executor.Message);
+  public void lookOther(com.kernel.pool.executor.Message);
+  public void teamChange(com.kernel.pool.executor.Message);
+  public void getTeamInfo(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.RoleFightAction
+  public void readyFire(com.kernel.pool.executor.Message);
+  public void skillFire(com.kernel.pool.executor.Message);
+  public void skillTiaoyue(com.kernel.pool.executor.Message);
+  public void fightCheck(com.kernel.pool.executor.Message);
+  public void pkCheck(com.kernel.pool.executor.Message);
+  public void townRevive(com.kernel.pool.executor.Message);
+  public void newerRevive(com.kernel.pool.executor.Message);
+  public void goodsRevive(com.kernel.pool.executor.Message);
+  public void refreshZuoqiPet(com.kernel.pool.executor.Message);
+  public void pkValCheck(com.kernel.pool.executor.Message);
+  public void changeBattleMode(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.ShenQiAction
+  public void shenqiSkill(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.SkillBookAction
+  public void skillBookPeidai(com.kernel.pool.executor.Message);
+  public void skillBookXieZai(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageAction
+  public void enterStage(com.kernel.pool.executor.Message);
+  public void leaveStage(com.kernel.pool.executor.Message);
+  public void goodsEnterStage(com.kernel.pool.executor.Message);
+  public void discardGoods(com.kernel.pool.executor.Message);
+  public void goodsDisappear(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageCopyAction
+  public void applyLevelCopy(com.kernel.pool.executor.Message);
+  public void forceLevelCopy(com.kernel.pool.executor.Message);
+  public void expireCheck(com.kernel.pool.executor.Message);
+  public void teamFuBenExpireCheck(com.kernel.pool.executor.Message);
+  public void zuWuFuBenExpireCheck(com.kernel.pool.executor.Message);
+  public void qiShengBossExpireCheck(com.kernel.pool.executor.Message);
+  public void panTaoYuanExpireCheck(com.kernel.pool.executor.Message);
+  public void copyOver(com.kernel.pool.executor.Message);
+  public void jindiGather(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageGuildMonsterAction
+  public void callGuildMonster(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageInfoAction
+  public void info(com.kernel.pool.executor.Message);
+  public void flyCount(com.kernel.pool.executor.Message);
+  public void zuoqiInfo(com.kernel.pool.executor.Message);
+  public void qiBinInfo(com.kernel.pool.executor.Message);
+  public void guangYiInfo(com.kernel.pool.executor.Message);
+  public void shenQiInfo(com.kernel.pool.executor.Message);
+  public void arroundBroadcast(com.kernel.pool.executor.Message);
+  public void point2point(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageJuQingFuBenAction
+  public void expireCheck(com.kernel.pool.executor.Message);
+  public void challengeOver(com.kernel.pool.executor.Message);
+  public void applyLeaveCopy(com.kernel.pool.executor.Message);
+  public void forceLeave(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageMeirenAction
+  public void meirenGet(com.kernel.pool.executor.Message);
+  public void meirenChanmian(com.kernel.pool.executor.Message);
+  public void meirenUpgrade(com.kernel.pool.executor.Message);
+  public void meirenChuzhan(com.kernel.pool.executor.Message);
+  public void meirenXiuzhan(com.kernel.pool.executor.Message);
+  public void upDownZuoqi(com.kernel.pool.executor.Message);
+  public void zuoqiFullHp(com.kernel.pool.executor.Message);
+  public void zuoqiRevive(com.kernel.pool.executor.Message);
+  public void zuoqiFreeRevive(com.kernel.pool.executor.Message);
+  public void getZuoqiHp(com.kernel.pool.executor.Message);
+  public void meirenFullHp(com.kernel.pool.executor.Message);
+  public void getMeirenHp(com.kernel.pool.executor.Message);
+  public void meirenYbRevive(com.kernel.pool.executor.Message);
+  public void meirenFreeRevive(com.kernel.pool.executor.Message);
+  public void meirenRecoveryHp(com.kernel.pool.executor.Message);
+  public void meirenDeadInfo(com.kernel.pool.executor.Message);
+  public void zuoqiDeadInfo(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageShenJiangAction
+  public void shenJiangBianshen(com.kernel.pool.executor.Message);
+  public void shenJiangActive(com.kernel.pool.executor.Message);
+  public void shenJiangActiveJXT(com.kernel.pool.executor.Message);
+  public void shenJiangSkillUpgrade(com.kernel.pool.executor.Message);
+  public void shenjiangUpgade(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StageWarAction
+  public void buffStart(com.kernel.pool.executor.Message);
+  public void buffEnd(com.kernel.pool.executor.Message);
+## com.xianling.stage.easyaction.StegeTeamFuBenAction
+  public void leave(com.kernel.pool.executor.Message);
+## com.xianling.stage.gm.easyaction.GMStageAction
+  public void addMonster(com.kernel.pool.executor.Message);
+## com.xianling.stage.guozhan.easyaction.GuozhanAction
+  public void fengshenInfo(com.kernel.pool.executor.Message);
+  public void enterCopy(com.kernel.pool.executor.Message);
+  public void getYuXi(com.kernel.pool.executor.Message);
+  public void handleYuxiSuccess(com.kernel.pool.executor.Message);
+  public void yuxiTimer20(com.kernel.pool.executor.Message);
+  public void timeOver60(com.kernel.pool.executor.Message);
+  public void destroyCopy(com.kernel.pool.executor.Message);
+  public void bossEnter(com.kernel.pool.executor.Message);
+  public void leaveFengshen(com.kernel.pool.executor.Message);
+  public void getDaZuoShouyi(com.kernel.pool.executor.Message);
+  public void addBuff(com.kernel.pool.executor.Message);
+  public void getYuxiInfo(com.kernel.pool.executor.Message);
+  public void sendYuxiInfo(com.kernel.pool.executor.Message);
+  public void interrupt(com.kernel.pool.executor.Message);
+  public void clanChange(com.kernel.pool.executor.Message);
+  public void clanPositionChange(com.kernel.pool.executor.Message);
+  public void fengshenRevive(com.kernel.pool.executor.Message);
+  public void getFengshenPosition(com.kernel.pool.executor.Message);
+  public void lingjiang(com.kernel.pool.executor.Message);
+  public void winFailLingjiang(com.kernel.pool.executor.Message);
+  public void canLingjiang(com.kernel.pool.executor.Message);
+  public void changeCityName(com.kernel.pool.executor.Message);
+  public void guildDismiss(com.kernel.pool.executor.Message);
+## com.xianling.stage.kuafu.easyaction.KuafuStageAction
+  public void _125002(com.kernel.pool.executor.Message);
+  public void _125005(com.kernel.pool.executor.Message);
+  public void expireCheck(com.kernel.pool.executor.Message);
+  public void forceLeave(com.kernel.pool.executor.Message);
+  public void _125006(com.kernel.pool.executor.Message);
+  public void sjzdOverTimer(com.kernel.pool.executor.Message);
+  public void kuafuRevive(com.kernel.pool.executor.Message);
+  public void roleDead(com.kernel.pool.executor.Message);
+  public void bossDead(com.kernel.pool.executor.Message);
+## com.xianling.stage.manorwar.easyaction.ManorWarAction
+  public void info(com.kernel.pool.executor.Message);
+  public void handleBannerStart(com.kernel.pool.executor.Message);
+  public void interrupt(com.kernel.pool.executor.Message);
+  public void handleBannerSucess(com.kernel.pool.executor.Message);
+  public void bannerHandle20(com.kernel.pool.executor.Message);
+  public void gainEverydayAward(com.kernel.pool.executor.Message);
+  public void overAwardCheck(com.kernel.pool.executor.Message);
+  public void sendLocationTimer(com.kernel.pool.executor.Message);
+  public void overAwardGain(com.kernel.pool.executor.Message);
+  public void manorOverTimer(com.kernel.pool.executor.Message);
+  public void stageCreate(com.kernel.pool.executor.Message);
+  public void timerExpGain(com.kernel.pool.executor.Message);
+  public void timerClear(com.kernel.pool.executor.Message);
+  public void townRevive(com.kernel.pool.executor.Message);
+  public void goodsRevive(com.kernel.pool.executor.Message);
+  public void bannerLocation(com.kernel.pool.executor.Message);
+  public void guildDismiss(com.kernel.pool.executor.Message);
+## com.xianling.stage.prop.easyaction.PropStageAction
+  public void consumeGoods(com.kernel.pool.executor.Message);
+  public void consumeGoodsAll(com.kernel.pool.executor.Message);
+  public void scheduleManage(com.kernel.pool.executor.Message);
+  public void duoxuanlibao(com.kernel.pool.executor.Message);
+  public void yougHuiQuanLiBao(com.kernel.pool.executor.Message);
+  public void getTeShuTypeCount(com.kernel.pool.executor.Message);
+## com.xianling.stage.qishengboss.easyaction.BossAction
+  public void jinRuQiShenBossMap(com.kernel.pool.executor.Message);
+  public void tuiChuQiShenBossMap(com.kernel.pool.executor.Message);
+  public void qishengBossReward(com.kernel.pool.executor.Message);
+  public void jinRuPanTaoYuanMap(com.kernel.pool.executor.Message);
+  public void tuiChuPanTaoYuanMap(com.kernel.pool.executor.Message);
+  public void qiShengTimingReward(com.kernel.pool.executor.Message);
+  public void panTaoYuantimingReward(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.DeadReviveTaskAction
+  public void response_43000(com.kernel.pool.executor.Message);
+  public void response_43002(com.kernel.pool.executor.Message);
+  public void deadReviveHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.RobotKillMonsterTaskAction
+  public void killMonsterHandle(com.kernel.pool.executor.Message);
+  public void response_42001(com.kernel.pool.executor.Message);
+  public void response_42002(com.kernel.pool.executor.Message);
+  public void updateKillMonsterCount(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.RobotMainTaskTaskAction
+  public void getMainTask(com.kernel.pool.executor.Message);
+  public void completeMainTask(com.kernel.pool.executor.Message);
+  public void updateMainTask(com.kernel.pool.executor.Message);
+  public void mainTaskHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.RobotXunLuTaskAction
+  public void xunLuTaskHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.RoleLoginStageAction
+  public void response_21000(com.kernel.pool.executor.Message);
+  public void response_40100(com.kernel.pool.executor.Message);
+## com.xianling.stage.robot.easyaction.TeleportChangeMapAction
+  public void teleportChangeMapHandle(com.kernel.pool.executor.Message);
+## com.xianling.stage.xianshanghuodong.easyaction.XianshanghuodongAction
+  public void taskEnd(com.kernel.pool.executor.Message);
+  public void getConfig(com.kernel.pool.executor.Message);

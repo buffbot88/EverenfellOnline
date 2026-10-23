@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS accounts (
@@ -587,6 +588,45 @@ CREATE TABLE IF NOT EXISTS role_bag_dummy (
   goods_count INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Player stalls (Booth entity subset: name/state plus the collected-money
+-- balances boothJb/boothYb; boothBuyTime gates the trade-exp award).
+CREATE TABLE IF NOT EXISTS booth (
+  role_id TEXT PRIMARY KEY,
+  booth_name TEXT,
+  booth_state INTEGER DEFAULT 1,
+  booth_jb INTEGER DEFAULT 0,
+  booth_yb INTEGER DEFAULT 0,
+  booth_buy_time INTEGER,
+  created INTEGER DEFAULT 0
+);
+-- Stall listings (BoothSell subset: goods rows at slots 0..10 plus the
+-- money-market rows at slots 11 (YB offered) and 12 (YXB offered)).
+CREATE TABLE IF NOT EXISTS booth_sell (
+  id TEXT PRIMARY KEY,
+  role_id TEXT NOT NULL,
+  goods_id TEXT,
+  count INTEGER DEFAULT 0,
+  slot INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  rare_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  expire_time INTEGER,
+  sell_jb INTEGER DEFAULT 0,
+  sell_yb INTEGER DEFAULT 0,
+  bind INTEGER DEFAULT 0,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_booth_sell_role ON booth_sell(role_id);
+-- Stall trade log (BoothTradeLog subset: seller-view logCode rows, newest
+-- first, capped at 50 per seller like insertBoothTradeLog).
+CREATE TABLE IF NOT EXISTS booth_trade_log (
+  id TEXT PRIMARY KEY,
+  role_id TEXT NOT NULL,
+  log_type INTEGER DEFAULT 0,
+  log_code TEXT,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_booth_trade_log_role ON booth_trade_log(role_id);
 -- Bag unlock state per role (legacy role_bag_state subset: capacities gate
 -- the 30000 lock VOs; *_slot_time feeds the unlock countdown).
 CREATE TABLE IF NOT EXISTS role_bag_state (
@@ -2434,3 +2474,564 @@ class Store:
                 'WHERE CAST(id AS TEXT)=? AND account=? AND server_id=?',
                 (str(role_id), account, server_id)).fetchone()
             return dict(row) if row else None
+
+    def get_booth(self, role_id):
+        """A role's stall row, or None (BoothDao.cacheLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT role_id, booth_name, booth_state, booth_jb, booth_yb,'
+                ' booth_buy_time, created FROM booth WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_booth(self, role_id, **fields):
+        """Upsert a role's stall row (known Booth columns only)."""
+        known = {'booth_name', 'booth_state', 'booth_jb', 'booth_yb',
+                 'booth_buy_time', 'created'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known booth columns')
+        names = ', '.join(['role_id', *fields])
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO booth({names}) VALUES(?,'
+                f'{placeholders}) ON CONFLICT(role_id) DO UPDATE'
+                f' SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def list_booth_sells(self, role_id):
+        """All stall listings of a role, slot order (BoothSellDao.cacheLoadAll)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, role_id, goods_id, count, slot, item_level,'
+                ' rare_level, attributes, expire_time, sell_jb, sell_yb, bind,'
+                ' created FROM booth_sell WHERE role_id=? ORDER BY slot',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_booth_sell(self, sell_id, role_id):
+        """One stall listing by id scoped to its owner, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, role_id, goods_id, count, slot, item_level,'
+                ' rare_level, attributes, expire_time, sell_jb, sell_yb, bind,'
+                ' created FROM booth_sell WHERE id=? AND role_id=?',
+                (str(sell_id), str(role_id))).fetchone()
+            return dict(row) if row else None
+
+    def get_booth_sell_by_slot(self, role_id, slot):
+        """A role's listing at a slot number, or None (BoothIndexFilter)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, role_id, goods_id, count, slot, item_level,'
+                ' rare_level, attributes, expire_time, sell_jb, sell_yb, bind,'
+                ' created FROM booth_sell WHERE role_id=? AND slot=?',
+                (str(role_id), slot)).fetchone()
+            return dict(row) if row else None
+
+    def save_booth_sell(self, sell):
+        """Insert or replace one stall listing row by id."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO booth_sell(id, role_id, goods_id, count, slot,'
+                ' item_level, rare_level, attributes, expire_time, sell_jb,'
+                ' sell_yb, bind, created)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                ' ON CONFLICT(id) DO UPDATE SET role_id=excluded.role_id,'
+                ' goods_id=excluded.goods_id, count=excluded.count,'
+                ' slot=excluded.slot, item_level=excluded.item_level,'
+                ' rare_level=excluded.rare_level,'
+                ' attributes=excluded.attributes,'
+                ' expire_time=excluded.expire_time,'
+                ' sell_jb=excluded.sell_jb, sell_yb=excluded.sell_yb,'
+                ' bind=excluded.bind',
+                (str(sell.get('id')), str(sell.get('role_id')),
+                 sell.get('goods_id'), sell.get('count') or 0,
+                 sell.get('slot') or 0, sell.get('item_level') or 0,
+                 sell.get('rare_level') or 0, sell.get('attributes'),
+                 sell.get('expire_time'), sell.get('sell_jb') or 0,
+                 sell.get('sell_yb') or 0, sell.get('bind') or 0,
+                 sell.get('created') or 0))
+            self.db.commit()
+            return True
+
+    def delete_booth_sell(self, sell_id, role_id):
+        """Delete one owner-scoped stall listing; True when a row vanished."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM booth_sell WHERE id=? AND role_id=?',
+                (str(sell_id), str(role_id)))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def list_public_booths(self):
+        """Stall rows holding at least one listing (in-memory BoothsData)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT b.role_id, b.booth_name, b.booth_state, b.booth_jb,'
+                ' b.booth_yb, b.booth_buy_time, b.created FROM booth b'
+                ' WHERE EXISTS (SELECT 1 FROM booth_sell s'
+                ' WHERE s.role_id=b.role_id)'
+                ' ORDER BY b.role_id').fetchall()
+            return [dict(row) for row in rows]
+
+    def list_booth_trade_logs(self, role_id):
+        """A seller's trade-log codes, newest first (TradeLogComparator)."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT log_code FROM booth_trade_log WHERE role_id=?'
+                ' ORDER BY created DESC, rowid DESC',
+                (str(role_id),)).fetchall()
+            return [row['log_code'] for row in rows]
+
+    def save_booth_trade_log(self, role_id, log_type, log_code):
+        """Append a seller trade log, trimming past 50 rows like Java."""
+        with self.lock:
+            now = int(time.time() * 1000)
+            lid = f'bt{uuid.uuid4().hex[:16]}'
+            self.db.execute(
+                'INSERT INTO booth_trade_log(id, role_id, log_type, log_code,'
+                ' created) VALUES(?,?,?,?,?)',
+                (lid, str(role_id), log_type, log_code, now))
+            self.db.execute(
+                'DELETE FROM booth_trade_log WHERE id IN ('
+                'SELECT id FROM booth_trade_log WHERE role_id=?'
+                ' ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET 50)',
+                (str(role_id),))
+            self.db.commit()
+            return True
+
+    def get_role_brief(self, role_id):
+        """Cross-account id/name/level/exp lookup for stall lookups."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, legacy_id, name, level, exp FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(role_id), str(role_id))).fetchone()
+            return dict(row) if row else None
+
+    @contextmanager
+    def booth_tx(self):
+        """One all-or-nothing stall mutation: BEGIN IMMEDIATE, commit/rollback."""
+        with self.lock:
+            try:
+                self.db.execute('BEGIN IMMEDIATE')
+            except sqlite3.Error:
+                pass
+            try:
+                yield self.db
+            except Exception:
+                try:
+                    self.db.rollback()
+                except sqlite3.Error:
+                    pass
+                raise
+            try:
+                self.db.commit()
+            except sqlite3.Error:
+                try:
+                    self.db.rollback()
+                except sqlite3.Error:
+                    pass
+                raise
+
+    @staticmethod
+    def _tx_bag_alloc(db, role_id, item, capacity):
+        """Stack-or-first-free-slot plan inside a stall transaction.
+
+        Returns ('stack', slot_num, new_count) or ('new', slot_num, count)
+        or None when nothing fits. Reads only; the caller applies it."""
+        rows = db.execute(
+            'SELECT slot_num, goods_id, count, bind FROM role_bag_slot'
+            ' WHERE role_id=? AND slot_num>=1 AND slot_num<=150',
+            (str(role_id),)).fetchall()
+        try:
+            stack = int(item.get('stack') or 1)
+        except (TypeError, ValueError):
+            stack = 1
+        if stack < 1:
+            stack = 1
+        try:
+            left = int(item.get('count') or 0)
+        except (TypeError, ValueError):
+            return None
+        if left <= 0:
+            return None
+        by_slot = {r['slot_num']: dict(r) for r in rows}
+        for slot_num in sorted(by_slot):
+            if left <= 0:
+                break
+            row = by_slot[slot_num]
+            if str(row.get('goods_id')) != str(item.get('goods_id')):
+                continue
+            if (row.get('bind') or 0) != (item.get('bind') or 0):
+                continue
+            try:
+                room = stack - int(row.get('count') or 0)
+            except (TypeError, ValueError):
+                room = 0
+            if room > 0:
+                return ('stack', slot_num, int(row.get('count') or 0) + left
+                        if left <= room else int(row.get('count') or 0) + room)
+        try:
+            cap = int(capacity or 0)
+        except (TypeError, ValueError):
+            cap = 0
+        for num in range(1, cap + 1):
+            if num not in by_slot:
+                return ('new', num, left)
+        return None
+
+    @staticmethod
+    def _tx_bag_capacity(db, role_id):
+        row = db.execute(
+            'SELECT bag_capacity FROM role_bag_state WHERE role_id=?',
+            (str(role_id),)).fetchone()
+        try:
+            return int((row or {}).get('bag_capacity') if row is None
+                       else row['bag_capacity'] or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def booth_list_goods_tx(self, sell, bag_slot_num, bag_have, bag_take):
+        """List bag goods atomically: shrink the stack, insert the listing.
+
+        Returns 'ok' or 'changed' (bag moved under us; caller reports the
+        Java stale-bag error)."""
+        with self.booth_tx() as db:
+            row = db.execute(
+                'SELECT count FROM role_bag_slot WHERE role_id=? AND slot_num=?',
+                (str(sell['role_id']), bag_slot_num)).fetchone()
+            if row is None or int(row['count'] or 0) != bag_have:
+                return 'changed'
+            if bag_take >= bag_have:
+                db.execute(
+                    'DELETE FROM role_bag_slot WHERE role_id=? AND slot_num=?',
+                    (str(sell['role_id']), bag_slot_num))
+            else:
+                db.execute(
+                    'UPDATE role_bag_slot SET count=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (bag_have - bag_take, str(sell['role_id']), bag_slot_num))
+            db.execute(
+                'INSERT INTO booth_sell(id, role_id, goods_id, count, slot,'
+                ' item_level, rare_level, attributes, expire_time, sell_jb,'
+                ' sell_yb, bind, created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (str(sell['id']), str(sell['role_id']), sell.get('goods_id'),
+                 sell.get('count') or 0, sell.get('slot') or 0,
+                 sell.get('item_level') or 0, sell.get('rare_level') or 0,
+                 sell.get('attributes'), sell.get('expire_time'),
+                 sell.get('sell_jb') or 0, sell.get('sell_yb') or 0,
+                 sell.get('bind') or 0, sell.get('created') or 0))
+            return 'ok'
+
+    def booth_delist_goods_tx(self, sell_id, role_id, item, stack):
+        """Delist atomically: drop the listing, restore goods to the bag.
+
+        Returns 'ok', 'gone' (listing vanished), or 'full' (bag has no
+        room; nothing is mutated)."""
+        with self.booth_tx() as db:
+            row = db.execute(
+                'SELECT goods_id, count, bind FROM booth_sell'
+                ' WHERE id=? AND role_id=?',
+                (str(sell_id), str(role_id))).fetchone()
+            if row is None:
+                return 'gone'
+            cap = self._tx_bag_capacity(db, role_id)
+            plan = self._tx_bag_alloc(db, role_id, dict(item, stack=stack),
+                                      cap)
+            if plan is None:
+                return 'full'
+            db.execute('DELETE FROM booth_sell WHERE id=? AND role_id=?',
+                       (str(sell_id), str(role_id)))
+            kind, slot_num, count = plan
+            if kind == 'stack':
+                db.execute(
+                    'UPDATE role_bag_slot SET count=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (count, str(role_id), slot_num))
+            else:
+                db.execute(
+                    'INSERT INTO role_bag_slot(role_id, slot_num, bag_id,'
+                    ' goods_id, count, bind, expire_time, rare_level,'
+                    ' item_level, attributes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (str(role_id), slot_num, f'py{uuid.uuid4().hex[:16]}',
+                     item.get('goods_id'), count, item.get('bind') or 0,
+                     item.get('expire_time'), item.get('rare_level') or 0,
+                     item.get('item_level') or 0, item.get('attributes')))
+            return 'ok'
+
+    def booth_buy_goods_tx(self, buyer_id, pay_yxb, pay_yb, item, stack,
+                           seller_id, sell_id, exp_yb, exp_jb, fee,
+                           buyer_booth, seller_add_jb, seller_add_yb,
+                           log_code):
+        """Settle a goods purchase atomically (Java buyBoothGoods order).
+
+        Verifies the listing (id, owner, prices) and the buyer's funds
+        inside the transaction, so a competing buyer either wins cleanly
+        or sees 'gone'/'changed'. Returns 'ok', 'gone', 'changed',
+        'funds' or 'full'; only 'ok' mutates anything."""
+        with self.booth_tx() as db:
+            sell = db.execute(
+                'SELECT sell_jb, sell_yb FROM booth_sell'
+                ' WHERE id=? AND role_id=?',
+                (str(sell_id), str(seller_id))).fetchone()
+            if sell is None:
+                return 'gone'
+            try:
+                listed_jb = int(sell['sell_jb'] or 0)
+                listed_yb = int(sell['sell_yb'] or 0)
+            except (TypeError, ValueError):
+                return 'changed'
+            if listed_jb != exp_jb or listed_yb != exp_yb:
+                return 'changed'
+            wallet = db.execute(
+                'SELECT tongqian, lingshi FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(buyer_id), str(buyer_id))).fetchone()
+            if wallet is None:
+                return 'funds'
+            try:
+                have_yxb = int(wallet['tongqian'] or 0)
+                have_yb = int(wallet['lingshi'] or 0)
+            except (TypeError, ValueError):
+                return 'funds'
+            if have_yxb < pay_yxb or have_yb < pay_yb:
+                return 'funds'
+            cap = self._tx_bag_capacity(db, buyer_id)
+            plan = self._tx_bag_alloc(db, buyer_id, dict(item, stack=stack),
+                                      cap)
+            if plan is None:
+                return 'full'
+            db.execute('DELETE FROM booth_sell WHERE id=? AND role_id=?',
+                       (str(sell_id), str(seller_id)))
+            db.execute(
+                'UPDATE characters SET tongqian=?, lingshi=?'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (have_yxb - pay_yxb, have_yb - pay_yb,
+                 str(buyer_id), str(buyer_id)))
+            kind, slot_num, count = plan
+            if kind == 'stack':
+                db.execute(
+                    'UPDATE role_bag_slot SET count=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (count, str(buyer_id), slot_num))
+            else:
+                db.execute(
+                    'INSERT INTO role_bag_slot(role_id, slot_num, bag_id,'
+                    ' goods_id, count, bind, expire_time, rare_level,'
+                    ' item_level, attributes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (str(buyer_id), slot_num, f'py{uuid.uuid4().hex[:16]}',
+                     item.get('goods_id'), count, item.get('bind') or 0,
+                     item.get('expire_time'), item.get('rare_level') or 0,
+                     item.get('item_level') or 0, item.get('attributes')))
+            if buyer_booth.get('exists'):
+                db.execute(
+                    'UPDATE booth SET booth_jb=?, booth_yb=? WHERE role_id=?',
+                    (buyer_booth.get('jb') or 0, buyer_booth.get('yb') or 0,
+                     str(buyer_id)))
+            else:
+                db.execute(
+                    'INSERT INTO booth(role_id, booth_name, booth_state,'
+                    ' booth_jb, booth_yb, booth_buy_time, created)'
+                    ' VALUES(?,?,1,?,?,?,?)',
+                    (str(buyer_id), None, buyer_booth.get('jb') or 0,
+                     buyer_booth.get('yb') or 0,
+                     buyer_booth.get('buy_time'),
+                     buyer_booth.get('created') or 0))
+            db.execute(
+                'UPDATE booth SET booth_jb=booth_jb+?, booth_yb=booth_yb+?'
+                ' WHERE role_id=?',
+                (seller_add_jb, seller_add_yb, str(seller_id)))
+            self._tx_trade_log(db, seller_id, 3, log_code)
+            return 'ok'
+
+    def booth_money_position_tx(self, role_id, money_col, expect_id,
+                                take, give, sell):
+        """Open/resize/close a money-market listing atomically.
+
+        take/give move character funds; sell None deletes the expect_id
+        row, a sell dict inserts/updates it. Returns 'ok', 'funds' or
+        'gone'."""
+        with self.booth_tx() as db:
+            wallet = db.execute(
+                f'SELECT {money_col} FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(role_id), str(role_id))).fetchone()
+            if wallet is None:
+                return 'funds'
+            try:
+                have = int(wallet[money_col] or 0)
+            except (TypeError, ValueError):
+                return 'funds'
+            if have < take:
+                return 'funds'
+            if expect_id is not None:
+                row = db.execute(
+                    'SELECT id FROM booth_sell WHERE id=? AND role_id=?',
+                    (str(expect_id), str(role_id))).fetchone()
+                if row is None:
+                    return 'gone'
+            if take:
+                db.execute(
+                    f'UPDATE characters SET {money_col}={money_col}-?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (take, str(role_id), str(role_id)))
+            if give:
+                db.execute(
+                    f'UPDATE characters SET {money_col}={money_col}+?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (give, str(role_id), str(role_id)))
+            if sell is None:
+                db.execute('DELETE FROM booth_sell WHERE id=? AND role_id=?',
+                           (str(expect_id), str(role_id)))
+            elif expect_id is None:
+                clash = db.execute(
+                    'SELECT id FROM booth_sell WHERE role_id=? AND slot=?',
+                    (str(role_id), sell.get('slot') or 0)).fetchone()
+                if clash is not None:
+                    return 'changed'
+                db.execute(
+                    'INSERT INTO booth_sell(id, role_id, goods_id, count,'
+                    ' slot, item_level, rare_level, attributes, expire_time,'
+                    ' sell_jb, sell_yb, bind, created)'
+                    ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (str(sell['id']), str(role_id), sell.get('goods_id'),
+                     1, sell.get('slot') or 0, 0, 0, None, 0,
+                     sell.get('sell_jb') or 0, sell.get('sell_yb') or 0,
+                     0, sell.get('created') or 0))
+            else:
+                db.execute(
+                    'UPDATE booth_sell SET sell_jb=?, sell_yb=?'
+                    ' WHERE id=? AND role_id=?',
+                    (sell.get('sell_jb') or 0, sell.get('sell_yb') or 0,
+                     str(expect_id), str(role_id)))
+            return 'ok'
+
+    def booth_money_buy_tx(self, buyer_id, pay_col, pay_amount, get_jb,
+                           get_yb, seller_id, slot, exp_first, exp_second,
+                           yb_type, fee, log_code):
+        """Settle a money-market purchase atomically.
+
+        Returns 'ok', 'gone' (no listing), 'changed' (prices moved),
+        or 'funds'. Only 'ok' mutates anything."""
+        with self.booth_tx() as db:
+            sell = db.execute(
+                'SELECT id, sell_jb, sell_yb FROM booth_sell'
+                ' WHERE role_id=? AND slot=?',
+                (str(seller_id), slot)).fetchone()
+            if sell is None:
+                return 'gone'
+            try:
+                if yb_type:
+                    listed_first = int(sell['sell_yb'] or 0)
+                    listed_second = int(sell['sell_jb'] or 0)
+                else:
+                    listed_first = int(sell['sell_jb'] or 0)
+                    listed_second = int(sell['sell_yb'] or 0)
+            except (TypeError, ValueError):
+                return 'changed'
+            if listed_first != exp_first or listed_second != exp_second:
+                return 'changed'
+            wallet = db.execute(
+                f'SELECT {pay_col} FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(buyer_id), str(buyer_id))).fetchone()
+            if wallet is None:
+                return 'funds'
+            try:
+                have = int(wallet[pay_col] or 0)
+            except (TypeError, ValueError):
+                return 'funds'
+            if have < pay_amount:
+                return 'funds'
+            db.execute(
+                f'UPDATE characters SET {pay_col}={pay_col}-?'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (pay_amount, str(buyer_id), str(buyer_id)))
+            db.execute('DELETE FROM booth_sell WHERE id=?', (sell['id'],))
+            buyer = db.execute(
+                'SELECT booth_jb, booth_yb FROM booth WHERE role_id=?',
+                (str(buyer_id),)).fetchone()
+            if buyer is None:
+                db.execute(
+                    'INSERT INTO booth(role_id, booth_name, booth_state,'
+                    ' booth_jb, booth_yb, booth_buy_time, created)'
+                    ' VALUES(?,?,1,?,?,?,?)',
+                    (str(buyer_id), None, get_jb, get_yb,
+                     int(time.time() * 1000),
+                     int(time.time() * 1000)))
+                new_buyer = (get_jb, get_yb)
+            else:
+                try:
+                    bj = int(buyer['booth_jb'] or 0) + get_jb
+                    by = int(buyer['booth_yb'] or 0) + get_yb
+                except (TypeError, ValueError):
+                    bj, by = get_jb, get_yb
+                db.execute(
+                    'UPDATE booth SET booth_jb=?, booth_yb=? WHERE role_id=?',
+                    (bj, by, str(buyer_id)))
+                new_buyer = (bj, by)
+            if yb_type:
+                db.execute(
+                    'UPDATE booth SET booth_jb=booth_jb+? WHERE role_id=?',
+                    (pay_amount, str(seller_id)))
+            else:
+                db.execute(
+                    'UPDATE booth SET booth_yb=booth_yb+? WHERE role_id=?',
+                    (pay_amount - fee, str(seller_id)))
+            seller = db.execute(
+                'SELECT booth_jb, booth_yb FROM booth WHERE role_id=?',
+                (str(seller_id),)).fetchone()
+            new_seller = (int(seller['booth_jb'] or 0),
+                          int(seller['booth_yb'] or 0)) \
+                if seller is not None else (0, 0)
+            self._tx_trade_log(db, seller_id, 2, log_code)
+            return ('ok', new_buyer, new_seller)
+
+    def booth_claim_tx(self, role_id, col_jb, col_yb):
+        """Collect stall balances atomically; returns (jb, yb)."""
+        with self.booth_tx() as db:
+            row = db.execute(
+                'SELECT booth_jb, booth_yb FROM booth WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            if row is None:
+                return (0, 0, False)
+            try:
+                take_jb = int(row['booth_jb'] or 0)
+                take_yb = int(row['booth_yb'] or 0)
+            except (TypeError, ValueError):
+                take_jb, take_yb = 0, 0
+            if take_jb == 0 and take_yb == 0:
+                return (0, 0, True)
+            if take_jb:
+                db.execute(
+                    f'UPDATE characters SET {col_jb}={col_jb}+?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (take_jb, str(role_id), str(role_id)))
+            if take_yb:
+                db.execute(
+                    f'UPDATE characters SET {col_yb}={col_yb}+?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (take_yb, str(role_id), str(role_id)))
+            db.execute(
+                'UPDATE booth SET booth_jb=0, booth_yb=0 WHERE role_id=?',
+                (str(role_id),))
+            return (take_jb, take_yb, True)
+
+    @staticmethod
+    def _tx_trade_log(db, role_id, log_type, log_code):
+        now = int(time.time() * 1000)
+        lid = f'bt{uuid.uuid4().hex[:16]}'
+        db.execute(
+            'INSERT INTO booth_trade_log(id, role_id, log_type, log_code,'
+            ' created) VALUES(?,?,?,?,?)',
+            (lid, str(role_id), log_type, log_code, now))
+        db.execute(
+            'DELETE FROM booth_trade_log WHERE id IN ('
+            'SELECT id FROM booth_trade_log WHERE role_id=?'
+            ' ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET 50)',
+            (str(role_id),))

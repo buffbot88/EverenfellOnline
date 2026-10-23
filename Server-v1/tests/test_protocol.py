@@ -1946,7 +1946,7 @@ class TestLoadingStubs(unittest.TestCase):
         return amf3.decode(out[4:])
 
     def test_simple_shapes(self):
-        self.assertEqual(self.decode(35115), ['35115', [[0.0, 0.0]]])
+        # 35115 left the stub table: booth_money serves the live balances.
         self.assertEqual(self.decode(53006), ['53006', [None]])
         self.assertEqual(self.decode(51000), ['51000', [[0, None, [], [], [], []]]])
         self.assertEqual(self.decode(82024), ['82024', [None]])

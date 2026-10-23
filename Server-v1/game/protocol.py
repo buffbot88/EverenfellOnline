@@ -531,6 +531,60 @@ SKILLBOOK_BAG_HI = 150
 SKILLBOOK_ZUOQI = (10001, 10006)
 SKILLBOOK_QIZHAN = (10031, 10036)
 SKILLBOOK_GUANGYI = (10051, 10056)
+# Player stalls (BoothAction/BoothServiceImpl bytecode): 19 inbound commands.
+# Wire order for goods prices is always [sellYb, sellJb]; money-market rows
+# live at slots 11 (YB offered) and 12 (YXB offered), goods at 0..10.
+CMD_BOOTH_TRADE_LOG = 35013
+CMD_BOOTH_ONLINE = 35100
+CMD_BOOTH_IN = 35101
+CMD_BOOTH_OUT = 35102
+CMD_BOOTH_CHANGE_PRICE = 35103
+CMD_BOOTH_CHANGE_INDEX = 35104
+CMD_BOOTH_SEACH = 35105
+CMD_BOOTH_INFO = 35106
+CMD_BOOTH_BUY = 35107
+CMD_BOOTH_SELL_NOTIFY = 35108
+CMD_BOOTH_LOG = 35109
+CMD_BOOTH_NAME = 35110
+CMD_BOOTH_YB_SELL = 35111
+CMD_BOOTH_JB_SELL = 35112
+CMD_BOOTH_BUY_YB = 35113
+CMD_BOOTH_BUY_JB = 35114
+CMD_BOOTH_MONEY = 35115
+CMD_BOOTH_MONEY_CLAIM = 35116
+CMD_BOOTH_DETAILS = 35120
+# BoothErrorCodeOutput ints (jar clinit) and GeneralErrorCode cells.
+BOOTH_ERR_GOODS_EXPIRE = 1007
+BOOTH_ERR_YB_NOT_ENOUGH = 1002
+BOOTH_ERR_JB_NOT_ENOUGH = 1003
+BOOTH_ERR_BAG_SLOT = 1006
+BOOTH_ERR_NAME_NO_ALLOW = 424044
+BOOTH_ERR_NO_BIND_GOODS = 424046
+BOOTH_ERR_GOODS_COUNT_MAX = 424068
+BOOTH_ERR_ROLE_BOOTH_COUNT_MAX = 424047
+BOOTH_ERR_NO_INPUT_MONEY = 424048
+BOOTH_ERR_GOODS_NO_IN_BOOTH = 424049
+BOOTH_ERR_SELL_ROLE_OFFLINE = 424050
+BOOTH_ERR_SELL_YB_MAX = 424052
+BOOTH_ERR_SELL_INDEX_SAME = 424053
+BOOTH_ERR_NO_BUY_SELF_GOODS = 424054
+BOOTH_ERR_CHANGE_REFRESH = 424067
+BOOTH_ERR_YB_SELL_NO_EXIST = 424062
+BOOTH_ERR_JB_SELL_NO_EXIST = 424061
+BOOTH_ERR_JINGYANYU_NO_SELL = 424070
+# Money-market slot numbers (BoothSellMoneyFilter / slot-11-12 call sites).
+BOOTH_SLOT_YB = 11
+BOOTH_SLOT_JB = 12
+# Goods listings visible to shoppers sit below slot 8 (BoothSellGoodsFilter).
+BOOTH_GOODS_VISIBLE_MAX = 8
+# Listing cap per seller (checkPutBooth: 8 goods rows max).
+BOOTH_GOODS_MAX = 8
+# YB price floor on new listings (checkPutBooth: sellYb < 2 rejects).
+BOOTH_MIN_SELL_YB = 2
+# InBooth action price ceiling per currency (900000000).
+BOOTH_MAX_PRICE = 900000000
+# Trade-exp throttle (isUpdateAddBoothExp): one award per 120000 ms per booth.
+BOOTH_TRADE_EXP_MS = 120000
 CMD_ATTR_CHANGE = 85010
 CMD_LIHE_PREVIEW = 30304
 BAG_ERR_BIND_NO_DISCARD = 430218
@@ -789,6 +843,15 @@ class Session:
                  update_role_bag_slot=None, delete_role_bag_slot=None,
                  move_role_bag_slot=None, insert_role_bag_slot=None,
                  rewrite_role_bag_slots=None, save_role_bag_state=None,
+                 get_booth=None, save_booth=None,
+                 get_booth_sell=None, get_booth_sell_by_slot=None,
+                 list_booth_sells=None, save_booth_sell=None,
+                 delete_booth_sell=None, list_public_booths=None,
+                 list_booth_trade_logs=None, save_booth_trade_log=None,
+                 get_role_brief=None, booth_list_goods_tx=None,
+                 booth_delist_goods_tx=None, booth_buy_goods_tx=None,
+                 booth_money_position_tx=None, booth_money_buy_tx=None,
+                 booth_claim_tx=None,
                  get_task_main=None, save_task_main=None,
                  get_task_taofa=None, get_task_taofas=None,
                  insert_task_taofa=None, update_task_taofa=None,
@@ -944,6 +1007,31 @@ class Session:
         self.insert_role_bag_slot = insert_role_bag_slot or (lambda *a: None)
         self.rewrite_role_bag_slots = rewrite_role_bag_slots or (lambda *a: False)
         self.save_role_bag_state = save_role_bag_state or (lambda *a, **k: False)
+        self.get_booth = get_booth or (lambda r: None)
+        self.save_booth = save_booth or (lambda *a, **k: False)
+        self.get_booth_sell = get_booth_sell or (lambda s, r: None)
+        self.get_booth_sell_by_slot = (get_booth_sell_by_slot
+                                       or (lambda r, s: None))
+        self.list_booth_sells = list_booth_sells or (lambda r: [])
+        self.save_booth_sell = save_booth_sell or (lambda sell: False)
+        self.delete_booth_sell = delete_booth_sell or (lambda s, r: False)
+        self.list_public_booths = list_public_booths or (lambda: [])
+        self.list_booth_trade_logs = (list_booth_trade_logs
+                                       or (lambda r: []))
+        self.save_booth_trade_log = (save_booth_trade_log
+                                      or (lambda *a: False))
+        self.get_role_brief = get_role_brief or (lambda r: None)
+        self.booth_list_goods_tx = (booth_list_goods_tx
+                                     or (lambda *a: 'gone'))
+        self.booth_delist_goods_tx = (booth_delist_goods_tx
+                                       or (lambda *a: 'gone'))
+        self.booth_buy_goods_tx = (booth_buy_goods_tx
+                                    or (lambda *a: 'gone'))
+        self.booth_money_position_tx = (booth_money_position_tx
+                                         or (lambda *a: 'gone'))
+        self.booth_money_buy_tx = (booth_money_buy_tx
+                                    or (lambda *a: 'gone'))
+        self.booth_claim_tx = booth_claim_tx or (lambda *a: (0, 0, False))
         self.get_task_main = get_task_main or (lambda r: None)
         self.save_task_main = save_task_main or (lambda *a, **k: False)
         self.get_task_taofa = get_task_taofa or (lambda r, u: None)
@@ -1553,7 +1641,43 @@ class Session:
             return self.xianshibuy_buy(msg)
         if cmd_num == CMD_XIANSHIBUY_CLEARCD:
             return self.xianshibuy_clearcd(msg)
-        if cmd_num in (35115, 53006, 51000,
+        if cmd_num == CMD_BOOTH_ONLINE:
+            return self.booth_online_list()
+        if cmd_num == CMD_BOOTH_DETAILS:
+            return self.booth_detail_infos(msg)
+        if cmd_num == CMD_BOOTH_IN:
+            return self.booth_in(msg)
+        if cmd_num == CMD_BOOTH_OUT:
+            return self.booth_out(msg)
+        if cmd_num == CMD_BOOTH_CHANGE_PRICE:
+            return self.booth_change_price(msg)
+        if cmd_num == CMD_BOOTH_CHANGE_INDEX:
+            return self.booth_change_index(msg)
+        if cmd_num == CMD_BOOTH_SEACH:
+            return self.booth_seach(msg)
+        if cmd_num == CMD_BOOTH_INFO:
+            return self.booth_info(msg)
+        if cmd_num == CMD_BOOTH_BUY:
+            return self.booth_buy(msg)
+        if cmd_num == CMD_BOOTH_LOG:
+            return self.booth_log()
+        if cmd_num == CMD_BOOTH_TRADE_LOG:
+            return self.booth_trade_log()
+        if cmd_num == CMD_BOOTH_NAME:
+            return self.booth_modify_name(msg)
+        if cmd_num == CMD_BOOTH_YB_SELL:
+            return self.booth_yb_sell(msg)
+        if cmd_num == CMD_BOOTH_JB_SELL:
+            return self.booth_jb_sell(msg)
+        if cmd_num == CMD_BOOTH_BUY_YB:
+            return self.booth_buy_yb(msg)
+        if cmd_num == CMD_BOOTH_BUY_JB:
+            return self.booth_buy_jb(msg)
+        if cmd_num == CMD_BOOTH_MONEY:
+            return self.booth_money()
+        if cmd_num == CMD_BOOTH_MONEY_CLAIM:
+            return self.booth_money_claim()
+        if cmd_num in (53006, 51000,
                         82024, 74000,
                         86000, 85000, 87000, 70500, 91002, 90000,
                         92015, 93000, 94000, 94002, 94100, 95000, 97001,
@@ -1564,6 +1688,1170 @@ class Session:
         log.warning('conn %d: unknown command %r payload=%r (ignored)',
                       self.conn_id, cmd, msg)
         return None
+
+    # -- player stalls (BoothAction/BoothServiceImpl bytecode) --
+    def _booth_self(self):
+        """Requester role and its canonical id, or (None, None)."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None, None
+        return role, str(role.get('id'))
+
+    def _booth_canonical(self, ref):
+        """Canonical numeric id for a wire role reference, or None."""
+        try:
+            brief = self.get_role_brief(ref)
+        except Exception:
+            brief = None
+        if brief is None:
+            return None
+        return str(brief.get('id'))
+
+    def _booth_session_of(self, ref):
+        """Live session for a role reference; sessions register by wire id."""
+        if self.stage_registry is None:
+            return None
+        for key in (str(ref),):
+            try:
+                sess = self.stage_registry.session_of(key)
+            except Exception:
+                sess = None
+            if sess is not None:
+                return sess
+        cid = self._booth_canonical(ref)
+        if cid is None:
+            return None
+        try:
+            sess = self.stage_registry.session_of(cid)
+        except Exception:
+            sess = None
+        if sess is not None:
+            return sess
+        try:
+            brief = self.get_role_brief(ref)
+        except Exception:
+            brief = None
+        legacy = (brief or {}).get('legacy_id')
+        if not legacy:
+            return None
+        try:
+            return self.stage_registry.session_of(str(legacy))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _booth_long(value):
+        """object2Long: ints, integral floats and numeric strings, else None."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value) if value.is_integer() else None
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                try:
+                    as_float = float(value)
+                except ValueError:
+                    return None
+                return int(as_float) if as_float.is_integer() else None
+        return None
+
+    @staticmethod
+    def _booth_ref(value):
+        """Role reference on the wire: strings verbatim, numbers by value."""
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, float):
+            if not value.is_integer():
+                return None
+            value = int(value)
+        text = str(value)
+        return text if text != '' else None
+
+    @staticmethod
+    def _booth_money(value):
+        """Money cells ride the wire as doubles (32010 convention)."""
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _booth_err(self, cmd, code):
+        """BoothErrorCodeOutput shape: [0, code] under the command id."""
+        return frame(amf3_encode([str(cmd), [0, code]]))
+
+    def _booth_ensure(self, cid):
+        """A role's stall row, creating the Java defaults (state 1, zeroed)."""
+        try:
+            booth = self.get_booth(cid)
+        except Exception:
+            booth = None
+        if booth is not None:
+            return booth
+        created = int(time.time() * 1000)
+        try:
+            self.save_booth(cid, booth_state=1, booth_jb=0, booth_yb=0,
+                            created=created)
+        except Exception:
+            pass
+        return {'role_id': cid, 'booth_name': None, 'booth_state': 1,
+                'booth_jb': 0, 'booth_yb': 0, 'booth_buy_time': None,
+                'created': created}
+
+    def _booth_balance(self, role, money):
+        """Character money balance (YXB -> tongqian, YB -> lingshi)."""
+        try:
+            return int(role.get(BAG_MONEY_COLUMNS[money]) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _booth_check(self, role, money, amount):
+        """decrCheck: funds sufficient, without mutating."""
+        return self._booth_balance(role, money) >= amount
+
+    def _booth_fee(self, amount):
+        """getYbShui: 0 without a rate, 1 under 10, else round(amount*rate)."""
+        try:
+            rate = float(self.config.trade_fee_rate()) \
+                if self.config is not None else 0.0
+        except (TypeError, ValueError):
+            rate = 0.0
+        if rate == 0:
+            return 0
+        if amount <= 10:
+            return 1
+        return int(math.floor(amount * rate + 0.5))
+
+    @staticmethod
+    def _booth_expired(slot):
+        """Expired bag rows never list (canShangJia toggle has no source)."""
+        try:
+            exp = slot.get('expire_time')
+        except AttributeError:
+            return False
+        if not exp:
+            return False
+        try:
+            return int(exp) < int(time.time() * 1000)
+        except (TypeError, ValueError):
+            return False
+
+    def _booth_bag_fits(self, rid, goods_id, count, bind):
+        """checkPutInBag1: reward stacks plus empty bag slots cover it."""
+        try:
+            left = int(count or 0)
+        except (TypeError, ValueError):
+            return False
+        if left <= 0:
+            return True
+        try:
+            slots = self.get_role_bag_slots(rid, 1, 150) or []
+        except Exception:
+            slots = []
+        try:
+            stack = int(self.config.goods_max_stack(goods_id) or 1) \
+                if self.config is not None else 1
+        except (TypeError, ValueError):
+            stack = 1
+        for slot in slots:
+            if self._bag_same_kind(slot, {'goods_id': goods_id,
+                                          'bind': bind}):
+                try:
+                    room = stack - int(slot.get('count') or 0)
+                except (TypeError, ValueError):
+                    room = 0
+                left -= max(room, 0)
+        if left <= 0:
+            return True
+        try:
+            state = self._bag_state_or_init(rid) or {}
+            capacity = int(state.get('bag_capacity') or 0)
+        except (TypeError, ValueError):
+            return False
+        used = {s.get('slot_num') for s in slots}
+        free = sum(1 for n in range(1, capacity + 1) if n not in used)
+        return left <= free * stack
+
+    @staticmethod
+    def _booth_log_date():
+        """Calendar month/day/12-hour/min/sec cells of the trade log codes."""
+        now = time.localtime()
+        return now.tm_mon, now.tm_mday, now.tm_hour % 12, now.tm_min, now.tm_sec
+
+    def _booth_goods_name(self, goods_id):
+        """GoodsConfig name for the trade log, else the bare goods id."""
+        try:
+            table = self.config._goods_table() \
+                if self.config is not None else None
+        except Exception:
+            table = None
+        try:
+            return (table or {}).get(str(goods_id), {}).get('name') \
+                or str(goods_id)
+        except Exception:
+            return str(goods_id)
+
+    def _booth_trade_exp_one(self, cid, role):
+        """One party's tradeSuccessAddExp: 120s-gated dealaddexp grant."""
+        try:
+            booth = self.get_booth(cid)
+        except Exception:
+            booth = None
+        if booth is None:
+            return []
+        now = int(time.time() * 1000)
+        try:
+            last = booth.get('booth_buy_time')
+            last = int(last) if last else 0
+        except (TypeError, ValueError):
+            last = 0
+        grant = False
+        if not last:
+            grant = True
+        else:
+            gap = now - last
+            if gap >= 0 and gap >= BOOTH_TRADE_EXP_MS:
+                grant = True
+        try:
+            self.save_booth(cid, booth_buy_time=now)
+        except Exception:
+            pass
+        if not grant:
+            return []
+        if role is None:
+            try:
+                brief = self.get_role_brief(cid)
+            except Exception:
+                brief = None
+            if brief is None:
+                return []
+            role = {'id': brief.get('id'), 'level': brief.get('level'),
+                    'exp': brief.get('exp')}
+        try:
+            level = int(role.get('level') or 0)
+            row = self.config.role_attribute_row(level) \
+                if self.config is not None else None
+            amount = int((row or {}).get('dealaddexp') or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return []
+        try:
+            _total, _level, _gained, frames = self._role_gain_exp(
+                role, cid, amount)
+        except Exception:
+            return []
+        return list(frames or [])
+
+    def _booth_deliver_seller(self, seller_cid, buyer_cid, frames):
+        """PublicMsgQueue flush: live sellers get frames, self-trades merge."""
+        if not frames:
+            return []
+        if seller_cid == buyer_cid:
+            return list(frames)
+        sess = self._booth_session_of(seller_cid)
+        if sess is None:
+            return []
+        if sess is self:
+            return list(frames)
+        try:
+            sess.push_frames(frames)
+        except Exception:
+            pass
+        return []
+
+    def _booth_formart(self, booth):
+        """Booth.fomart: {'0': seller, '1': name, '2': seller}."""
+        sid = str(booth.get('role_id'))
+        return {'0': sid, '1': booth.get('booth_name'), '2': sid}
+
+    def _booth_item_vo(self, role, sell):
+        """BoothVoOutput.getBoothItemVo: [id, goods map, sellYb, sellJb, slot]."""
+        slot = {'goods_id': sell.get('goods_id'),
+                'bag_id': sell.get('id'),
+                'slot_num': sell.get('slot') or 0,
+                'count': sell.get('count') or 0,
+                'bind': sell.get('bind') or 0,
+                'expire_time': sell.get('expire_time'),
+                'item_level': sell.get('item_level') or 0,
+                'rare_level': sell.get('rare_level') or 0,
+                'attributes': sell.get('attributes')}
+        return [sell.get('id'), self.bag_goods_map(role, slot),
+                self._booth_money(sell.get('sell_yb')),
+                self._booth_money(sell.get('sell_jb')),
+                sell.get('slot') or 0]
+
+    def _booth_public_sellers(self):
+        """Stall rows holding listings whose seller is publicly online."""
+        try:
+            booths = self.list_public_booths() or []
+        except Exception:
+            booths = []
+        out = []
+        for booth in booths:
+            sid = str(booth.get('role_id'))
+            if self._booth_session_of(sid) is None:
+                continue
+            out.append((sid, booth))
+        return out
+
+    def booth_online_list(self):
+        """Command 35100: [ownRoleId, fomart list or null] of open stalls."""
+        _role, cid = self._booth_self()
+        if cid is None:
+            return None
+        stalls = [self._booth_formart(booth)
+                  for _sid, booth in self._booth_public_sellers()]
+        return frame(amf3_encode(['35100', [cid, stalls or None]]))
+
+    def _booth_detail_map(self, seller_cid):
+        """getBoothDetailInfo map ('0'..'7'; '7' is the online flag)."""
+        try:
+            booth = self.get_booth(seller_cid)
+        except Exception:
+            booth = None
+        if booth is None:
+            return None
+        info = {'0': seller_cid, '1': booth.get('booth_name'),
+                '2': seller_cid, '7': 0}
+        if self._booth_session_of(seller_cid) is None:
+            return info
+        try:
+            brief = self.get_role_brief(seller_cid)
+        except Exception:
+            brief = None
+        if brief is None:
+            return info
+        try:
+            sells = self.list_booth_sells(seller_cid) or []
+        except Exception:
+            sells = []
+        goods = 0
+        flag = 0
+        for sell in sells:
+            try:
+                slot = int(sell.get('slot') or 0)
+            except (TypeError, ValueError):
+                continue
+            if slot < BOOTH_GOODS_VISIBLE_MAX:
+                goods += 1
+            elif slot == BOOTH_SLOT_YB:
+                flag = 3 if flag == 2 else 1
+            elif slot == BOOTH_SLOT_JB:
+                flag = 3 if flag == 1 else 2
+        info.update({'3': brief.get('name'), '4': brief.get('level'),
+                     '5': goods, '6': flag, '7': 1})
+        return info
+
+    def booth_detail_infos(self, msg):
+        """Command 35120: per-seller detail maps (null holes stay null)."""
+        _role, _cid = self._booth_self()
+        if _cid is None:
+            return None
+        args = self.safe(msg, 1)
+        if not args:
+            return frame(amf3_encode(['35120', None]))
+        out = []
+        for ref in args:
+            sid = self._booth_ref(ref)
+            if sid is None:
+                out.append(None)
+                continue
+            cid = self._booth_canonical(sid)
+            if cid is None:
+                out.append(None)
+                continue
+            out.append(self._booth_detail_map(cid))
+        return frame(amf3_encode(['35120', out]))
+
+    def booth_in(self, msg):
+        """Command 35101: list bag goods C> [cellGuid, sellYb, sellJb, count]."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        cell = self.safe(args, 0)
+        sell_yb = self._booth_long(self.safe(args, 1))
+        sell_jb = self._booth_long(self.safe(args, 2))
+        count = self._booth_long(self.safe(args, 3))
+        if not cell or not isinstance(cell, str):
+            return None
+        if sell_yb is None or sell_yb < 0 or sell_yb > BOOTH_MAX_PRICE:
+            return None
+        if sell_jb is None or sell_jb < 0 or sell_jb > BOOTH_MAX_PRICE:
+            return None
+        if count is None or count <= 0:
+            return None
+        try:
+            sells = self.list_booth_sells(cid) or []
+        except Exception:
+            sells = []
+        visible = 0
+        for sell in sells:
+            try:
+                if int(sell.get('slot') or 0) < BOOTH_GOODS_VISIBLE_MAX:
+                    visible += 1
+            except (TypeError, ValueError):
+                continue
+        if visible >= BOOTH_GOODS_MAX:
+            return self._booth_err(CMD_BOOTH_IN,
+                                   BOOTH_ERR_ROLE_BOOTH_COUNT_MAX)
+        if sell_yb < BOOTH_MIN_SELL_YB:
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_NO_INPUT_MONEY)
+        if sell_jb == 0 and sell_yb == 0:
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_NO_INPUT_MONEY)
+        try:
+            row = self.get_role_bag_slot_by_bag_id(cid, str(cell))
+        except Exception:
+            row = None
+        if row is None:
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_GOODS_EXPIRE)
+        try:
+            have = int(row.get('count') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        try:
+            bind = int(row.get('bind') or 0)
+        except (TypeError, ValueError):
+            bind = 0
+        if bind == 1:
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_NO_BIND_GOODS)
+        try:
+            category = self.config.goods_category(str(row.get('goods_id'))) \
+                if self.config is not None else None
+        except Exception:
+            category = None
+        if category == '108':
+            # isChuShou has no ported subsystem; reachable bag jades are
+            # never socketed, so every reachable state lists (ledger gap).
+            pass
+        if count > have:
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_GOODS_COUNT_MAX)
+        if self._booth_expired(row):
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_GOODS_EXPIRE)
+        self._booth_ensure(cid)
+        try:
+            slot_num = int(row.get('slot_num') or 0)
+        except (TypeError, ValueError):
+            return None
+        used = set()
+        for sell in sells:
+            try:
+                used.add(int(sell.get('slot') or 0))
+            except (TypeError, ValueError):
+                continue
+        slot = next((n for n in range(10) if n not in used), 0)
+        sell = {'id': f'bs{uuid.uuid4().hex[:16]}', 'role_id': cid,
+                'goods_id': str(row.get('goods_id')), 'count': count,
+                'slot': slot, 'item_level': row.get('item_level') or 0,
+                'rare_level': row.get('rare_level') or 0,
+                'attributes': row.get('attributes'),
+                'expire_time': row.get('expire_time'),
+                'sell_jb': sell_jb, 'sell_yb': sell_yb, 'bind': bind,
+                'created': int(time.time() * 1000)}
+        try:
+            placed = self.booth_list_goods_tx(sell, slot_num, have, count)
+        except Exception:
+            return None
+        if placed != 'ok':
+            return self._booth_err(CMD_BOOTH_IN, BOOTH_ERR_GOODS_EXPIRE)
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_IN), [1, self._booth_item_vo(role, sell)]]))
+
+    def booth_out(self, msg):
+        """Command 35102: delist C> sellId, goods return to the bag."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        sell_id = self.safe(msg, 1)
+        if not sell_id or not isinstance(sell_id, str):
+            return None
+        try:
+            sell = self.get_booth_sell(sell_id, cid)
+        except Exception:
+            sell = None
+        if sell is None:
+            return self._booth_err(CMD_BOOTH_OUT,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        item = {'goods_id': str(sell.get('goods_id')),
+                'count': sell.get('count') or 0,
+                'bind': sell.get('bind') or 0,
+                'expire_time': sell.get('expire_time'),
+                'rare_level': sell.get('rare_level') or 0,
+                'item_level': sell.get('item_level') or 0,
+                'attributes': sell.get('attributes')}
+        if not self._booth_bag_fits(cid, item['goods_id'], item['count'],
+                                    item['bind']):
+            return self._booth_err(CMD_BOOTH_OUT, BOOTH_ERR_BAG_SLOT)
+        try:
+            stack = int(self.config.goods_max_stack(item['goods_id']) or 1) \
+                if self.config is not None else 1
+        except (TypeError, ValueError):
+            stack = 1
+        try:
+            dropped = self.booth_delist_goods_tx(sell_id, cid, item, stack)
+        except Exception:
+            return None
+        if dropped == 'gone':
+            return self._booth_err(CMD_BOOTH_OUT,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        if dropped != 'ok':
+            return self._booth_err(CMD_BOOTH_OUT, BOOTH_ERR_BAG_SLOT)
+        return frame(amf3_encode([str(CMD_BOOTH_OUT), [1, sell_id]]))
+
+    def booth_change_price(self, msg):
+        """Command 35103: reprice C> [sellId, sellYb, sellJb]."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        sell_id = self.safe(args, 0)
+        sell_yb = self._booth_long(self.safe(args, 1))
+        sell_jb = self._booth_long(self.safe(args, 2))
+        if not sell_id or not isinstance(sell_id, str):
+            return None
+        if sell_yb is None or sell_yb < 0:
+            return None
+        if sell_jb is None or sell_jb < 0:
+            return None
+        if sell_yb == 0 and sell_jb == 0:
+            return self._booth_err(CMD_BOOTH_CHANGE_PRICE,
+                                   BOOTH_ERR_NO_INPUT_MONEY)
+        try:
+            sell = self.get_booth_sell(sell_id, cid)
+        except Exception:
+            sell = None
+        if sell is None:
+            return self._booth_err(CMD_BOOTH_CHANGE_PRICE,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        sell['sell_jb'] = sell_jb
+        sell['sell_yb'] = sell_yb
+        try:
+            self.save_booth_sell(sell)
+        except Exception:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_CHANGE_PRICE),
+             [1, [sell_id, None, self._booth_money(sell_yb),
+                   self._booth_money(sell_jb)]]]))
+
+    def booth_change_index(self, msg):
+        """Command 35104: move a listing C> [sellId, slot] (swap on clash)."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        sell_id = self.safe(args, 0)
+        slot = self._booth_long(self.safe(args, 1))
+        if not sell_id or not isinstance(sell_id, str):
+            return None
+        if slot is None or slot < 0 or slot > 10:
+            return None
+        try:
+            sell = self.get_booth_sell(sell_id, cid)
+        except Exception:
+            sell = None
+        if sell is None:
+            return self._booth_err(CMD_BOOTH_CHANGE_INDEX,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        try:
+            old = int(sell.get('slot') or 0)
+        except (TypeError, ValueError):
+            old = 0
+        if slot == old:
+            return self._booth_err(CMD_BOOTH_CHANGE_INDEX,
+                                   BOOTH_ERR_SELL_INDEX_SAME)
+        try:
+            other = self.get_booth_sell_by_slot(cid, slot)
+        except Exception:
+            other = None
+        try:
+            if other is not None:
+                other['slot'] = old
+                self.save_booth_sell(other)
+            sell['slot'] = slot
+            self.save_booth_sell(sell)
+        except Exception:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_CHANGE_INDEX), [1, sell_id, slot]]))
+
+    def _booth_seach_money(self, slot):
+        """seachBoothByYb/Jb: stalls holding that money-market listing."""
+        stalls = []
+        for sid, booth in self._booth_public_sellers():
+            try:
+                listing = self.get_booth_sell_by_slot(sid, slot)
+            except Exception:
+                listing = None
+            if listing is not None:
+                stalls.append(self._booth_formart(booth))
+        return frame(amf3_encode([str(CMD_BOOTH_SEACH), stalls or None]))
+
+    def booth_seach(self, msg):
+        """Command 35105: '-1' YB stalls, '-2' YXB stalls, name, goods ids."""
+        _role, cid = self._booth_self()
+        if cid is None:
+            return None
+        args = self.safe(msg, 1, [])
+        key = self._booth_ref(self.safe(args, 0))
+        if key is None:
+            return None
+        goods = self.safe(args, 1) if len(args) > 1 else None
+        if key == '-1':
+            return self._booth_seach_money(BOOTH_SLOT_YB)
+        if key == '-2':
+            return self._booth_seach_money(BOOTH_SLOT_JB)
+        if goods is None:
+            try:
+                roles = self.find_roles_by_name(key) or []
+            except Exception:
+                roles = []
+            wanted = {str(r.get('id')) for r in roles}
+            stalls = [self._booth_formart(booth)
+                      for sid, booth in self._booth_public_sellers()
+                      if sid in wanted]
+            return frame(amf3_encode([str(CMD_BOOTH_SEACH), stalls or None]))
+        if not isinstance(goods, list):
+            return None
+        wanted = set()
+        for entry in goods:
+            ref = self._booth_ref(entry)
+            if ref is not None:
+                wanted.add(ref)
+        stalls = []
+        for sid, booth in self._booth_public_sellers():
+            try:
+                sells = self.list_booth_sells(sid) or []
+            except Exception:
+                sells = []
+            if any(str(s.get('goods_id')) in wanted for s in sells):
+                stalls.append(self._booth_formart(booth))
+        return frame(amf3_encode([str(CMD_BOOTH_SEACH), stalls or None]))
+
+    def booth_info(self, msg):
+        """Command 35106: a seller's [sellerId, goods, ybPair, jbPair]."""
+        _role, _cid = self._booth_self()
+        if _cid is None:
+            return None
+        ref = self._booth_ref(self.safe(msg, 1))
+        if ref is None:
+            return None
+        seller_cid = self._booth_canonical(ref)
+        if seller_cid is None or \
+                self._booth_session_of(seller_cid) is None:
+            return frame(amf3_encode([str(CMD_BOOTH_INFO), [ref, None]]))
+        try:
+            sells = self.list_booth_sells(seller_cid) or []
+        except Exception:
+            sells = []
+        owner = {'id': seller_cid}
+        goods = []
+        yb_pair, jb_pair = None, None
+        for sell in sorted(sells, key=lambda s: s.get('slot') or 0):
+            try:
+                slot = int(sell.get('slot') or 0)
+            except (TypeError, ValueError):
+                continue
+            if slot < BOOTH_GOODS_VISIBLE_MAX:
+                goods.append(self._booth_item_vo(owner, sell))
+            elif slot == BOOTH_SLOT_YB and yb_pair is None:
+                yb_pair = [self._booth_money(sell.get('sell_yb')),
+                           self._booth_money(sell.get('sell_jb'))]
+            elif slot == BOOTH_SLOT_JB and jb_pair is None:
+                jb_pair = [self._booth_money(sell.get('sell_jb')),
+                           self._booth_money(sell.get('sell_yb'))]
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_INFO),
+             [ref, goods or None, yb_pair, jb_pair]]))
+
+    def _booth_goods_codes(self, buyer_name, seller_name, sell, fee):
+        """tradeGoodsLog: buyer 424043 view, seller 424042 view (persisted)."""
+        mo, day, hour, minute, sec = self._booth_log_date()
+        goods = self._booth_goods_name(sell.get('goods_id'))
+        try:
+            count = int(sell.get('count') or 0)
+        except (TypeError, ValueError):
+            count = 0
+        try:
+            sell_jb = int(sell.get('sell_jb') or 0)
+        except (TypeError, ValueError):
+            sell_jb = 0
+        try:
+            sell_yb = int(sell.get('sell_yb') or 0)
+        except (TypeError, ValueError):
+            sell_yb = 0
+        buyer = (f'424043,{mo},{day},{hour},{minute},{sec},{seller_name},'
+                 f'{goods},{count},{sell_jb},{sell_yb}')
+        seller = (f'424042,{mo},{day},{hour},{minute},{sec},{buyer_name},'
+                  f'{goods},{count},{sell_jb},{sell_yb},{fee}')
+        return buyer, seller
+
+    def _booth_money_codes(self, yb_type, buyer_name, seller_name,
+                           first, second, fee):
+        """tradeMoneyLog views: YB-type 424064/424063, YXB-type 424066/424065."""
+        mo, day, hour, minute, sec = self._booth_log_date()
+        if yb_type:
+            buyer = (f'424064,{mo},{day},{hour},{minute},{sec},'
+                     f'{seller_name},{first},{second}')
+            seller = (f'424063,{mo},{day},{hour},{minute},{sec},'
+                      f'{buyer_name},{first},{second},0')
+        else:
+            buyer = (f'424066,{mo},{day},{hour},{minute},{sec},'
+                     f'{seller_name},{first},{second}')
+            seller = (f'424065,{mo},{day},{hour},{minute},{sec},'
+                      f'{buyer_name},{first},{second},{fee}')
+        return buyer, seller
+
+    def booth_buy(self, msg):
+        """Command 35107: buy goods C> [sellerId, sellId]."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        ref = self._booth_ref(self.safe(args, 0))
+        sell_id = self.safe(args, 1)
+        if ref is None:
+            return None
+        if not sell_id or not isinstance(sell_id, str):
+            return None
+        seller_cid = self._booth_canonical(ref)
+        if seller_cid is None:
+            return None
+        if self._booth_session_of(seller_cid) is None:
+            return self._booth_err(CMD_BOOTH_BUY,
+                                   BOOTH_ERR_SELL_ROLE_OFFLINE)
+        try:
+            seller_booth = self.get_booth(seller_cid)
+        except Exception:
+            seller_booth = None
+        if seller_booth is None:
+            return None
+        try:
+            sell = self.get_booth_sell(sell_id, seller_cid)
+        except Exception:
+            sell = None
+        if sell is None:
+            return self._booth_err(CMD_BOOTH_BUY,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        if self._booth_session_of(seller_cid) is None:
+            return self._booth_err(CMD_BOOTH_BUY,
+                                   BOOTH_ERR_SELL_ROLE_OFFLINE)
+        if cid == sell_id:
+            # Java compares the buyer to the listing id (never the seller).
+            return self._booth_err(CMD_BOOTH_BUY,
+                                   BOOTH_ERR_NO_BUY_SELF_GOODS)
+        try:
+            sell_jb = int(sell.get('sell_jb') or 0)
+        except (TypeError, ValueError):
+            sell_jb = 0
+        try:
+            sell_yb = int(sell.get('sell_yb') or 0)
+        except (TypeError, ValueError):
+            sell_yb = 0
+        if sell_jb > 0 and not self._booth_check(role, 'YXB', sell_jb):
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_JB_NOT_ENOUGH)
+        if sell_yb > 0 and not self._booth_check(role, 'YB', sell_yb):
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_YB_NOT_ENOUGH)
+        item = {'goods_id': str(sell.get('goods_id')),
+                'count': sell.get('count') or 0,
+                'bind': sell.get('bind') or 0,
+                'expire_time': sell.get('expire_time'),
+                'rare_level': sell.get('rare_level') or 0,
+                'item_level': sell.get('item_level') or 0,
+                'attributes': sell.get('attributes')}
+        if not self._booth_bag_fits(cid, item['goods_id'], item['count'],
+                                    item['bind']):
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_BAG_SLOT)
+        try:
+            stack = int(self.config.goods_max_stack(item['goods_id']) or 1) \
+                if self.config is not None else 1
+        except (TypeError, ValueError):
+            stack = 1
+        try:
+            fee = self._booth_fee(sell_yb) if sell_yb > 0 else 0
+        except Exception:
+            fee = 0
+        try:
+            brief = self.get_role_brief(seller_cid)
+        except Exception:
+            brief = None
+        seller_name = (brief or {}).get('name') or seller_cid
+        buyer_name = role.get('name') or cid
+        _buyer_code, seller_code = self._booth_goods_codes(
+            buyer_name, seller_name, sell, fee)
+        try:
+            buyer_booth = self.get_booth(cid)
+        except Exception:
+            buyer_booth = None
+        if buyer_booth is None:
+            buyer_booth = {'exists': False, 'jb': 0, 'yb': 0,
+                           'buy_time': int(time.time() * 1000),
+                           'created': int(time.time() * 1000)}
+        else:
+            try:
+                buyer_booth = {
+                    'exists': True,
+                    'jb': int(buyer_booth.get('booth_jb') or 0),
+                    'yb': int(buyer_booth.get('booth_yb') or 0)}
+            except (TypeError, ValueError):
+                buyer_booth = {'exists': True, 'jb': 0, 'yb': 0}
+        try:
+            settled = self.booth_buy_goods_tx(
+                cid, sell_jb, sell_yb, item, stack, seller_cid, sell_id,
+                sell_yb, sell_jb, fee, buyer_booth, sell_jb, sell_yb - fee,
+                seller_code)
+        except Exception:
+            return None
+        if settled == 'gone':
+            return self._booth_err(CMD_BOOTH_BUY,
+                                   BOOTH_ERR_GOODS_NO_IN_BOOTH)
+        if settled == 'changed':
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_CHANGE_REFRESH)
+        if settled == 'full':
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_BAG_SLOT)
+        if settled != 'ok':
+            if sell_jb > 0:
+                return self._booth_err(CMD_BOOTH_BUY,
+                                       BOOTH_ERR_JB_NOT_ENOUGH)
+            return self._booth_err(CMD_BOOTH_BUY, BOOTH_ERR_YB_NOT_ENOUGH)
+        try:
+            if sell_jb:
+                role['tongqian'] = self._booth_balance(role, 'YXB') - sell_jb
+            if sell_yb:
+                role['lingshi'] = self._booth_balance(role, 'YB') - sell_yb
+        except Exception:
+            pass
+        try:
+            new_jb = int(seller_booth.get('booth_jb') or 0) + sell_jb
+            new_yb = int(seller_booth.get('booth_yb') or 0) + sell_yb - fee
+        except (TypeError, ValueError):
+            new_jb, new_yb = sell_jb, sell_yb - fee
+        seller_frames = [frame(amf3_encode(
+            [str(CMD_BOOTH_MONEY),
+             [self._booth_money(new_jb), self._booth_money(new_yb)]]))]
+        buyer_frames = self._booth_trade_exp_one(cid, role)
+        seller_frames.extend(frame(amf3_encode(f))
+                             for f in self._booth_trade_exp_one(seller_cid,
+                                                               None))
+        seller_frames.append(frame(amf3_encode(
+            [str(CMD_BOOTH_SELL_NOTIFY), seller_code])))
+        lead = self._booth_deliver_seller(seller_cid, cid, seller_frames)
+        reply = [str(CMD_BOOTH_BUY),
+                 [1, self.bag_goods_map(
+                     role,
+                     {'goods_id': item['goods_id'],
+                      'bag_id': sell.get('id'),
+                      'slot_num': 0,
+                      'count': item['count'],
+                      'bind': item['bind'],
+                      'expire_time': item['expire_time'],
+                      'item_level': item['item_level'],
+                      'rare_level': item['rare_level'],
+                      'attributes': item['attributes']}),
+                  self._booth_money(sell_yb), self._booth_money(sell_jb),
+                  sell_id, seller_cid]]
+        return tuple(lead + buyer_frames +
+                     [frame(amf3_encode(reply))])
+
+    def booth_log(self):
+        """Command 35109: own seller-view trade codes, newest first."""
+        _role, cid = self._booth_self()
+        if cid is None:
+            return None
+        try:
+            codes = self.list_booth_trade_logs(cid) or []
+        except Exception:
+            codes = []
+        return frame(amf3_encode([str(CMD_BOOTH_LOG), codes or None]))
+
+    def booth_trade_log(self):
+        """Command 35013: same seller log view as 35109."""
+        _role, cid = self._booth_self()
+        if cid is None:
+            return None
+        try:
+            codes = self.list_booth_trade_logs(cid) or []
+        except Exception:
+            codes = []
+        return frame(amf3_encode([str(CMD_BOOTH_TRADE_LOG), codes or None]))
+
+    def booth_modify_name(self, msg):
+        """Command 35110: rename the stall C> name."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        name = self.safe(msg, 1)
+        if not name or not isinstance(name, str):
+            return None
+        if not check_role_name(name):
+            return self._booth_err(CMD_BOOTH_NAME, BOOTH_ERR_NAME_NO_ALLOW)
+        self._booth_ensure(cid)
+        try:
+            self.save_booth(cid, booth_name=name)
+        except Exception:
+            return None
+        return frame(amf3_encode([str(CMD_BOOTH_NAME), [1, name]]))
+
+    def _booth_money_sell(self, cmd, slot, money, no_exist_code, msg):
+        """ybSell/jbSell: offer>0 lists or grows, 0 delists with a refund."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        offered = self._booth_long(self.safe(args, 0))
+        wanted = self._booth_long(self.safe(args, 1))
+        if offered is None or offered < 0:
+            return None
+        if wanted is None or wanted <= 0:
+            return None
+        column = BAG_MONEY_COLUMNS[money]
+        short_code = BOOTH_ERR_YB_NOT_ENOUGH if money == 'YB' \
+            else BOOTH_ERR_JB_NOT_ENOUGH
+        done = 'gone'
+        for _attempt in range(2):
+            self._booth_ensure(cid)
+            try:
+                sell = self.get_booth_sell_by_slot(cid, slot)
+            except Exception:
+                sell = None
+            if offered > 0:
+                if sell is not None:
+                    try:
+                        listed = int(sell.get('sell_yb') or 0) \
+                            if slot == BOOTH_SLOT_YB \
+                            else int(sell.get('sell_jb') or 0)
+                    except (TypeError, ValueError):
+                        listed = 0
+                    if listed < offered and not self._booth_check(
+                            role, money, offered - listed):
+                        return self._booth_err(cmd, short_code)
+                elif not self._booth_check(role, money, offered):
+                    return self._booth_err(cmd, short_code)
+            take, give, expect, record = 0, 0, None, None
+            if sell is not None:
+                try:
+                    locked = int(sell.get('sell_yb') or 0) \
+                        if slot == BOOTH_SLOT_YB \
+                        else int(sell.get('sell_jb') or 0)
+                except (TypeError, ValueError):
+                    locked = 0
+                if offered == 0:
+                    give, expect = locked, sell.get('id')
+                else:
+                    diff = locked - offered
+                    if diff > 0:
+                        give = diff
+                    elif diff < 0:
+                        take = -diff
+                    expect = sell.get('id')
+                    record = dict(sell)
+                    if slot == BOOTH_SLOT_YB:
+                        record['sell_yb'] = offered
+                        record['sell_jb'] = wanted
+                    else:
+                        record['sell_jb'] = offered
+                        record['sell_yb'] = wanted
+            else:
+                if offered <= 0:
+                    return self._booth_err(cmd, no_exist_code)
+                take = offered
+                record = {'id': f'bs{uuid.uuid4().hex[:16]}',
+                          'goods_id': 'YB' if slot == BOOTH_SLOT_YB else 'JB',
+                          'slot': slot,
+                          'sell_jb': wanted if slot == BOOTH_SLOT_YB
+                          else offered,
+                          'sell_yb': offered if slot == BOOTH_SLOT_YB
+                          else wanted,
+                          'created': int(time.time() * 1000)}
+            try:
+                done = self.booth_money_position_tx(
+                    cid, column, expect, take, give, record)
+            except Exception:
+                return None
+            if done != 'gone' and done != 'changed':
+                break
+        if done == 'funds':
+            return self._booth_err(cmd, short_code)
+        if done != 'ok':
+            return None
+        try:
+            role[column] = self._booth_balance(role, money) - take + give
+        except Exception:
+            pass
+        if offered == 0:
+            return frame(amf3_encode(
+                [str(cmd), [1, self._booth_money(0),
+                            self._booth_money(wanted)]]))
+        return frame(amf3_encode(
+            [str(cmd), [1, self._booth_money(offered),
+                        self._booth_money(wanted)]]))
+
+    def booth_yb_sell(self, msg):
+        """Command 35111: offer YB for YXB C> [sellYb, sellJb]."""
+        return self._booth_money_sell(CMD_BOOTH_YB_SELL, BOOTH_SLOT_YB,
+                                      'YB', BOOTH_ERR_YB_SELL_NO_EXIST, msg)
+
+    def booth_jb_sell(self, msg):
+        """Command 35112: offer YXB for YB C> [sellJb, sellYb]."""
+        return self._booth_money_sell(CMD_BOOTH_JB_SELL, BOOTH_SLOT_JB,
+                                      'YXB', BOOTH_ERR_JB_SELL_NO_EXIST, msg)
+
+    def _booth_money_buy(self, cmd, slot, yb_type, msg):
+        """buySellYb/buySellJb: take the asking currency, credit the booth."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        args = self.safe(msg, 1, [])
+        ref = self._booth_ref(self.safe(args, 0))
+        first = self._booth_long(self.safe(args, 1))
+        second = self._booth_long(self.safe(args, 2))
+        if ref is None or first is None or second is None:
+            return None
+        seller_cid = self._booth_canonical(ref)
+        if seller_cid is None:
+            return None
+        if self._booth_session_of(seller_cid) is None:
+            return self._booth_err(cmd, BOOTH_ERR_SELL_ROLE_OFFLINE)
+        try:
+            sell = self.get_booth_sell_by_slot(seller_cid, slot)
+        except Exception:
+            sell = None
+        if sell is None:
+            if yb_type:
+                return self._booth_err(cmd, BOOTH_ERR_CHANGE_REFRESH)
+            return None
+        try:
+            listed_first = int(sell.get('sell_yb') or 0) if yb_type \
+                else int(sell.get('sell_jb') or 0)
+            listed_second = int(sell.get('sell_jb') or 0) if yb_type \
+                else int(sell.get('sell_yb') or 0)
+        except (TypeError, ValueError):
+            listed_first, listed_second = 0, 0
+        if listed_first != first or listed_second != second:
+            # checkBuyJb mismatches answer changeRefresh like Yb; only a
+            # missing listing stays silent (the 35114 action skips nulls).
+            return self._booth_err(cmd, BOOTH_ERR_CHANGE_REFRESH)
+        if cid == str(sell.get('role_id')):
+            return self._booth_err(cmd, BOOTH_ERR_NO_BUY_SELF_GOODS)
+        if self._booth_session_of(seller_cid) is None:
+            return self._booth_err(cmd, BOOTH_ERR_SELL_ROLE_OFFLINE)
+        if yb_type:
+            pay_money, pay_amount = 'YXB', listed_second
+            get_money, get_amount = 'YB', listed_first
+        else:
+            pay_money, pay_amount = 'YB', listed_second
+            get_money, get_amount = 'YXB', listed_first
+        if not self._booth_check(role, pay_money, pay_amount):
+            if yb_type:
+                return self._booth_err(cmd, BOOTH_ERR_JB_NOT_ENOUGH)
+            return self._booth_err(cmd, BOOTH_ERR_SELL_YB_MAX)
+        try:
+            fee = 0 if yb_type else self._booth_fee(listed_second)
+        except Exception:
+            fee = 0
+        try:
+            brief = self.get_role_brief(seller_cid)
+        except Exception:
+            brief = None
+        seller_name = (brief or {}).get('name') or seller_cid
+        buyer_name = role.get('name') or cid
+        buyer_code, seller_code = self._booth_money_codes(
+            yb_type, buyer_name, seller_name, listed_first, listed_second,
+            fee)
+        pay_col = BAG_MONEY_COLUMNS[pay_money]
+        get_jb = get_amount if get_money == 'YXB' else 0
+        get_yb = get_amount if get_money == 'YB' else 0
+        try:
+            settled = self.booth_money_buy_tx(
+                cid, pay_col, pay_amount, get_jb, get_yb, seller_cid, slot,
+                listed_first, listed_second, yb_type, fee, seller_code)
+        except Exception:
+            return None
+        if settled == 'gone':
+            if yb_type:
+                return self._booth_err(cmd, BOOTH_ERR_CHANGE_REFRESH)
+            return None
+        if settled == 'changed':
+            return self._booth_err(cmd, BOOTH_ERR_CHANGE_REFRESH)
+        if settled == 'funds':
+            if yb_type:
+                return self._booth_err(cmd, BOOTH_ERR_JB_NOT_ENOUGH)
+            return self._booth_err(cmd, BOOTH_ERR_SELL_YB_MAX)
+        if not isinstance(settled, tuple):
+            return None
+        _ok, new_buyer, new_seller = settled
+        try:
+            role[pay_col] = self._booth_balance(role, pay_money) - pay_amount
+        except Exception:
+            pass
+        buyer_frames = [frame(amf3_encode(
+            [str(CMD_BOOTH_MONEY),
+             [self._booth_money(new_buyer[0]),
+              self._booth_money(new_buyer[1])]]))]
+        seller_frames = [frame(amf3_encode(
+            [str(CMD_BOOTH_MONEY),
+             [self._booth_money(new_seller[0]),
+              self._booth_money(new_seller[1])]]))]
+        seller_frames.append(frame(amf3_encode(
+            [str(CMD_BOOTH_SELL_NOTIFY), seller_code])))
+        lead = self._booth_deliver_seller(seller_cid, cid, seller_frames)
+        reply = [str(cmd),
+                 [1, seller_cid, *buyer_code.split(',')]]
+        return tuple(buyer_frames + lead + [frame(amf3_encode(reply))])
+
+    def booth_buy_yb(self, msg):
+        """Command 35113: buy YB C> [sellerId, sellYb, sellJb]."""
+        return self._booth_money_buy(CMD_BOOTH_BUY_YB, BOOTH_SLOT_YB,
+                                      True, msg)
+
+    def booth_buy_jb(self, msg):
+        """Command 35114: buy YXB C> [sellerId, sellJb, sellYb]."""
+        return self._booth_money_buy(CMD_BOOTH_BUY_JB, BOOTH_SLOT_JB,
+                                      False, msg)
+
+    def booth_money(self):
+        """Command 35115: own collected balances [boothJb, boothYb]."""
+        _role, cid = self._booth_self()
+        if cid is None:
+            return None
+        booth = self._booth_ensure(cid)
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_MONEY),
+             [self._booth_money(booth.get('booth_jb')),
+              self._booth_money(booth.get('booth_yb'))]]))
+
+    def booth_money_claim(self):
+        """Command 35116: collect balances C> nothing, reply [1, jb, yb]."""
+        role, cid = self._booth_self()
+        if role is None:
+            return None
+        try:
+            take_jb, take_yb, found = self.booth_claim_tx(
+                cid, BAG_MONEY_COLUMNS['YXB'], BAG_MONEY_COLUMNS['YB'])
+        except Exception:
+            return None
+        if not found:
+            return None
+        try:
+            if take_jb:
+                role[BAG_MONEY_COLUMNS['YXB']] = \
+                    self._booth_balance(role, 'YXB') + take_jb
+            if take_yb:
+                role[BAG_MONEY_COLUMNS['YB']] = \
+                    self._booth_balance(role, 'YB') + take_yb
+        except Exception:
+            pass
+        return frame(amf3_encode(
+            [str(CMD_BOOTH_MONEY_CLAIM),
+             [1, self._booth_money(take_jb),
+              self._booth_money(take_yb)]]))
 
     def loading_stub(self, msg, cmd_num):
         """Post-21000 loading replies: exact fresh-role Java shapes.
@@ -1593,7 +2881,6 @@ class Session:
                 return frame(amf3_encode(['114000', [1, '2', 0, 0, ['jingyanyu02:1:1', 'jingyanyu03:1:1', 'ys010609:1:1:0:0|0:4', 'ys010610:1:1:0:0|0:4', 'zhenqipill_003:2:1', 'ningshendan01:2:1', 'zhenyuan:30:1', 'wuxing2:3:0', 'wuxing3:3:0', 'wuxing3:3:0', 'wuxing4:3:0', 'jingjie:10:1'], []]]))
             return frame(amf3_encode(['114000', [1, '1', 0, 0, ['xuangui_001:1:0', 'jinjiedan001:1:0', 'jinjiedan001:5:0', 'tongqian004:1:0', 'jinjiedan001:1:0', 'txbawang:1:0', 'xuangui_001:1:0', 'jinjiedan001:1:0', 'jinjiedan001:40:0', 'tongqian004:1:0', 'jinjiedan001:1:0', 'zuoqishuxing3:1:0'], [[1, 2, 20, ''], [10, 2, 190, ''], [50, 2, 900, '']]]]))
         payload = {
-            35115: [[0.0, 0.0]],
             53006: [None],
             51000: [[0, None, [], [], [], []]],
             82024: [None],

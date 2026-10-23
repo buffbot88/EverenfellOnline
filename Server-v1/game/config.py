@@ -3734,6 +3734,21 @@ class GameConfig:
         log.warning('chat_level missing from %s; chat level gate off', path)
         return 0
 
+    def trade_fee_rate(self):
+        """trade_shui from config/localization.properties; 0.0 when unreadable."""
+        path = os.path.join(self.config_dir, '..', 'localization.properties')
+        try:
+            with open(path, encoding='utf-8') as f:
+                for line in f:
+                    key, _, value = line.partition('=')
+                    if key.strip() == 'trade_shui':
+                        return float(value.strip())
+        except (OSError, ValueError):
+            log.warning('trade_shui unreadable at %s; stall fee off', path)
+            return 0.0
+        log.warning('trade_shui missing from %s; stall fee off', path)
+        return 0.0
+
     def dazuo_table(self):
         """DaZuoPeiZhiBiao keyed by level; empty if absent."""
         if self._dazuo is None:

@@ -32,6 +32,7 @@ Deviations from the original (all logged, to refine against the live client):
     slot -> sealed sun.util.calendar.ZoneInfo with rawOffset/ID members.
   - role entries: shape unknown, so only the empty-roles case is served.
 """
+import datetime
 import json
 import logging
 import math
@@ -509,6 +510,14 @@ POZHEN_ERR_NO_REFRESH = 584020
 POZHEN_ERR_TIME_LESS = 584015
 POZHEN_ERR_YB_SHORT = 1003
 POZHEN_ERR_LEVEL_GATE = 50006
+# Online-gift inbound routes (HuodongAction via OnlineGiftServiceImpl):
+# 94000 getTimeHuodongInfo, 94001 getTimeHuodongReward (null reply stays
+# silent, like the void-reply convention).
+CMD_HUODONG_ONLINE_INFO = 94000
+CMD_HUODONG_ONLINE_REWARD = 94001
+# RoleHuodongErrorCode (huodong/output clinit: values equal names).
+HUODONG_ERR_NO_GIFT = 792010
+HUODONG_ERR_NOT_YET = 792011
 # GongHuiTaskConstants (jar clinit) + condition export impl costs.
 GONGHUI_MIN_LEVEL = 30
 GONGHUI_MAX_LOOP = 20
@@ -999,7 +1008,8 @@ class Session:
                  save_task_taofa_state=None, get_task_richang=None,
                  save_task_richang=None, delete_task_richang=None,
                  get_task_gonghui=None, save_task_gonghui=None,
-                 delete_task_gonghui=None, get_role_pozhen=None,
+                 delete_task_gonghui=None, get_role_huodong=None,
+                 save_role_huodong=None, get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
                   config=None, stage_registry=None):
@@ -1207,6 +1217,9 @@ class Session:
         self.delete_task_richang = delete_task_richang or (lambda r: False)
         self.get_task_gonghui = get_task_gonghui or (lambda r: None)
         self.save_task_gonghui = save_task_gonghui or \
+            (lambda *a, **k: False)
+        self.get_role_huodong = get_role_huodong or (lambda r: None)
+        self.save_role_huodong = save_role_huodong or \
             (lambda *a, **k: False)
         self.get_role_pozhen = get_role_pozhen or (lambda r: None)
         self.save_role_pozhen = save_role_pozhen or \
@@ -1586,6 +1599,10 @@ class Session:
             return self.gonghui_complete_best()
         if cmd_num == CMD_GONGHUI_NOTIFY_LOOP:
             return self.gonghui_notify_loop()
+        if cmd_num == CMD_HUODONG_ONLINE_INFO:
+            return self.huodong_online_info()
+        if cmd_num == CMD_HUODONG_ONLINE_REWARD:
+            return self.huodong_online_reward()
         if cmd_num == CMD_POZHEN_INFO:
             return self.pozhen_info()
         if cmd_num == CMD_POZHEN_START:
@@ -1907,7 +1924,7 @@ class Session:
         if cmd_num in (53006, 51000,
                         82024, 74000,
                         86000, 85000, 87000, 70500, 91002, 90000,
-                        92015, 93000, 94000, 94002, 94100, 95000, 97001,
+                        92015, 93000, 94002, 94100, 95000, 97001,
                         114000, 113000,
                         120100, 124001,
                         70000):
@@ -3870,6 +3887,10 @@ class Session:
             try:
                 task_frames.extend(
                     self._friend_on_enter(_wire_id(role)) or [])
+            except Exception:
+                pass
+            try:
+                self._huodong_on_enter(_wire_id(role))
             except Exception:
                 pass
             return (*bootstrap, *task_frames,
@@ -14792,6 +14813,324 @@ class Session:
             row = None
         cur = self._pozhen_cal_cur(dict(row) if row else {})
         return self.config.pozhen_attribute_map(cur[0], cur[1])
+
+    # -- online gifts (HuodongAction getTimeHuodongInfo/getTimeHuodongReward
+    # via OnlineGiftServiceImpl, backed by shipped kaifuzaixian.jat) --
+    # Evidence: HuodongAction (94000/94001, null 94001 reply stays silent),
+    # OnlineGiftServiceImpl (getHuodongInfo/getReward/online/logout +
+    # isNotEmptyAndNoEnd/isToday/initToday/getremainderTime/getRewardArray/
+    # resetToNext/reSetLoginTime/resetRemainderTime), OnlineGiftConfig
+    # (id/minute=online seconds/time=kaifu day/nextId/jiangli) grouped into
+    # OnlineGiftDayConfigs by kaifu day with file-order nextId chains,
+    # RoleOnlineHuodongOutput ([[goodsId, count]] pairs) and the
+    # HuodongRoleLoginEventHandler/HuodongRoleLogoutEventHandler wiring.
+    HUODONG_GIFT_KEY = 'online_gift'
+
+    @staticmethod
+    def _huodong_json(text):
+        """Fastjson object map of a counter JSON string; {} when absent."""
+        if not text:
+            return {}
+        try:
+            val = json.loads(text)
+        except (TypeError, ValueError):
+            return {}
+        return val if isinstance(val, dict) else {}
+
+    def _huodong_row(self, rid):
+        """Role's activity row, created empty like initRoleHuodong."""
+        try:
+            row = self.get_role_huodong(rid)
+        except Exception:
+            row = None
+        if row is not None:
+            return dict(row)
+        try:
+            self.save_role_huodong(rid, refresh_time=0)
+        except Exception:
+            return None
+        try:
+            row = self.get_role_huodong(rid)
+        except Exception:
+            row = None
+        return dict(row) if row is not None else None
+
+    def _huodong_gift_get(self, row):
+        """The online_gift state object, or None (getValue str overload)."""
+        state = self._huodong_json((row or {}).get('max_count')).get(
+            self.HUODONG_GIFT_KEY)
+        return dict(state) if isinstance(state, dict) else None
+
+    def _huodong_gift_save(self, rid, row, state):
+        """Persist the online_gift state object (setValue str overload)."""
+        try:
+            counters = self._huodong_json((row or {}).get('max_count'))
+            counters[self.HUODONG_GIFT_KEY] = dict(state)
+            self.save_role_huodong(rid, max_count=json.dumps(counters))
+            row['max_count'] = json.dumps(counters)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _huodong_kaifu_day(created):
+        """twoDaysDiffence(role.createTime)+1, date-based like Java."""
+        try:
+            born = datetime.date.fromtimestamp(int(created or 0))
+        except (TypeError, ValueError, OverflowError, OSError):
+            born = datetime.date.today()
+        try:
+            return (datetime.date.today() - born).days + 1
+        except Exception:
+            return 1
+
+    def _huodong_day(self, kaifu_day):
+        """Online-gift day bucket for a kaifu day, or None."""
+        if self.config is None:
+            return None
+        try:
+            days = self.config.online_gift_days()
+        except Exception:
+            return None
+        try:
+            return days.get(int(kaifu_day))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _huodong_live(state):
+        """isNotEmptyAndNoEnd: state present and no end marker."""
+        return state is not None and 'end' not in state
+
+    @staticmethod
+    def _huodong_today(state, kaifu_day):
+        """isToday: state's kaifu day matches."""
+        if state is None:
+            return False
+        try:
+            return int(state.get('day')) == int(kaifu_day)
+        except (TypeError, ValueError):
+            return False
+
+    def _huodong_init_today(self, rid, row, kaifu_day):
+        """initToday: fresh {day, id, logintime, minute} or {day, end}."""
+        now = int(time.time() * 1000)
+        bucket = self._huodong_day(kaifu_day)
+        if bucket is None:
+            state = {'day': kaifu_day, 'end': 'end'}
+        else:
+            cfg = bucket['configs'].get(str(bucket.get('start_id')))
+            if cfg is None:
+                state = {'day': kaifu_day, 'end': 'end'}
+            else:
+                state = {'day': kaifu_day, 'id': str(cfg['id']),
+                         'logintime': now,
+                         'minute': int(cfg.get('minute') or 0) * 1000}
+        self._huodong_gift_save(rid, row, state)
+        return state
+
+    @staticmethod
+    def _huodong_remainder_ms(state, now_ms):
+        """getremainderTime: banked ms minus elapsed session, floor 0."""
+        try:
+            banked = int(state.get('minute') or 0)
+        except (TypeError, ValueError):
+            banked = 0
+        try:
+            elapsed = int(now_ms) - int(state.get('logintime') or 0)
+        except (TypeError, ValueError):
+            elapsed = 0
+        return max(0, banked - max(0, elapsed))
+
+    def _huodong_reward_array(self, state):
+        """getRewardArray: current gift's [[goodsId, count]] or None."""
+        cid = (state or {}).get('id')
+        if cid is None:
+            return None
+        bucket = None
+        if self.config is not None:
+            try:
+                days = self.config.online_gift_days()
+            except Exception:
+                days = None
+            if days:
+                for bucket in days.values():
+                    if str(cid) in bucket.get('configs', {}):
+                        break
+                else:
+                    bucket = None
+        if bucket is None:
+            return None
+        cfg = bucket['configs'].get(str(cid))
+        if cfg is None:
+            return None
+        return [[gid, count] for gid, count, _bind in cfg.get('jiangli') or []]
+
+    def _huodong_reset_next(self, rid, row, state):
+        """resetToNext: advance to the current gift's nextId, or end."""
+        now = int(time.time() * 1000)
+        nxt = None
+        cid = (state or {}).get('id')
+        if self.config is not None and cid is not None:
+            try:
+                days = self.config.online_gift_days()
+            except Exception:
+                days = None
+            cur = None
+            if days:
+                for bucket in days.values():
+                    cur = bucket.get('configs', {}).get(str(cid))
+                    if cur is not None:
+                        break
+            if cur is not None:
+                nxt = cur.get('next_id')
+            cfg = None
+            if nxt is not None and days:
+                for bucket in days.values():
+                    cfg = bucket.get('configs', {}).get(str(nxt))
+                    if cfg is not None:
+                        break
+            if cfg is not None:
+                self._huodong_gift_save(rid, row, {
+                    'day': cfg.get('day'), 'id': str(cfg['id']),
+                    'logintime': now,
+                    'minute': int(cfg.get('minute') or 0) * 1000})
+                return True
+        ended = dict(state or {})
+        ended['end'] = 'end'
+        self._huodong_gift_save(rid, row, ended)
+        return False
+
+    def _huodong_role_day(self, rid):
+        """(role, kaifu_day) for online-gift progress, or (None, None)."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return None, None
+        role = _find_role(roles or [], rid)
+        if role is None:
+            if len(roles or []) == 1:
+                role = roles[0]
+            else:
+                return None, None
+        return role, self._huodong_kaifu_day(role.get('created'))
+
+    def _huodong_on_enter(self, rid):
+        """HuodongRoleLoginEventHandler: refresh logintime or re-init day."""
+        role, kaifu_day = self._huodong_role_day(rid)
+        if role is None:
+            return
+        row = self._huodong_row(_wire_id(role))
+        if row is None:
+            return
+        state = self._huodong_gift_get(row)
+        now = int(time.time() * 1000)
+        if state is not None and self._huodong_today(state, kaifu_day):
+            state['logintime'] = now
+            self._huodong_gift_save(_wire_id(role), row, state)
+        else:
+            self._huodong_init_today(_wire_id(role), row, kaifu_day)
+
+    def _huodong_on_disconnect(self):
+        """HuodongRoleLogoutEventHandler: bank the session remainder."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return
+        now = int(time.time() * 1000)
+        for role in roles or []:
+            try:
+                rid = _wire_id(role)
+            except Exception:
+                continue
+            try:
+                row = self._huodong_row(rid)
+            except Exception:
+                continue
+            if row is None:
+                continue
+            kaifu_day = self._huodong_kaifu_day(role.get('created'))
+            state = self._huodong_gift_get(row)
+            if not self._huodong_live(state):
+                continue
+            if self._huodong_today(state, kaifu_day):
+                state['minute'] = self._huodong_remainder_ms(state, now)
+                self._huodong_gift_save(rid, row, state)
+            else:
+                self._huodong_init_today(rid, row, kaifu_day)
+
+    def _huodong_active(self):
+        """Live online-gift state for the requester's role, or None."""
+        role, kaifu_day = self._huodong_role_day(None)
+        if role is None:
+            return None, None, None, None
+        rid = _wire_id(role)
+        row = self._huodong_row(rid)
+        if row is None:
+            return None, None, None, None
+        state = self._huodong_gift_get(row)
+        if not self._huodong_live(state):
+            return role, rid, row, None
+        if not self._huodong_today(state, kaifu_day):
+            state = self._huodong_init_today(rid, row, kaifu_day)
+        return role, rid, row, state
+
+    def huodong_online_info(self):
+        """Command 94000: [1, remainderMs, [[goodsId, count]...]]."""
+        role, rid, row, state = self._huodong_active()
+        if state is None:
+            return None
+        now = int(time.time() * 1000)
+        arr = self._huodong_reward_array(state)
+        if arr is None:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_HUODONG_ONLINE_INFO),
+             [1, self._huodong_remainder_ms(state, now), arr]]))
+
+    def huodong_online_reward(self):
+        """Command 94001: claim the matured online gift, then advance."""
+        role, rid, row, state = self._huodong_active()
+        if state is None:
+            return frame(amf3_encode(
+                [str(CMD_HUODONG_ONLINE_REWARD), [0, HUODONG_ERR_NO_GIFT]]))
+        now = int(time.time() * 1000)
+        if self._huodong_remainder_ms(state, now) > 0:
+            return frame(amf3_encode(
+                [str(CMD_HUODONG_ONLINE_REWARD),
+                 [2, self._huodong_remainder_ms(state, now),
+                  HUODONG_ERR_NOT_YET]]))
+        arr = self._huodong_reward_array(state)
+        if arr is None:
+            arr = []
+        bucket_parcels = []
+        cid = state.get('id')
+        if self.config is not None and cid is not None:
+            try:
+                days = self.config.online_gift_days()
+            except Exception:
+                days = None
+            if days:
+                for bucket in days.values():
+                    cfg = bucket.get('configs', {}).get(str(cid))
+                    if cfg is not None:
+                        bucket_parcels = cfg.get('jiangli') or []
+                        break
+        if not self._vip_fits_list(rid, bucket_parcels):
+            return frame(amf3_encode(
+                [str(CMD_HUODONG_ONLINE_REWARD), [0, BAG_ERR_SLOT_LESS]]))
+        self._task_grant(rid, self._vip_parcel_items(bucket_parcels))
+        advanced = self._huodong_reset_next(rid, row, state)
+        if not advanced:
+            return frame(amf3_encode(
+                [str(CMD_HUODONG_ONLINE_REWARD), [1, -1, arr]]))
+        new_state = self._huodong_gift_get(
+            {'max_count': (self.get_role_huodong(rid) or {}).get('max_count')})
+        return frame(amf3_encode(
+            [str(CMD_HUODONG_ONLINE_REWARD),
+             [1, self._huodong_remainder_ms(new_state or {}, now), arr]]))
 
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
     # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and

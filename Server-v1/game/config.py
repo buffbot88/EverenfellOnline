@@ -1145,6 +1145,7 @@ class GameConfig:
         self._vip_choujiang = None
         self._vip_lingjiang = None
         self._vip_huodong = None
+        self._online_gift = None
         self._kaige = None
         self._task_main = None
         self._task_sub = None
@@ -4334,6 +4335,56 @@ class GameConfig:
                 bind = 0
             out.append((fields[0], count, bind))
         return out or None
+
+    def online_gift_days(self):
+        """kaifuzaixian.jat grouped by kaifu day (genuine shipped config).
+
+        Port of OnlineGiftConfigExportServiceImpl.configureDataResolve +
+        createOnlineGiftDayConfig: rows carry {id, shijian (kaifu day),
+        time (online seconds, stored as the config's `minute` field),
+        jiangli}; each day's configs chain via nextId in file order with
+        startId the first row's id. Returns {day: {'start_id': id,
+        'configs': {id: {...}}}}; {} when absent.
+        """
+        if self._online_gift is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'kaifuzaixian.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad online gift table: %s', e)
+                rows = []
+            if isinstance(rows, list) and len(rows) == 1 \
+                    and isinstance(rows[0], list):
+                rows = rows[0]
+            days = {}
+            for r in rows or []:
+                if not isinstance(r, dict):
+                    continue
+                try:
+                    day = int(r.get('shijian'))
+                    minutes = int(r.get('time'))
+                except (TypeError, ValueError):
+                    continue
+                cid = str(r.get('id') or '')
+                if not cid:
+                    continue
+                parcels = self._huodong_parcels(r.get('jiangli'))
+                # `minute` keeps the Java field name; it holds online
+                # seconds (state stores minute * 1000 ms), not minutes.
+                entry = {'id': cid, 'day': day, 'minute': minutes,
+                         'jiangli': parcels or [], 'next_id': None}
+                bucket = days.setdefault(
+                    day, {'start_id': cid, 'configs': {}})
+                prev = bucket.get('last_id')
+                if prev is not None and prev in bucket['configs']:
+                    bucket['configs'][prev]['next_id'] = cid
+                bucket['configs'][cid] = entry
+                bucket['last_id'] = cid
+            for bucket in days.values():
+                bucket.pop('last_id', None)
+            self._online_gift = days
+        return self._online_gift
 
     def vip_huodong(self, vip_level):
         """kaifuchoujiang.jat row for a vip: window, bisong, odds, prizes.

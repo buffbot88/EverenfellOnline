@@ -188,6 +188,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_task_gonghui=self.server.get_task_gonghui,
             save_task_gonghui=self.server.save_task_gonghui,
             delete_task_gonghui=self.server.delete_task_gonghui,
+            get_role_huodong=self.server.get_role_huodong,
+            save_role_huodong=self.server.save_role_huodong,
             get_role_pozhen=self.server.get_role_pozhen,
             save_role_pozhen=self.server.save_role_pozhen,
             get_guild_id=self.server.get_guild_id,
@@ -238,6 +240,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 pass
             try:
                 sess._zuwu_on_disconnect()
+            except Exception:
+                pass
+            try:
+                sess._huodong_on_disconnect()
             except Exception:
                 pass
             with self.server.sessions_lock:
@@ -438,6 +444,8 @@ def main():
     tcpd.get_task_gonghui = store.get_task_gonghui
     tcpd.save_task_gonghui = store.save_task_gonghui
     tcpd.delete_task_gonghui = store.delete_task_gonghui
+    tcpd.get_role_huodong = store.get_role_huodong
+    tcpd.save_role_huodong = store.save_role_huodong
     tcpd.get_role_pozhen = store.get_role_pozhen
     tcpd.save_role_pozhen = store.save_role_pozhen
     tcpd.get_guild_id = store.get_guild_id

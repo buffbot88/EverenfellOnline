@@ -616,6 +616,25 @@ CREATE TABLE IF NOT EXISTS role_pozhen (
   expire_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Activity state per role (legacy RoleHuodong: refresh_time plus the
+-- fastjson counter maps; max_count carries the online_gift {day, id,
+-- logintime, minute[, end]} object under the 'online_gift' key, like the
+-- jar's getValue/setValue helpers. Later huodong batches fill the
+-- sibling columns instead of adding a second table.)
+CREATE TABLE IF NOT EXISTS role_huodong (
+  role_id INTEGER PRIMARY KEY,
+  refresh_time INTEGER DEFAULT 0,
+  day_count TEXT DEFAULT '',
+  max_count TEXT DEFAULT '',
+  accumlate_pay_yb TEXT DEFAULT '',
+  kill_monster TEXT DEFAULT '',
+  pay_yb TEXT DEFAULT '',
+  mall_buy_count TEXT DEFAULT '',
+  zuoqi_rank TEXT DEFAULT '',
+  rank_award_info TEXT DEFAULT '',
+  rank_award_info2 TEXT DEFAULT '',
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
 -- silences every gonghui handler; addRoleGongxian accumulates gongxian).
 CREATE TABLE IF NOT EXISTS guild_member (
@@ -2142,6 +2161,36 @@ class Store:
             self.db.execute(
                 'DELETE FROM task_gonghui WHERE role_id=?',
                 (str(role_id),))
+            self.db.commit()
+            return True
+
+    def get_role_huodong(self, role_id):
+        """A role's activity row, or None (RoleHuodong.daoLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT role_id, refresh_time, day_count, max_count,'
+                ' accumlate_pay_yb, kill_monster, pay_yb, mall_buy_count,'
+                ' zuoqi_rank, rank_award_info, rank_award_info2'
+                ' FROM role_huodong WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_huodong(self, role_id, **fields):
+        """Upsert a role's activity row (known columns only)."""
+        known = {'refresh_time', 'day_count', 'max_count',
+                 'accumlate_pay_yb', 'kill_monster', 'pay_yb',
+                 'mall_buy_count', 'zuoqi_rank', 'rank_award_info',
+                 'rank_award_info2'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known role_huodong columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_huodong(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
             self.db.commit()
             return True
 

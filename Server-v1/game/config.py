@@ -4358,6 +4358,7 @@ class GameConfig:
                     and isinstance(rows[0], list):
                 rows = rows[0]
             days = {}
+            prev_by_day = {}
             for r in rows or []:
                 if not isinstance(r, dict):
                     continue
@@ -4376,13 +4377,11 @@ class GameConfig:
                          'jiangli': parcels or [], 'next_id': None}
                 bucket = days.setdefault(
                     day, {'start_id': cid, 'configs': {}})
-                prev = bucket.get('last_id')
-                if prev is not None and prev in bucket['configs']:
+                prev = prev_by_day.get(day)
+                if prev is not None:
                     bucket['configs'][prev]['next_id'] = cid
                 bucket['configs'][cid] = entry
-                bucket['last_id'] = cid
-            for bucket in days.values():
-                bucket.pop('last_id', None)
+                prev_by_day[day] = cid
             self._online_gift = days
         return self._online_gift
 

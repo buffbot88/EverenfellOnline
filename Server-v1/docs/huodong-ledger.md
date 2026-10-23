@@ -14,57 +14,42 @@ the jar: no sender, no handler, not in InCmd).
 
 ## Full 38-ID classification
 
-| ID | Java source | status | notes |
-| --- | --- | --- | --- |
-| 70000 | getRechargeInfo | missing | zonghe FIRSTRECHARGE info; needs remote JSON |
-| 70001 | lingquRechargeReward | missing | first-recharge claim; needs remote JSON |
-| 70100 | role_login event | internal | HuodongService.online + OnlineGift.online run at login; no wire frame in Java either |
-| 71002 | FIRST_RECHARGE push | push-only | send2One [configId, yb, 1] from recharge(); unported |
-| 70500 | getHuodongInfo | missing | zonghe panel; needs remote JSON |
-| 70501 | getAccumulateRecharge | missing | zonghe; needs remote JSON |
-| 70502 | getAccumulateComsume | missing | zonghe; needs remote JSON |
-| 70503 | declared only | dead | in RoleHuodongCommands, zero jar references |
-| 70504 | declared only | dead | in RoleHuodongCommands, zero jar references |
-| 70505 | getForeverRecharge | missing | zonghe FINAL; needs remote JSON |
-| 70506 | getLimitedMall | missing | zonghe; needs remote JSON |
-| 70507 | getLimitedExchange | missing | zonghe; needs remote JSON |
-| 70508 | getZuoqiRank | missing | zonghe zuoqi rank; needs remote JSON |
-| 70509 | getkingMine | missing | zonghe; needs remote JSON |
-| 70510 | declared only | dead | in RoleHuodongCommands, zero jar references |
-| 70511 | declared only | dead | in RoleHuodongCommands, zero jar references |
-| 70520 | progress push | push-only | queue [configId, 1] from recharge()/decrYb(); unported |
-| 70530 | getRechage | missing | pay-panel info; needs remote JSON |
-| 70550 | buyHuodongMallGoods | missing | zonghe mall buy; needs remote JSON |
-| 70551 | getHuodongReward | missing | generic zonghe claim; needs remote JSON |
-| 70552 | xiaoFeiRank | missing | consumption rank; config via remote zonghe |
-| 70553 | xiaoFeiFanliInfo | missing | consumption rebate info; config via remote zonghe |
-| 70554 | xiaoFeiFanliRew | missing | consumption rebate claim; config via remote zonghe |
-| 70556 | ZUOQI_JINJIE decl. | dead | no sender/handler in the jar |
-| 70558 | GET_PROP decl. | dead | no sender/handler in the jar |
-| 70559 | RECHARGE_YB decl. | dead | no sender/handler in the jar |
-| 70580 | getQibingRank | missing | zonghe qibing rank; needs remote JSON |
-| 94000 | getTimeHuodongInfo | complete+tested | online gifts (batch 1) |
-| 94001 | getTimeHuodongReward | complete+tested | online gifts (batch 1) |
-| 94002 | rank94002 | missing | rank-1 list; needs paihang ranks |
-| 94003 | rank94003 | missing | rank-1 single; needs paihang ranks |
-| 94004 | rank94004 | missing | rank-1 monster; needs paihang ranks |
-| 94005 | rank94005 | missing | rank-1 award; needs paihang ranks |
-| 94100 | rank94100 | missing | rank-2 list; RankHuodongConfigExportServiceImpl2 is remote-refreshable |
-| 94101 | rank94101 | missing | rank-2 single; remote config |
-| 94102 | rank94102 | missing | rank-2 monster; remote config |
-| 94103 | rank94103 | missing | rank-2 award; remote config |
-| 101000 | cmd_101000 | no-op | registered in InCmd; body is a bare return |
-| ROLE_RANK_KILLMONSTER | killBoss | internal | combat-hook input to the rank service |
-| ROLE_LEVEL_UPGRADE | roleUpgrade | no-op | registered; body is a bare return |
-| ROLE_VIP_LEVEL | vipLevel | internal | feeds the rank service via BusMsgQueue |
+Zonghe group (19 inbound, all `missing`): 70000/70001 (first recharge),
+70500/70501/70502/70505/70506/70507/70508/70509/70530/70580
+(panel/accumulate/limited-mall/exchange/ranks), 70550/70551 (mall
+buy/generic claim), 70552/70553/70554 (consumption rank/rebate).
+Every one is driven by `ZongheHuodongCategoryConfig` rows from the
+GM-pushed remote JSON (`AbsZongheHuodongRemoteRefreshAble-
+ConfigureParser`); no shipped snapshot exists in `reference/`, so
+thresholds/rewards cannot be grounded. Pushes 70520 (`[configId, 1]`
+progress) and 71002 (`[configId, yb, 1]` first-recharge) are
+`push-only` for the same reason.
 
-Dead IDs (70503/70504/70510/70511/70556/70558/70559) are kept as
-`missing` in the mechanical census; there is no behavior to port.
+Rank-1 group (94002-94005, `missing`): classpath config
+(`kaifuhuodong.jat` shape matches `RankHuodongConfig` fields) but the
+rank source is the unported paihang system (level/zuoqi/zhanli/killBoss
+rank data + quartz settlement).
+
+Rank-2 group (94100-94103, `missing`): `RankHuodongConfigExportService-
+Impl2` is remote-refreshable like zonghe; no shipped config.
+
+Online gifts (94000/94001, `complete+tested`): batch 1, below.
+
+Remainder, each with zero jar references outside its declaration
+(no sender, no handler, not in `InCmd`); there is no behavior to
+port and they stay `missing` in the mechanical census:
+dead 70503/70504/70510/70511/70556 (ZUOQI_JINJIE)/70558
+(GET_PROP)/70559 (RECHARGE_YB); no-op 101000 and
+ROLE_LEVEL_UPGRADE (registered, bare-return bodies); internal
+70100 (role_login runs both `online()`s, no wire frame in Java),
+ROLE_RANK_KILLMONSTER (killBoss combat-hook input),
+ROLE_VIP_LEVEL (vipLevel feeds the rank service).
 
 ## Batch 1: online gifts (94000/94001)
 
-State: the shared `role_huodong` row (full `RoleHuodong` shape for later
-batches), `max_count` JSON key `online_gift` ->
+State: the `role_huodong` row (just the `max_count` JSON map for now;
+sibling columns land here only when a batch needs them). The
+`max_count` JSON key `online_gift` ->
 `{day, id, logintime, minute[, end]}`, mirroring the jar's
 getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
 + 1` (role creation day, date-based; verified against `getKaifuTime`).
@@ -108,5 +93,3 @@ getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
   handleKillBossRankData + quartz settlement); paihang itself is unported.
 - `changeZuoqiRank`/`addMeiRen`/event-bus fan-outs touched by sibling
   families stay unported.
-- The shared `role_huodong` row is ready for later batches (refresh,
-  day/max-count JSON maps, pay/mall/kill columns present).

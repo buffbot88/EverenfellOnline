@@ -14846,7 +14846,7 @@ class Session:
         if row is not None:
             return dict(row)
         try:
-            self.save_role_huodong(rid, refresh_time=0)
+            self.save_role_huodong(rid, max_count='')
         except Exception:
             return None
         try:
@@ -14868,9 +14868,8 @@ class Session:
             counters[self.HUODONG_GIFT_KEY] = dict(state)
             self.save_role_huodong(rid, max_count=json.dumps(counters))
             row['max_count'] = json.dumps(counters)
-            return True
         except Exception:
-            return False
+            pass
 
     @staticmethod
     def _huodong_kaifu_day(created):
@@ -14884,18 +14883,19 @@ class Session:
         except Exception:
             return 1
 
-    def _huodong_day(self, kaifu_day):
-        """Online-gift day bucket for a kaifu day, or None."""
-        if self.config is None:
-            return None
+    def _huodong_gift_config(self, cid):
+        """Day bucket + config entry for a gift id, or (None, None)."""
+        if self.config is None or cid is None:
+            return None, None
         try:
             days = self.config.online_gift_days()
         except Exception:
-            return None
-        try:
-            return days.get(int(kaifu_day))
-        except (TypeError, ValueError):
-            return None
+            return None, None
+        for bucket in (days or {}).values():
+            cfg = bucket.get('configs', {}).get(str(cid))
+            if cfg is not None:
+                return bucket, cfg
+        return None, None
 
     @staticmethod
     def _huodong_live(state):
@@ -14915,7 +14915,12 @@ class Session:
     def _huodong_init_today(self, rid, row, kaifu_day):
         """initToday: fresh {day, id, logintime, minute} or {day, end}."""
         now = int(time.time() * 1000)
-        bucket = self._huodong_day(kaifu_day)
+        try:
+            bucket = (self.config.online_gift_days()
+                      if self.config is not None else None).get(
+                          int(kaifu_day))
+        except (TypeError, ValueError, AttributeError):
+            bucket = None
         if bucket is None:
             state = {'day': kaifu_day, 'end': 'end'}
         else:
@@ -14944,62 +14949,29 @@ class Session:
 
     def _huodong_reward_array(self, state):
         """getRewardArray: current gift's [[goodsId, count]] or None."""
-        cid = (state or {}).get('id')
-        if cid is None:
-            return None
-        bucket = None
-        if self.config is not None:
-            try:
-                days = self.config.online_gift_days()
-            except Exception:
-                days = None
-            if days:
-                for bucket in days.values():
-                    if str(cid) in bucket.get('configs', {}):
-                        break
-                else:
-                    bucket = None
-        if bucket is None:
-            return None
-        cfg = bucket['configs'].get(str(cid))
+        _, cfg = self._huodong_gift_config((state or {}).get('id'))
         if cfg is None:
             return None
         return [[gid, count] for gid, count, _bind in cfg.get('jiangli') or []]
 
     def _huodong_reset_next(self, rid, row, state):
-        """resetToNext: advance to the current gift's nextId, or end."""
+        """resetToNext: advanced state, or None when the ladder ends."""
         now = int(time.time() * 1000)
-        nxt = None
-        cid = (state or {}).get('id')
-        if self.config is not None and cid is not None:
-            try:
-                days = self.config.online_gift_days()
-            except Exception:
-                days = None
-            cur = None
-            if days:
-                for bucket in days.values():
-                    cur = bucket.get('configs', {}).get(str(cid))
-                    if cur is not None:
-                        break
-            if cur is not None:
-                nxt = cur.get('next_id')
-            cfg = None
-            if nxt is not None and days:
-                for bucket in days.values():
-                    cfg = bucket.get('configs', {}).get(str(nxt))
-                    if cfg is not None:
-                        break
+        _, cur = self._huodong_gift_config((state or {}).get('id'))
+        nxt = (cur or {}).get('next_id')
+        if nxt is not None:
+            _, cfg = self._huodong_gift_config(nxt)
             if cfg is not None:
-                self._huodong_gift_save(rid, row, {
+                advanced = {
                     'day': cfg.get('day'), 'id': str(cfg['id']),
                     'logintime': now,
-                    'minute': int(cfg.get('minute') or 0) * 1000})
-                return True
+                    'minute': int(cfg.get('minute') or 0) * 1000}
+                self._huodong_gift_save(rid, row, advanced)
+                return advanced
         ended = dict(state or {})
         ended['end'] = 'end'
         self._huodong_gift_save(rid, row, ended)
-        return False
+        return None
 
     def _huodong_role_day(self, rid):
         """(role, kaifu_day) for online-gift progress, or (None, None)."""
@@ -15032,6 +15004,25 @@ class Session:
         else:
             self._huodong_init_today(_wire_id(role), row, kaifu_day)
 
+    def _huodong_logout_role(self, role, now_ms):
+        """Logout half of HuodongRoleLogoutEventHandler for one role."""
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return
+        if row is None:
+            return
+        kaifu_day = self._huodong_kaifu_day(role.get('created'))
+        state = self._huodong_gift_get(row)
+        if not self._huodong_live(state):
+            return
+        if self._huodong_today(state, kaifu_day):
+            state['minute'] = self._huodong_remainder_ms(state, now_ms)
+            self._huodong_gift_save(rid, row, state)
+        else:
+            self._huodong_init_today(rid, row, kaifu_day)
+
     def _huodong_on_disconnect(self):
         """HuodongRoleLogoutEventHandler: bank the session remainder."""
         try:
@@ -15041,25 +15032,7 @@ class Session:
             return
         now = int(time.time() * 1000)
         for role in roles or []:
-            try:
-                rid = _wire_id(role)
-            except Exception:
-                continue
-            try:
-                row = self._huodong_row(rid)
-            except Exception:
-                continue
-            if row is None:
-                continue
-            kaifu_day = self._huodong_kaifu_day(role.get('created'))
-            state = self._huodong_gift_get(row)
-            if not self._huodong_live(state):
-                continue
-            if self._huodong_today(state, kaifu_day):
-                state['minute'] = self._huodong_remainder_ms(state, now)
-                self._huodong_gift_save(rid, row, state)
-            else:
-                self._huodong_init_today(rid, row, kaifu_day)
+            self._huodong_logout_role(role, now)
 
     def _huodong_active(self):
         """Live online-gift state for the requester's role, or None."""
@@ -15105,32 +15078,19 @@ class Session:
         arr = self._huodong_reward_array(state)
         if arr is None:
             arr = []
-        bucket_parcels = []
-        cid = state.get('id')
-        if self.config is not None and cid is not None:
-            try:
-                days = self.config.online_gift_days()
-            except Exception:
-                days = None
-            if days:
-                for bucket in days.values():
-                    cfg = bucket.get('configs', {}).get(str(cid))
-                    if cfg is not None:
-                        bucket_parcels = cfg.get('jiangli') or []
-                        break
-        if not self._vip_fits_list(rid, bucket_parcels):
+        _, cfg = self._huodong_gift_config(state.get('id'))
+        parcels = (cfg or {}).get('jiangli') or []
+        if not self._vip_fits_list(rid, parcels):
             return frame(amf3_encode(
                 [str(CMD_HUODONG_ONLINE_REWARD), [0, BAG_ERR_SLOT_LESS]]))
-        self._task_grant(rid, self._vip_parcel_items(bucket_parcels))
+        self._task_grant(rid, self._vip_parcel_items(parcels))
         advanced = self._huodong_reset_next(rid, row, state)
-        if not advanced:
+        if advanced is None:
             return frame(amf3_encode(
                 [str(CMD_HUODONG_ONLINE_REWARD), [1, -1, arr]]))
-        new_state = self._huodong_gift_get(
-            {'max_count': (self.get_role_huodong(rid) or {}).get('max_count')})
         return frame(amf3_encode(
             [str(CMD_HUODONG_ONLINE_REWARD),
-             [1, self._huodong_remainder_ms(new_state or {}, now), arr]]))
+             [1, self._huodong_remainder_ms(advanced, now), arr]]))
 
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
     # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and

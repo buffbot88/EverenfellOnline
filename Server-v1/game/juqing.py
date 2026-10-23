@@ -302,14 +302,29 @@ def pass_awards(cfg_row, level, factor):
             'zhenqi': max(zhenqi, 0)}
 
 
+def _award_obj(entry):
+    """One awardInfo entry as a dict; entries may be double-encoded.
+
+    Java reads them with JSONArray.getString(i) (a JSONObject renders to
+    its JSON text), so string entries parse the same as object ones.
+    """
+    if isinstance(entry, str):
+        try:
+            entry = _json.loads(entry)
+        except (TypeError, ValueError):
+            return None
+    return entry if isinstance(entry, dict) else None
+
+
 def award_entries(cell):
     """awardInfoAll: [(index, chapter, pingjia, ms)] in stored order."""
     arr = _loads_array(cell)
     if not arr:
         return []
     out = []
-    for idx, entry in enumerate(arr):
-        if not isinstance(entry, dict):
+    for idx, raw in enumerate(arr):
+        entry = _award_obj(raw)
+        if entry is None:
             continue
         try:
             pingjia = entry.get('pingjia')
@@ -353,8 +368,13 @@ def award_decr(cell, index):
 
 
 def daily_info_rows(daily_cell):
-    """convertDailyPassInfo2Array: sorted [[id, count]] pairs."""
-    return [[k, v] for k, v in sorted(parse_counts(daily_cell).items())]
+    """convertDailyPassInfo2Array: sorted [[id, count]] string pairs.
+
+    Java re-splits the stored 'id:count' cells without parsing ints,
+    so the wire entries stay strings; only the order is normalized.
+    """
+    return [[str(k), str(v)]
+            for k, v in sorted(parse_counts(daily_cell).items())]
 
 
 def random_key2(weighted, rng=None):
@@ -407,11 +427,12 @@ def zubao_group_entries(row):
     return entries
 
 
-def zubao_roll(zubao_table, drop_id, rng=None):
-    """componentRoll: resolve one (possibly nested @group) drop id.
+def component_roll(zubao_table, drop_id, rng=None):
+    """ItemCreatorServiceImpl.componentRoll: one lottery pick, recursed.
 
-    Returns (goodsId, count, rate) or None when the group is inactive
-    or unconfigured. Nested @groups recurse like Java.
+    Draws a single ZuBaoOdds from the group by rate, recursing into
+    @-nested groups; returns (goodsId, count, rate) or None when the
+    group is inactive, unconfigured or empty.
     """
     row = (zubao_table or {}).get(str(drop_id))
     if row is None or not zubao_active(row):
@@ -420,17 +441,14 @@ def zubao_roll(zubao_table, drop_id, rng=None):
     if not entries:
         return None
     pick = random_key2({i: e[2] for i, e in enumerate(entries)}, rng=rng)
-    if pick is None:
-        entry = entries[0]
-    else:
-        entry = entries[pick]
+    entry = entries[pick] if pick is not None else entries[0]
     if entry[0].startswith('@'):
-        return zubao_roll(zubao_table, entry[0], rng=rng)
+        return component_roll(zubao_table, entry[0], rng=rng)
     return entry
 
 
 def convert_item(goods_row, goods_id, count, bind=0, expire_ms=0,
-                 rare_level=None, item_level=None):
+                 rare_level=None, item_level=None, first_only=False):
     """ItemCreatorServiceImpl.convert2ItemModel for one stackable good.
 
     Returns a list of ItemModel-ish dicts after controlGoodsStack
@@ -475,28 +493,57 @@ def convert_item(goods_row, goods_id, count, bind=0, expire_ms=0,
         counts = [max_stack] * full + ([rest] if rest else [])
     else:
         counts = [count]
+    if first_only:
+        # rollItems keeps only model[0]: overflow beyond one stack is
+        # truncated, never granted as extra stacks.
+        counts = counts[:1]
     return [{'goods_id': str(goods_id), 'count': n, 'bind': int(bind),
              'expire_time': int(expire_ms), 'rare_level': rare,
              'item_level': ilevel} for n in counts]
 
 
-def roll_models(goods_table, zubao_table, drop_id, fujia, roll_bind,
-                rng=None):
-    """passAwards roll: rollItems(dropId, equipFujiaMap) model list.
+def roll_candidates(goods_table, zubao_table, drop_id, fujia, roll_bind,
+                    rng=None):
+    """ItemCreatorServiceImpl.rollItems: [(ItemModel, rate)] candidates.
 
-    Each rolled ZuBao entry becomes ItemParamVo(goodsId, count) with the
-    chapter fujia params applied, converted with stack splitting and
-    stamped with the chapter roll bind (ItemModel.setId(i) ordering is
-    the table order, matching Java's per-model id assignment).
+    One representative per drop-group entry (table order): a @-nested
+    entry resolves through componentRoll to a single odds, whose own
+    rate weights the candidate. Only the first stack-split model is
+    kept and stamped setId(str(index)) like Java; the chapter roll
+    bind overwrites every model. Null groups yield no candidates.
     """
     if not drop_id:
         return []
-    picked = zubao_roll(zubao_table, drop_id, rng=rng)
-    if picked is None:
+    row = (zubao_table or {}).get(str(drop_id))
+    if row is None or not zubao_active(row):
         return []
-    goods_id, count, _rate = picked
-    models = convert_item((goods_table or {}).get(str(goods_id)),
-                          goods_id, count, bind=roll_bind)
-    for idx, model in enumerate(models):
-        model['id'] = str(idx)
-    return models
+    entries = zubao_group_entries(row)
+    table = goods_table or {}
+    out = []
+    for idx, entry in enumerate(entries):
+        gid = entry[0]
+        if gid.startswith('@'):
+            resolved = component_roll(zubao_table, gid, rng=rng)
+            if resolved is None:
+                continue
+            gid, count, rate = resolved
+        else:
+            count, rate = entry[1], entry[2]
+        models = convert_item(table.get(str(gid)), gid, count,
+                              bind=roll_bind, first_only=True)
+        if not models:
+            continue
+        models[0]['id'] = str(idx)
+        out.append((models[0], float(rate)))
+    return out
+
+
+def roll_pick(candidates, rng=None):
+    """Lottery.getRandomKey2 over candidate (model, rate) pairs."""
+    if not candidates:
+        return None
+    pick = random_key2({i: rate for i, (_, rate) in
+                        enumerate(candidates)}, rng=rng)
+    if pick is None:
+        return None
+    return candidates[pick][0]

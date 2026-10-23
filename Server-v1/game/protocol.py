@@ -16553,7 +16553,7 @@ class Session:
     def _juqing_offline_sweep(self, rid, row, now_ms=None):
         """offlineAutoFightHandle: negative-useTime guard + settle.
 
-        Returns the [oneKey, curId, useTime] offline entry when the sweep
+        Returns the [oneKey, curId, remainMs] offline entry when the sweep
         is still running, else None (settled sweeps append one award,
         stamp the daily count and clear the sweep, like finishAutoPass).
         """
@@ -16570,11 +16570,13 @@ class Session:
         best = juqing_lib.decode_best(row.get('best_passed_info'),
                                       auto['curid'])
         if best is None or best.get('fast') is None:
-            return [1 if auto['onekey'] else 0, auto['curid'],
-                    auto['usetime']]
-        if juqing_lib.sweep_remain_ms(auto, best['fast'], now) > 0:
-            return [1 if auto['onekey'] else 0, auto['curid'],
-                    auto['usetime']]
+            # Unreachable with honest data (a sweep needs a best time to
+            # start); Java would NPE here, so report no time left without
+            # settling the un-settleable sweep.
+            return [1 if auto['onekey'] else 0, auto['curid'], 0]
+        remain = juqing_lib.sweep_remain_ms(auto, best['fast'], now)
+        if remain > 0:
+            return [1 if auto['onekey'] else 0, auto['curid'], remain]
         self._juqing_commit_sweep(rid, row, auto, best, now)
         return None
 
@@ -16646,11 +16648,12 @@ class Session:
         if role is None:
             return None
         rid = _wire_id(role)
+        # Java refreshes (creating) the entity before loading config.
+        row = self._juqing_ensure(rid)
         cfg = self._juqing_cfg(cid)
         if cfg is None:
             return frame(amf3_encode(
                 ['64002', [0, juqing_lib.ERR_NOT_EXIST]]))
-        row = self._juqing_ensure(rid)
         active = self._juqing_active(row)
         err = juqing_lib.check_can_challenge(
             cfg, role.get('level'), row.get('passed_highest_id'),
@@ -16676,7 +16679,9 @@ class Session:
                             delay=max(int(cfg.get('expire_min') or 0) * 60,
                                       1),
                             unit='SECONDS')
-        rest = max(int(cfg.get('expire_ms') or 0), 0)
+        # getRestTime: raw expireDelay minus elapsed (may go negative).
+        rest = int(cfg.get('expire_ms') or 0) - \
+            (int(self._world_now_ms()) - now)
         frames.append(frame(amf3_encode(
             ['64009', [rest, str(cfg.get('map') or ''), int(cid), []]])))
         frames.append(frame(amf3_encode(['64002', [1, cid]])))
@@ -16802,7 +16807,7 @@ class Session:
             rid, row, auto,
             {'pingjia': int(best.get('pingjia') or 4)},
             now)
-        return frame(amf3_encode(['64007', [1, auto['curid']]]))
+        return frame(amf3_encode(['64007', [1, auto['curid'], cost]]))
 
     def _juqing_spend_yb(self, role, cost):
         """accelerateAutoChallenge decrCheck/decr on YB (lingqu path).
@@ -16838,24 +16843,26 @@ class Session:
         return dict(table or {})
 
     def _juqing_pass_awards(self, role, chapter_id, pingjia):
-        """passAwards: currency math + fixed-goods params + drop roll.
+        """passAwards: currency math + fixed params + roll candidates.
 
-        Returns {'exp','yxb','zhenqi','fixed':[[gid,count]],
-        'models':[ItemModel dicts]}; rolled models carry the chapter
-        rollBind (ItemModel.setId follows table order like Java).
+        Returns {'exp','yxb','zhenqi','fixed':[[gid,count,bind]],
+        'candidates':[(ItemModel, rate)]}. Fixed entries keep their cell
+        bind; every roll candidate carries the chapter rollBind with
+        ItemModel.setId following group order, like rollItems.
         """
         from . import juqing as juqing_lib
         cfg = self._juqing_cfg(chapter_id) or {}
         factor = float((cfg.get('award_odds') or {}).get(int(pingjia), 1.0))
         awards = juqing_lib.pass_awards(cfg, role.get('level'), factor)
-        fixed = [[g[0], int(g[1])] for g in cfg.get('fixed_goods') or []]
-        models = juqing_lib.roll_models(
+        fixed = [[g[0], int(g[1]), int(g[2]) if len(g) > 2 else 0]
+                 for g in cfg.get('fixed_goods') or []]
+        candidates = juqing_lib.roll_candidates(
             self._juqing_goods_table(), self._juqing_zubao_table(),
             cfg.get('drop_id'), cfg.get('equip_fujia') or {},
             int(cfg.get('roll_bind') or 0))
         return {'exp': awards['exp'], 'yxb': awards['yxb'],
                 'zhenqi': awards['zhenqi'], 'fixed': fixed,
-                'models': models}
+                'candidates': candidates}
 
     def _juqing_grant_currencies(self, role, exp, yxb, zhenqi):
         """incrExp/incr(YXB)/incrZhenqi; answers the granted amounts.
@@ -16883,9 +16890,11 @@ class Session:
         from . import juqing as juqing_lib
         goods_table = self._juqing_goods_table()
         items = []
-        for gid, count in fixed:
+        for entry in fixed:
+            gid, count = entry[0], entry[1]
+            bind = int(entry[2]) if len(entry) > 2 else 0
             items.extend(juqing_lib.convert_item(
-                goods_table.get(str(gid)), gid, count))
+                goods_table.get(str(gid)), gid, count, bind=bind))
         items.extend(models or [])
         try:
             slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
@@ -16974,6 +16983,32 @@ class Session:
                                 self.conn_id, item.get('goods_id'), left)
         return formarts
 
+    def _juqing_claim_models(self, pending, cfg):
+        """Rebuild the staged roll candidates and draw the granted one.
+
+        Mirrors the claim-time Lottery.getRandomKey2 over the staged
+        modelMap: candidates persist as [goodsId, count, rate] so the
+        draw repeats Java's weights without new table rolls.
+        """
+        from . import juqing as juqing_lib
+        goods_table = self._juqing_goods_table()
+        roll_bind = int(cfg.get('roll_bind') or 0)
+        candidates = []
+        for idx, entry in enumerate(pending.get('candidates') or []):
+            try:
+                gid, count, rate = entry[0], int(entry[1]), float(entry[2])
+            except (TypeError, ValueError, IndexError):
+                continue
+            models = juqing_lib.convert_item(
+                goods_table.get(str(gid)), gid, count, bind=roll_bind,
+                first_only=True)
+            if not models:
+                continue
+            models[0]['id'] = str(idx)
+            candidates.append((models[0], rate))
+        picked = juqing_lib.roll_pick(candidates)
+        return [picked] if picked is not None else []
+
     def juqing_lingqu(self, msg):
         """Command 64012: claim the staged manual-victory award.
 
@@ -16999,21 +17034,22 @@ class Session:
             return frame(amf3_encode(
                 ['64012', [0, juqing_lib.ERR_NO_AWARD]]))
         staged = pending.get('awards') or {}
+        fixed = [[g[0], int(g[1]), int(g[2]) if len(g) > 2 else 0]
+                 for g in pending.get('fixed') or []]
+        # Java removeData runs before any grant: a crash loses the
+        # award instead of duplicating it, and a second claim finds
+        # nothing (NO_AWARD).
+        self._juqing_pending_save(rid, row, None)
         got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
             role, staged.get('exp'), staged.get('yxb'),
             staged.get('zhenqi'))
-        cfg = self._juqing_cfg(chapter) or {}
-        fixed = [[g[0], int(g[1])]
-                 for g in pending.get('fixed') or []]
         self._juqing_grant_goods(role, rid, fixed, [])
-        models = juqing_lib.roll_models(
-            self._juqing_goods_table(), self._juqing_zubao_table(),
-            cfg.get('drop_id'), cfg.get('equip_fujia') or {},
-            int(cfg.get('roll_bind') or 0))
+        cfg = self._juqing_cfg(chapter) or {}
+        models = self._juqing_claim_models(pending, cfg)
         roll_formarts = self._juqing_grant_goods(role, rid, [], models)
-        self._juqing_pending_save(rid, row, None)
+        pairs = [[g[0], int(g[1])] for g in fixed]
         return frame(amf3_encode(['64012', [
-            1, got_exp, got_yxb, got_zq, fixed,
+            1, got_exp, got_yxb, got_zq, pairs,
             roll_formarts[0] if roll_formarts else None]]))
 
     def juqing_onekey(self, msg):
@@ -17038,6 +17074,9 @@ class Session:
         fixed_all = []
         models_all = []
         for _idx, cid, pingjia, _ms in entries:
+            # Java skips award rows whose chapter config is gone.
+            if self._juqing_cfg(cid) is None:
+                continue
             computed = self._juqing_pass_awards(role, cid, pingjia)
             got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
                 role, computed['exp'], computed['yxb'],
@@ -17049,7 +17088,11 @@ class Session:
                         zhenqi=int(role.get('zhenqi') or 0) + got_zq,
                         tongqian=int(role.get('tongqian') or 0) + got_yxb)
             fixed_all.extend(computed['fixed'])
-            models_all.extend(computed['models'])
+            # One fresh Lottery draw per award entry, like oneKey's
+            # per-entry passAwards + getRandomKey2 (not all candidates).
+            picked = juqing_lib.roll_pick(computed['candidates'])
+            if picked is not None:
+                models_all.append(picked)
         formarts = self._juqing_grant_goods(role, rid, fixed_all,
                                             models_all)
         row['award_info'] = ''
@@ -17128,10 +17171,10 @@ class Session:
         """JuqingStageCopy.killMonster for shared-world dungeon kills.
 
         When the killer's role has an active attempt and the template is
-        wanted, the killMap count bumps (64009 push); completing every
-        wanted entry ends the copy: challengeResult(ROLE_WIN) persists
-        highest/daily/best, stages the PassAwards for 64012 and pushes
-        the 64003 challengeSuccessResult.
+        wanted, the kill count bumps (no wire push, like Java); reaching
+        the wanted total ends the copy: challengeResult(ROLE_WIN)
+        persists highest/daily/best, stages the PassAwards for 64012
+        and pushes the 64003 challengeSuccessResult.
         """
         from . import juqing as juqing_lib
         try:
@@ -17155,15 +17198,12 @@ class Session:
         kills[mid] = int(kills.get(mid, 0)) + 1
         self._juqing_attempt_save(rid, row, active['chapter'],
                                   active['start'], kills, active['deaths'])
-        frames = [frame(amf3_encode(
-            ['64009', [max(int(cfg.get('expire_ms') or 0) - (
-                int(self._world_now_ms()) - active['start']), 0),
-                str(cfg.get('map') or ''), int(active['chapter']),
-                [[m, kills.get(m, 0)] for m in sorted(kills)]]]))]
-        if all(kills.get(m, 0) >= wanted[m] for m in wanted):
-            frames.extend(self._juqing_victory(
-                owner_role, rid, row, active, cfg))
-        return frames
+        # Java sends no per-kill push (killMap only rides the 64009
+        # enter state); victory is total kills >= total wanted, like
+        # getWantedListComplete (killCount >= monsterCount).
+        if sum(kills.values()) < sum(wanted.values()):
+            return []
+        return self._juqing_victory(owner_role, rid, row, active, cfg)
 
     def _juqing_victory(self, role, rid, row, active, cfg):
         """challengeResult(roleId, chapter, ROLE_WIN, costMs, deadTimes).
@@ -17189,28 +17229,37 @@ class Session:
             pingjia)
         computed = self._juqing_pass_awards(
             role, active['chapter'], pingjia)
+        staged = [[m['goods_id'], m['count'], rate]
+                  for m, rate in computed['candidates']]
         self._juqing_pending_save(rid, row, {
             'chapter': int(active['chapter']), 'pingjia': pingjia,
             'use_time': use_ms, 'dead': active['deaths'],
             'awards': {'exp': computed['exp'], 'yxb': computed['yxb'],
                        'zhenqi': computed['zhenqi']},
-            'fixed': computed['fixed']})
+            'fixed': computed['fixed'], 'candidates': staged})
         self._juqing_idle(rid, row)
         try:
             self.stage_scheduler.cancel(f'juqing_expire:{rid}')
         except (AttributeError, KeyError, ValueError):
             pass
-        roll_formarts = []
-        try:
-            for model in computed['models']:
-                roll_formarts.append(self.bag_goods_map(
-                    role, dict(model, slot_num=0, bag_id=model.get('id'))))
-        except Exception:
+        # rollGoods: formart of every candidate, not just the granted
+        # one (Java challengeSuccessResult element 7).
+        pairs = [[g[0], int(g[1])] for g in computed['fixed']]
+        if computed['candidates']:
             roll_formarts = []
+            try:
+                for model, _rate in computed['candidates']:
+                    roll_formarts.append(self.bag_goods_map(
+                        role, dict(model, slot_num=0,
+                                  bag_id=model.get('id'))))
+            except Exception:
+                roll_formarts = []
+        else:
+            roll_formarts = None
         return [frame(amf3_encode(
             ['64003', [1, int(active['chapter']), str(rid),
                        computed['exp'], computed['yxb'],
-                       computed['zhenqi'], computed['fixed'],
+                       computed['zhenqi'], pairs,
                        roll_formarts, use_ms, active['deaths']]]))]
 
     def _juqing_death_progress(self, owner_role):

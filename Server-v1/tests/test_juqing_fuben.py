@@ -166,6 +166,7 @@ class CodecTest(unittest.TestCase):
         self.assertEqual(models[0]['item_level'], 5)
 
     def test_nested_group_roll_resolves_to_concrete_goods(self):
+        # componentRoll draws one odds per group, recursing into @-refs.
         import random
         table = {'@outer': {'dropNumber': '@outer', 'drop1': '@inner',
                             'drop1Odds': '1.0'},
@@ -173,10 +174,29 @@ class CodecTest(unittest.TestCase):
                             'drop1Odds': '0.5', 'drop2': 'zj0410',
                             'drop2Odds': '0.5'}}
         for seed in range(5):
-            picked = juqing_lib.zubao_roll(table, '@outer',
-                                           rng=random.Random(seed))
+            picked = juqing_lib.component_roll(table, '@outer',
+                                               rng=random.Random(seed))
             self.assertIn(picked[0], ('zj0409', 'zj0410'))
-        self.assertIsNone(juqing_lib.zubao_roll(table, '@missing'))
+        self.assertIsNone(juqing_lib.component_roll(table, '@missing'))
+
+    def test_roll_candidates_keep_first_model_per_entry(self):
+        # rollItems: one convert2ItemModel[0] per group entry, weighted
+        # by the resolved odds; overflow beyond one stack is truncated.
+        import random
+        goods = {'bscl': {'maxstack': '99', 'rarelevel': '0',
+                          'itemlevel': '1'}}
+        table = {'@g': {'dropNumber': '@g', 'drop1': 'bscl:250',
+                        'drop1Odds': '1.0'}}
+        cands = juqing_lib.roll_candidates(goods, table, '@g', {}, 1,
+                                           rng=random.Random(0))
+        self.assertEqual(len(cands), 1)
+        model, rate = cands[0]
+        self.assertEqual((model['goods_id'], model['count'],
+                         model['bind'], model['id']), ('bscl', 99, 1, '0'))
+        self.assertEqual(rate, 1.0)
+        self.assertEqual(juqing_lib.roll_candidates(goods, table, None,
+                                                    {}, 0), [])
+        self.assertIsNone(juqing_lib.roll_pick([]))
 
 
 @unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
@@ -208,14 +228,26 @@ class ChapterConfigTest(unittest.TestCase):
         self.assertIsNotNone(group)
         seen = set()
         for seed in range(20):
-            picked = juqing_lib.zubao_roll(table, '@juqingfuben1',
-                                           rng=random.Random(seed))
+            picked = juqing_lib.component_roll(table, '@juqingfuben1',
+                                               rng=random.Random(seed))
             self.assertIsNotNone(picked)
             seen.add(picked[0])
         self.assertTrue(seen <= {'zj0409', 'zj0410', 'zj0411', 'zj0412',
                                  'zj0413', 'zj0414', 'qianghuashi', 'bscl',
                                  'jinjiedan001', 'exppill_0001',
                                  'zhenqipill_00001', 'tongqian002'})
+        goods = {gid: {'maxstack': '99'} for gid in (
+            'zj0409', 'zj0410', 'zj0411', 'zj0412', 'zj0413', 'zj0414',
+            'qianghuashi', 'bscl', 'jinjiedan001', 'exppill_0001',
+            'zhenqipill_00001', 'tongqian002')}
+        n_entries = sum(1 for i in range(1, 77) if group.get(f'drop{i}'))
+        cands = juqing_lib.roll_candidates(goods, table, '@juqingfuben1',
+                                           {}, 1, rng=random.Random(3))
+        # One candidate per top-level group entry, ids follow order.
+        self.assertEqual(len(cands), n_entries)
+        self.assertEqual([m['id'] for m, _ in cands],
+                         [str(i) for i in range(len(cands))])
+        self.assertTrue(all(m['bind'] == 1 for m, _ in cands))
 
     def test_unknown_chapter_is_none(self):
         self.assertIsNone(self.cfg.juqing_row(9999))
@@ -322,7 +354,7 @@ class LifecycleTest(unittest.TestCase):
         info = self.call('juqing_info')
         body = info[0][1][1]
         self.assertEqual(body[0], 1)
-        self.assertEqual(body[1], [[1, 2]])
+        self.assertEqual(body[1], [['1', '2']])
         self.assertEqual(body[2][0][0], '1')
         self.assertIsNone(body[3])
 
@@ -342,11 +374,15 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(role['exp'], body[1])
         self.assertEqual(role['tongqian'], body[2])
         self.assertEqual(role['zhenqi'], body[3])
-        bag = {(s['goods_id'], s['count'])
-               for s in self.store.get_role_bag_slots(self.role_id,
-                                                      -1000000, 1000000)}
+        totals = {}
+        for s in self.store.get_role_bag_slots(self.role_id, -1000000,
+                                               1000000):
+            totals[s['goods_id']] = totals.get(s['goods_id'], 0) + \
+                int(s['count'] or 0)
         for gid, count in self.FIXED:
-            self.assertIn((gid, count), bag)
+            # Totals meet the fixed grant; the roll may stack more of
+            # the same goods into the slot (e.g. qianghuashi).
+            self.assertGreaterEqual(totals.get(gid, 0), count)
         roll_map = body[5]
         if roll_map is not None:
             assoc = roll_map.get('__assoc__', roll_map)
@@ -357,6 +393,52 @@ class LifecycleTest(unittest.TestCase):
         row = self.store.get_role_juqing(str(self.role_id))
         self.assertFalse(row['pending_award'])
         self.assertGreater(len(staged), 0)
+
+    def test_partial_kills_stage_nothing(self):
+        self.challenge(1)
+        cfg = self.cfg.juqing_row(self.CHAPTER)
+        mid, _ = cfg['complete'][0]
+        frames = [amf3.decode(bytes(f)[4:])
+                  for f in self.sess._juqing_kill_progress(self.role(),
+                                                           mid)]
+        # No progress push (Java sends none per kill) and no victory.
+        self.assertEqual(frames, [])
+        row = self.store.get_role_juqing(str(self.role_id))
+        self.assertFalse(row['pending_award'])
+        self.assertEqual(self.call('juqing_lingqu', [64012, None]),
+                         [['64012', [0, 83007]]])
+
+    def test_daily_reset_keeps_permanent_progress(self):
+        self.challenge(1)
+        self.complete_chapter()
+        self.next_day()
+        info = self.call('juqing_info')
+        body = info[0][1][1]
+        self.assertEqual(body[0], 1)  # highest persists
+        self.assertIsNone(body[1])  # daily cleared
+        self.assertIsNotNone(body[2])  # best time persists
+
+    def test_victory_reply_carries_full_candidate_set(self):
+        self.challenge(1)
+        frames = self.complete_chapter()
+        body = [f for f in frames if f[0] == '64003'][0][1]
+        cands = body[7]
+        self.assertIsInstance(cands, list)
+        self.assertGreater(len(cands), 1)  # all rollItems candidates
+        for formart in cands:
+            assoc = formart.get('__assoc__', formart)
+            self.assertIn(assoc['0'], self.ROLL_GOODS)
+            self.assertEqual(assoc['7'], 1)  # chapter roll bind
+
+    def test_fixed_grants_keep_cell_bind(self):
+        self.challenge(1)
+        self.complete_chapter()
+        self.call('juqing_lingqu', [64012, None])
+        slots = self.store.get_role_bag_slots(self.role_id, -1000000,
+                                              1000000)
+        binds = {(s['goods_id'], s.get('bind')) for s in slots}
+        self.assertIn(('qianghuashi', 1), binds)
+        self.assertIn(('bscl', 1), binds)
 
     def test_claim_without_stage_is_rejected(self):
         self.assertEqual(self.call('juqing_lingqu', [64012, None]),
@@ -437,7 +519,7 @@ class LifecycleTest(unittest.TestCase):
         self.store.update_character_state(self.role_id, lingshi=50)
         self.sess = self.session()
         self.assertEqual(self.call('juqing_accelerate', [64007, None]),
-                         [['64007', [1, 1]]])
+                         [['64007', [1, 1, 5]]])
         self.assertEqual(self.role()['lingshi'], 45)
         awards = self.call('juqing_award')
         self.assertEqual(len(awards[0][1]), 1)

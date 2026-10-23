@@ -76,7 +76,24 @@ class JuqingTest(unittest.TestCase):
 
 class ZuwufubenTest(unittest.TestCase):
     def test_info_fresh_role_shape(self):
-        self.assertEqual(dispatch(CMD_ZUWUFUBEN),
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        store = Store(os.path.join(tmp.name, 't.db'))
+        self.addCleanup(store.close)
+        store.create_account('hero', 'pw')
+        store.create_character('hero', 'fu1304', 'Wukong', level=30)
+        sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    store.list_roles(u, s)],
+            server_start_ms=0,
+            get_role_zuwufuben=store.get_role_zuwufuben,
+            save_role_zuwufuben=store.save_role_zuwufuben,
+            config=None)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.zuwufuben_info()
+        frames = out if isinstance(out, tuple) else (out,)
+        self.assertEqual([amf3.decode(bytes(f)[4:]) for f in frames],
                          [['108001', [1, [0, [['1', 0, 1]], None]]]])
 
 

@@ -3563,6 +3563,147 @@ class GameConfig:
             'cishu': str(row.get('cishu') or ''),
         }
 
+    def zuwu_fuben_table(self):
+        """ZuWuFuBen.jat rows keyed by mainid (str); empty when absent."""
+        if getattr(self, '_zuwufuben', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZuWuFuBen.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zuwu fuben table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('mainid') is not None:
+                    table[str(row['mainid'])] = row
+            self._zuwufuben = table
+        return self._zuwufuben
+
+    def zuwu_fuben_row(self, dungeon_id):
+        """Normalized clan-dungeon row, or None when unconfigured.
+
+        Key mapping from ZuWuFuBenConfigExportServiceImpl bytecode:
+        map->mapid, initial(x_y)->position, openrenwu->level,
+        time->expire int (raw), gold->sweep gold, complete(mon:count)->
+        killMonsterMap, gditem->fixed goods gid:count, zubao1+jilv1->
+        lottery drop, boss/wuhunid/amount kept for the stage copy.
+        """
+        row = self.zuwu_fuben_table().get(str(dungeon_id))
+        if row is None:
+            return None
+        try:
+            pos = [int(v) for v in str(row.get('initial') or '').split('_')]
+        except (TypeError, ValueError):
+            pos = []
+        fixed = []
+        for part in str(row.get('gditem') or '').split(';'):
+            cells = part.split(':')
+            if len(cells) >= 2 and str(cells[0]).strip():
+                try:
+                    fixed.append([str(cells[0]).strip(), int(cells[1]),
+                                int(cells[2]) if len(cells) > 2 else 0])
+                except (TypeError, ValueError):
+                    continue
+        try:
+            rate = float(str(row.get('jilv1') or '').strip() or 0)
+        except (TypeError, ValueError):
+            rate = 0.0
+        return {
+            'id': str(row.get('mainid')),
+            'map': str(row.get('map') or ''),
+            'pos': pos[:2] if len(pos) >= 2 else [],
+            'level': config_int(row.get('openrenwu')),
+            'expire_min': config_int(row.get('time')),
+            'gold': config_int(row.get('gold')),
+            'wanted': self._juqing_pairs(row.get('complete')),
+            'fixed_goods': fixed,
+            'zubao1': str(row.get('zubao1') or '').strip() or None,
+            'jilv1': rate,
+            'wuhunid': str(row.get('wuhunid') or '').strip() or None,
+            'boss': str(row.get('boss') or ''),
+            'amount': config_int(row.get('amount')),
+        }
+
+    def zuwu_goumai_table(self):
+        """ZuWuCiShuGouMai.jat {buyIndex: yuanbao}; empty when absent."""
+        if getattr(self, '_zuwugoumai', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZuWuCiShuGouMai.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zuwu goumai table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('cishu') is not None:
+                    try:
+                        table[int(row['cishu'])] = int(row.get('yuanbao') or 0)
+                    except (TypeError, ValueError):
+                        continue
+            self._zuwugoumai = table
+        return self._zuwugoumai
+
+    def zuwu_goumai_price(self, buy_index):
+        """Yuanbao cost of the nth bought attempt, or None when unlisted."""
+        try:
+            return self.zuwu_goumai_table().get(int(buy_index))
+        except (TypeError, ValueError):
+            return None
+
+    def vip_zuwu_cishu(self, vip_level):
+        """VipConfig.getZuwuFubenCishu buy cap for a level; 0 when absent."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+        except (TypeError, ValueError):
+            return 0
+        if row is None:
+            row = self.vip_table().get(0, {})
+        return config_int((row or {}).get('zuwucishu'))
+
+    def vip_zuwu_time_ms(self, vip_level):
+        """VipConfig.getZuwuFubenTime sweep millis (zuwutime seconds)."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+        except (TypeError, ValueError):
+            return 0
+        if row is None:
+            row = self.vip_table().get(0, {})
+        return config_int((row or {}).get('zuwutime')) * 1000
+
+    def zuwu_shuxing_table(self):
+        """ZuWuShuxing.jat rows keyed by guardian id; empty if absent."""
+        if getattr(self, '_zuwushuxing', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZuWuShuxing.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zuwu shuxing table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('id') is not None:
+                    table[str(row['id'])] = row
+            self._zuwushuxing = table
+        return self._zuwushuxing
+
+    def goods_is_xuni(self, goods_id):
+        """GoodsConfig.isXuni (the goods.jat xuni cell); False when unknown."""
+        row = self._goods_table().get(str(goods_id))
+        if row is None:
+            return False
+        cell = str(row.get('xuni') or '').strip().lower()
+        if cell in ('1', 'true', 'yes'):
+            return True
+        if cell in ('', '0', 'false', 'no'):
+            return False
+        try:
+            return int(float(cell)) != 0
+        except (TypeError, ValueError):
+            return False
+
     def chat_level(self):
         """chat_level from config/localization.properties; 0 (no gate) when unreadable."""
         path = os.path.join(self.config_dir, '..', 'localization.properties')

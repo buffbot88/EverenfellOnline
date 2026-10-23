@@ -138,6 +138,12 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_role_bag_slots=self.server.get_role_bag_slots,
             get_role_bag_state=self.server.get_role_bag_state,
             get_role_bag_dummy=self.server.get_role_bag_dummy,
+            add_role_bag_dummy=self.server.add_role_bag_dummy,
+            get_role_zuwufuben=self.server.get_role_zuwufuben,
+            save_role_zuwufuben=self.server.save_role_zuwufuben,
+            get_role_zuwu=self.server.get_role_zuwu,
+            list_role_zuwu=self.server.list_role_zuwu,
+            save_role_zuwu=self.server.save_role_zuwu,
             get_role_bag_slot=self.server.get_role_bag_slot,
             get_role_bag_slot_by_bag_id=self.server.get_role_bag_slot_by_bag_id,
             update_role_bag_slot=self.server.update_role_bag_slot,
@@ -193,6 +199,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
         finally:
             try:
                 sess._juqing_on_disconnect()
+            except Exception:
+                pass
+            try:
+                sess._zuwu_on_disconnect()
             except Exception:
                 pass
             with self.server.sessions_lock:
@@ -306,6 +316,12 @@ def main():
     tcpd.get_role_buyback_all = store.get_role_buyback_all
     tcpd.get_role_buyback = store.get_role_buyback
     tcpd.get_role_bag_dummy = store.get_role_bag_dummy
+    tcpd.add_role_bag_dummy = store.add_role_bag_dummy
+    tcpd.get_role_zuwufuben = store.get_role_zuwufuben
+    tcpd.save_role_zuwufuben = store.save_role_zuwufuben
+    tcpd.get_role_zuwu = store.get_role_zuwu
+    tcpd.list_role_zuwu = store.list_role_zuwu
+    tcpd.save_role_zuwu = store.save_role_zuwu
     tcpd.insert_role_buyback = store.insert_role_buyback
     tcpd.delete_role_buyback = store.delete_role_buyback
     tcpd.get_role_prop = store.get_role_prop

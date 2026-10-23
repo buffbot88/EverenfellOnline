@@ -306,6 +306,29 @@ CREATE TABLE IF NOT EXISTS role_juqingfuben (
   pending_award TEXT,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Clan-dungeon progress (RoleZuwufuben: highest cleared dungeon, daily
+-- remaining attempts, bought attempts, sweep state, daily touch).
+CREATE TABLE IF NOT EXISTS role_zuwufuben (
+  role_id INTEGER PRIMARY KEY,
+  pass_max_id INTEGER,
+  everyday_pass_data TEXT,
+  everyday_time INTEGER,
+  buy_count_data TEXT,
+  saodang_data TEXT,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Activated clan guardians (RoleZuwu subset: guardian id, level, exp,
+-- jieshu tier, fail count; jihuoZuwu creates level-1 rows on first clear).
+CREATE TABLE IF NOT EXISTS role_zuwu (
+  role_id INTEGER NOT NULL,
+  zuwu_id TEXT NOT NULL,
+  level INTEGER DEFAULT 1,
+  exp INTEGER DEFAULT 0,
+  jieshu INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  PRIMARY KEY(role_id, zuwu_id),
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Kapai reward states (per-entry [got, canClaim] markers backing 121001;
 -- card counts themselves live in role_bag_dummy like Java's getCount).
 CREATE TABLE IF NOT EXISTS role_kapai (
@@ -1038,6 +1061,99 @@ class Store:
                 f' VALUES(?,{placeholders})'
                 f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_zuwufuben(self, role_id):
+        """Clan-dungeon row for a role, or None when never entered."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT pass_max_id, everyday_pass_data, everyday_time,'
+                ' buy_count_data, saodang_data'
+                ' FROM role_zuwufuben WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_zuwufuben(self, role_id, **fields):
+        """Upsert a role's clan-dungeon row; only known columns."""
+        allowed = {'pass_max_id', 'everyday_pass_data', 'everyday_time',
+                   'buy_count_data', 'saodang_data'}
+        if not fields or set(fields) - allowed:
+            raise ValueError(
+                f'unknown zuwufuben fields: {sorted(set(fields) - allowed)}')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_zuwufuben(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_zuwu(self, role_id, zuwu_id):
+        """One activated clan guardian, or None when never activated."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT zuwu_id, level, exp, jieshu, fail_count'
+                ' FROM role_zuwu WHERE role_id=? AND zuwu_id=?',
+                (str(role_id), str(zuwu_id))).fetchone()
+            return dict(row) if row else None
+
+    def list_role_zuwu(self, role_id):
+        """All activated clan guardians of a role."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT zuwu_id, level, exp, jieshu, fail_count'
+                ' FROM role_zuwu WHERE role_id=?',
+                (str(role_id),)).fetchall()
+            return [dict(r) for r in rows]
+
+    def save_role_zuwu(self, role_id, zuwu_id, **fields):
+        """Upsert one clan guardian; only known columns."""
+        allowed = {'level', 'exp', 'jieshu', 'fail_count'}
+        if set(fields) - allowed:
+            raise ValueError(
+                f'unknown zuwu fields: {sorted(set(fields) - allowed)}')
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO role_zuwu(role_id, zuwu_id) VALUES(?,?)'
+                ' ON CONFLICT(role_id, zuwu_id) DO NOTHING',
+                (str(role_id), str(zuwu_id)))
+            for key, val in fields.items():
+                self.db.execute(
+                    f'UPDATE role_zuwu SET {key}=?'
+                    ' WHERE role_id=? AND zuwu_id=?',
+                    (val, str(role_id), str(zuwu_id)))
+            self.db.commit()
+            return True
+
+    def add_role_bag_dummy(self, role_id, goods_id, count):
+        """Increment a bag-dummy count (Java bagdummy addGoods)."""
+        try:
+            delta = int(count)
+        except (TypeError, ValueError):
+            return False
+        if delta <= 0 or not str(goods_id or '').strip():
+            return False
+        gid = str(goods_id)
+        with self.lock:
+            row = self.db.execute(
+                'SELECT goods_count FROM role_bag_dummy'
+                ' WHERE role_id=? AND goods_id=?',
+                (str(role_id), gid)).fetchone()
+            if row is None:
+                self.db.execute(
+                    'INSERT INTO role_bag_dummy(id, role_id, goods_id,'
+                    ' goods_count) VALUES(?,?,?,?)',
+                    (f'{role_id}:{gid}', str(role_id), gid, delta))
+            else:
+                self.db.execute(
+                    'UPDATE role_bag_dummy SET goods_count=goods_count+?'
+                    ' WHERE role_id=? AND goods_id=?',
+                    (delta, str(role_id), gid))
             self.db.commit()
             return True
 

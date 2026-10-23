@@ -198,6 +198,12 @@ CMD_JUQING_ONEKEY = 64013
 CMD_VIP = 62000
 CMD_ZUWU = 111000
 CMD_ZUWUFUBEN = 108001
+CMD_ZUWU_ENTER = 108002
+CMD_ZUWU_SAODANG = 108004
+CMD_ZUWU_QUIT = 108006
+CMD_ZUWU_BUY = 108009
+CMD_ZUWU_REFRESH = 108010
+CMD_ZUWU_BUYALL = 108011
 CMD_ROLE_SETTINGS = 13000
 CMD_SETTING_QUICKBAR = 13001
 CMD_SETTING_PANEL = 13002
@@ -769,6 +775,9 @@ class Session:
                  get_role_online_reward=None, save_role_online_reward=None,
                  get_role_husong=None, save_role_husong=None,
                  get_role_juqing=None, save_role_juqing=None,
+                 get_role_zuwufuben=None, save_role_zuwufuben=None,
+                 get_role_zuwu=None, list_role_zuwu=None,
+                 save_role_zuwu=None, add_role_bag_dummy=None,
                  get_role_jianding=None, save_role_jianding=None,
                  save_role_vip=None, get_role_vip_kaifu=None,
                  save_role_vip_kaifu=None,
@@ -920,6 +929,15 @@ class Session:
         self.get_role_juqing = get_role_juqing or (lambda r: None)
         self.save_role_juqing = save_role_juqing or \
             (lambda *a, **k: False)
+        self.get_role_zuwufuben = get_role_zuwufuben or (lambda r: None)
+        self.save_role_zuwufuben = save_role_zuwufuben or \
+            (lambda *a, **k: False)
+        self.get_role_zuwu = get_role_zuwu or (lambda r, z: None)
+        self.list_role_zuwu = list_role_zuwu or (lambda r: [])
+        self.save_role_zuwu = save_role_zuwu or \
+            (lambda *a, **k: False)
+        self.add_role_bag_dummy = add_role_bag_dummy or \
+            (lambda *a: False)
         self.update_role_bag_slot = update_role_bag_slot or (lambda *a, **k: False)
         self.delete_role_bag_slot = delete_role_bag_slot or (lambda *a: False)
         self.move_role_bag_slot = move_role_bag_slot or (lambda *a: False)
@@ -1027,6 +1045,10 @@ class Session:
         # Meditation: role id -> {'daZuo': bool, 'target': role id or None}, and
         # state changes queued by other connections, run under this tick.
         self._dazuo = {}
+        # Clan-dungeon attempts: role id -> {'dungeon': id, 'kills': {...}}.
+        # Java holds this in the stage copy; the shared-world port keeps
+        # it on the session and drops it on quit/expiry/disconnect.
+        self._zuwu_attempt = {}
         self._ops = []
 
     def feed(self, data: bytes):
@@ -1421,6 +1443,18 @@ class Session:
             return self.zuwu_info()
         if cmd_num == CMD_ZUWUFUBEN:
             return self.zuwufuben_info()
+        if cmd_num == CMD_ZUWU_ENTER:
+            return self.zuwu_enter(msg)
+        if cmd_num == CMD_ZUWU_SAODANG:
+            return self.zuwu_saodang(msg)
+        if cmd_num == CMD_ZUWU_QUIT:
+            return self.zuwu_quit()
+        if cmd_num == CMD_ZUWU_BUY:
+            return self.zuwu_buy(msg)
+        if cmd_num == CMD_ZUWU_REFRESH:
+            return self.zuwu_refresh(msg)
+        if cmd_num == CMD_ZUWU_BUYALL:
+            return self.zuwu_buy_all()
         if cmd_num == CMD_BUFF:
             return self.buff_query(msg)
         if cmd_num == CMD_ZUOQI_HP:
@@ -1746,11 +1780,15 @@ class Session:
                 frame(amf3_encode(['13000', setting_values])),
                 self.money_info(role),
             )
-        try:
-            self._juqing_on_enter(_wire_id(role))
-        except Exception:
-            pass
-        return (*bootstrap, frame(amf3_encode(['10003', result])))
+            try:
+                self._juqing_on_enter(_wire_id(role))
+            except Exception:
+                pass
+            try:
+                self._zuwu_on_enter(_wire_id(role))
+            except Exception:
+                pass
+            return (*bootstrap, frame(amf3_encode(['10003', result])))
 
     def apply_stage(self, msg):
         role_id = str(self.safe(self.safe(msg, 1, []), 0, '') or '')
@@ -2436,6 +2474,7 @@ class Session:
                     frames.extend(self._record_drop_result(target, actor)
                                   or [])
                     frames.extend(self._juqing_kill_frames(actor, target))
+                    frames.extend(self._zuwu_kill_frames(actor, target))
                 if target['kind'] == 'role':
                     try:
                         self._juqing_death_progress(target.get('role'))
@@ -16387,12 +16426,15 @@ class Session:
     def zuwu_info(self):
         """Command 111000: [entries[], wuhunsuipianCount].
 
-        Port of ZuwuServiceImpl.getInfo with no owned zuwu: one mockZuwuInfo
-        [id,0,0,0,type] per ZuWuShuxing type, then the fragment bag count
-        (0: no bag data is migrated).
+        Port of ZuwuServiceImpl.getInfo: owned guardians render their
+        rows, the rest mock [id,0,0,0,type] per ZuWuShuxing type, then
+        the wuhunsuipian bagdummy count.
         """
-        entries = (self.config.zuwu_info()[0] if self.config is not None else [])
-        return frame(amf3_encode(['111000', [entries, 0]]))
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return frame(amf3_encode(['111000', [[], 0]]))
+        return self._zuwu_111000_frame(role)
 
     def _juqing_actor(self, msg):
         """Role for a story-dungeon request, else None."""
@@ -17281,12 +17323,832 @@ class Session:
     def zuwufuben_info(self):
         """Command 108001: [1, [passMax, everyday[], saodangOrNull]].
 
-        ZuwufubenServiceImpl.getInfo for a fresh role: passMax 0, one
-        everyday entry ['1', 0, 1], no saodang (no role_zuwufuben
-        table is migrated, so every role is fresh).
+        ZuwufubenServiceImpl.getInfo: load-or-create the row, run the
+        daily refresh, settle an elapsed sweep (the schedule's
+        saoDangFinish work, so an offline sweep never blocks the list),
+        then answer passMax, the [[idStr, used, total]] rows in stored
+        order, and [sdId, endMs, autoPass] or null.
         """
+        from . import zuwu as zuwu_lib
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_ensure(rid)
+        self._zuwu_settle(rid, row)
+        row = self._zuwu_row(rid)
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        sao = None
+        if zuwu_lib.is_sweeping(vo):
+            sao = [vo['sdid'], zuwu_lib.sweep_end_ms(vo),
+                   bool(vo['autopass'])]
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
         return frame(amf3_encode(
-            ['108001', [1, [0, [['1', 0, 1]], None]]]))
+            ['108001', [1, [pass_max, zuwu_lib.info_rows(everyday, buy),
+                           sao]]]))
+
+    def _zuwu_cfg(self, dungeon_id):
+        """Normalized clan-dungeon row, or None when unconfigured."""
+        try:
+            return self.config.zuwu_fuben_row(int(dungeon_id)) \
+                if self.config is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _zuwu_row(self, rid):
+        """Clan-dungeon entity, defaulted when the role never entered."""
+        row = self.get_role_zuwufuben(rid)
+        if row is None:
+            return {'pass_max_id': None, 'everyday_pass_data': None,
+                    'everyday_time': None, 'buy_count_data': None,
+                    'saodang_data': None}
+        return dict(row)
+
+    def _zuwu_save(self, rid, row):
+        """Persist the clan-dungeon entity (skips None columns)."""
+        fields = {k: v for k, v in row.items() if v is not None}
+        if fields:
+            self.save_role_zuwufuben(rid, **fields)
+
+    def _zuwu_ensure(self, rid):
+        """Load-or-create the entity (online() for a missing row).
+
+        A fresh row clears dungeon 1 (everyday {"1": 1}, bought
+        {"1": 0}), like the Java insert; every access then runs the
+        daily refresh.
+        """
+        from . import zuwu as zuwu_lib
+        row = self._zuwu_row(rid)
+        if self.get_role_zuwufuben(rid) is None:
+            now = int(self._world_now_ms())
+            row['pass_max_id'] = 0
+            row['everyday_pass_data'] = zuwu_lib.format_counts({1: 1})
+            row['everyday_time'] = now
+            row['buy_count_data'] = zuwu_lib.format_counts({1: 0})
+            row['saodang_data'] = zuwu_lib.encode_sao(None, 0, 0)
+            self._zuwu_save(rid, row)
+        self._zuwu_refresh_daily(rid, row)
+        return row
+
+    def _zuwu_refresh_daily(self, rid, row):
+        """refresh(): new day re-arms 1..passMax+1 and clears the sweep."""
+        from . import zuwu as zuwu_lib
+        if self._day_is_today(row.get('everyday_time'),
+                              int(self._world_now_ms())):
+            return row
+        try:
+            top = int(row.get('pass_max_id') or 0) + 1
+        except (TypeError, ValueError):
+            top = 1
+        row['everyday_pass_data'] = zuwu_lib.format_counts(
+            {i: 1 for i in range(1, max(top, 1) + 1)})
+        row['buy_count_data'] = zuwu_lib.format_counts(
+            {i: 0 for i in range(1, max(top, 1) + 1)})
+        row['saodang_data'] = zuwu_lib.encode_sao(None, 0, 0)
+        row['everyday_time'] = int(self._world_now_ms())
+        self._zuwu_save(rid, row)
+        return row
+
+    def _zuwu_vip_level(self, role):
+        """RoleVipExportService.getRoleVipLevel (0 when unmigrated)."""
+        try:
+            vip = self.get_role_vip(role.get('id')) or {}
+        except Exception:
+            return 0
+        try:
+            return int(vip.get('vip_level') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zuwu_spend_yb(self, role, cost):
+        """account decrCheck/decr on YB (role lingshi); False when short."""
+        try:
+            balance = int(role.get('lingshi') or 0)
+        except (TypeError, ValueError):
+            return False
+        if balance < int(cost or 0):
+            return False
+        self.save_role_state(role.get('id'),
+                             lingshi=balance - int(cost or 0))
+        return True
+
+    def _zuwu_formart_model(self, role_id, model):
+        """One StoreGoodsOutput.formart2 record for a granted ItemModel.
+
+        Same 18 slots as bag_goods_map, sourced from the model (no bag
+        slot): id is the model id, slotNum 0, userRoleId the role.
+        """
+        try:
+            count = int(model.get('count') or 0)
+        except (TypeError, ValueError):
+            count = 0
+        try:
+            ilevel = int(model.get('item_level') or 0)
+        except (TypeError, ValueError):
+            ilevel = 0
+        try:
+            rare = int(model.get('rare_level') or 0)
+        except (TypeError, ValueError):
+            rare = 0
+        return {
+            '0': str(model.get('goods_id')), '1': model.get('id'),
+            '2': 0, '3': count, '4': str(role_id), '5': ilevel,
+            '6': rare, '7': int(model.get('bind') or 0),
+            '8': int(model.get('expire_time') or 0), '9': None,
+            '10': 0, '11': None, '12': 0, '13': '', '14': None,
+            '15': 0, '16': 0, '17': 0}
+
+    def _zuwu_grant_models(self, role, models):
+        """finishReward item routing + formart2 records.
+
+        xuni goods go to the bag dummy (addGoods), real goods stack into
+        the bag with mail overflow; every converted model is formatted,
+        like StoreGoodsOutput.formart2(models, roleId).
+        """
+        from . import juqing as juqing_lib
+        goods_table = self._juqing_goods_table()
+        items = []
+        for entry in models:
+            gid = entry[0]
+            try:
+                count = int(entry[1])
+            except (TypeError, ValueError):
+                continue
+            items.extend(juqing_lib.convert_item(
+                goods_table.get(str(gid)), gid, count, bind=0))
+        rid = _wire_id(role)
+        formarts = []
+        for item in items:
+            gid = str(item.get('goods_id') or '')
+            if not gid:
+                continue
+            if self.config is not None and self.config.goods_is_xuni(gid):
+                try:
+                    self.add_role_bag_dummy(rid, gid,
+                                          int(item.get('count') or 0))
+                except Exception:
+                    log.warning('conn %d: zuwu dummy grant %r failed',
+                                self.conn_id, gid, exc_info=True)
+            else:
+                try:
+                    self._juqing_grant_goods(role, rid, [], [item])
+                except Exception:
+                    log.warning('conn %d: zuwu bag grant %r failed',
+                                self.conn_id, gid, exc_info=True)
+            formarts.append(self._zuwu_formart_model(rid, item))
+        return formarts
+
+    def _zuwu_roll_models(self, cfg):
+        """finishReward drop list: fixed gditem + one zubao1 lottery win."""
+        from . import juqing as juqing_lib
+        from . import zuwu as zuwu_lib
+        fixed = [list(g) for g in cfg.get('fixed_goods') or []]
+        if cfg.get('zubao1') and \
+                zuwu_lib.lottery_open(cfg.get('jilv1')):
+            goods_table = self._juqing_goods_table()
+            zubao = self.config.zubao_table() \
+                if self.config is not None else {}
+            cands = juqing_lib.roll_candidates(
+                goods_table, zubao, cfg['zubao1'], 0)
+            pick = juqing_lib.roll_pick(cands)
+            if pick is not None:
+                fixed.append([pick['goods_id'], pick.get('count', 1), 0])
+        return fixed
+
+    def _zuwu_jihuo(self, role, wuhunid):
+        """roleZuwuExportService.jihuoZuwu: activate the guardian once.
+
+        Creates the level-1 RoleZuwu row (jieshu from ZuWuShuxing) and
+        pushes the refreshed 111000 list; already-owned guardians stay
+        untouched. Returns the push frames, or [] without a wuhun id.
+        """
+        if not wuhunid:
+            return []
+        rid = _wire_id(role)
+        try:
+            if self.get_role_zuwu(rid, wuhunid) is not None:
+                return []
+        except Exception:
+            return []
+        jieshu = 0
+        try:
+            shu = self.config.zuwu_shuxing_table().get(str(wuhunid)) \
+                if self.config is not None else None
+            jieshu = int((shu or {}).get('jieshu') or 0)
+        except (TypeError, ValueError):
+            jieshu = 0
+        try:
+            self.save_role_zuwu(rid, wuhunid, level=1, exp=0,
+                               jieshu=jieshu, fail_count=0)
+        except Exception:
+            log.warning('conn %d: zuwu jihuo %r failed', self.conn_id,
+                        wuhunid, exc_info=True)
+            return []
+        return [self._zuwu_111000_frame(role)]
+
+    def _zuwu_111000_frame(self, role):
+        """Current 111000 body: owned entries plus the fragment count."""
+        entries = []
+        kinds = {}
+        try:
+            kinds = dict(self.config.zuwu_table()) \
+                if self.config is not None else {}
+        except Exception:
+            kinds = {}
+        owned = {}
+        try:
+            for row in self.list_role_zuwu(_wire_id(role)) or []:
+                owned[str(row.get('zuwu_id'))] = row
+        except Exception:
+            owned = {}
+        try:
+            dummy = self.get_role_bag_dummy(_wire_id(role)) or []
+        except Exception:
+            dummy = []
+        frag = 0
+        for entry in dummy:
+            try:
+                if str(entry.get('goods_id')) == 'wuhunsuipian':
+                    frag += int(entry.get('goods_count') or 0)
+            except (TypeError, ValueError):
+                continue
+        seen = set()
+        for zid, data in owned.items():
+            try:
+                level = int(data.get('level') or 0)
+            except (TypeError, ValueError):
+                level = 0
+            entries.append([zid, level, 0, 0, 0])
+            seen.add(zid)
+        for kind, zid in sorted(kinds.items()):
+            if zid not in seen:
+                entries.append([zid, 0, 0, 0, kind])
+        return frame(amf3_encode(['111000', [entries, frag]]))
+
+    def zuwu_enter(self, msg):
+        """Command 108002 [dungeonId]: gates, dungeon entry, [1, id].
+
+        enterFuBen: unknown config answers nothing; the checked() gates
+        come first (in-copy 114008, sweeping 114003, level 1000,
+        locked 114001, no attempts 114002). Entry queues the
+        SC:APPLY_COPY equivalent (shared-world change_map + the 108007
+        [id, restMs] enter push), marks center, and replies [1, id].
+        """
+        from . import zuwu as zuwu_lib
+        args = self.safe(msg, 1, [])
+        try:
+            did = int(args[0]) if isinstance(args, list) else int(args)
+        except (TypeError, ValueError):
+            did = 0
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_ensure(rid)
+        cfg = self._zuwu_cfg(did)
+        if cfg is None:
+            return None
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        err = zuwu_lib.check_enter(
+            vo.get('center') if vo else False,
+            zuwu_lib.is_sweeping(vo), role.get('level'), cfg['level'],
+            did, pass_max, everyday)
+        if err is not None:
+            return frame(amf3_encode(['108002', [0, err]]))
+        pos = cfg.get('pos') or []
+        frames = list(self.change_map(
+            rid, str(cfg.get('map') or role.get('map_id')),
+            int(pos[0]) if len(pos) > 0 else int(role.get('map_x') or 0),
+            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0)))
+        now = int(self._world_now_ms())
+        rest_ms = max(int(cfg.get('expire_min') or 0) * 60000, 1)
+        self._zuwu_attempt[rid] = {'dungeon': int(did), 'kills': {}}
+        row['saodang_data'] = zuwu_lib.encode_sao(
+            vo.get('sdid') if vo else None,
+            vo.get('start') if vo else 0, vo.get('chixu') if vo else 0,
+            vo.get('autopass') if vo else False, True)
+        row['everyday_time'] = now
+        self._zuwu_save(rid, row)
+        try:
+            self.stage_scheduler.cancel(f'zuwu_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        self.schedule_stage(f'zuwu_expire:{rid}', '108002',
+                            lambda: self._zuwu_expire(rid),
+                            delay=max(int(cfg.get('expire_min') or 0) * 60,
+                                      1),
+                            unit='SECONDS')
+        frames.append(frame(amf3_encode(['108007', [int(did), rest_ms]])))
+        frames.append(frame(amf3_encode(['108002', [1, int(did)]])))
+        return tuple(frames)
+
+    def _zuwu_expire(self, rid):
+        """Forced-leave timer: an unfinished attempt ends (S:EXPIRE_ZW).
+
+        The stage copy expires on its own clock; the bus side drops the
+        attempt marker and the center flag so the role can enter again.
+        The role keeps its map (no stagecontroll home routing is ported).
+        """
+        from . import zuwu as zuwu_lib
+        attempt = self._zuwu_attempt.pop(str(rid), None)
+        if attempt is None:
+            return None
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return None
+        role = roles[0] if roles else None
+        if role is None or str(_wire_id(role)) != str(rid):
+            return None
+        row = self._zuwu_row(rid)
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if vo is None:
+            return None
+        row['saodang_data'] = zuwu_lib.encode_sao(
+            vo.get('sdid'), vo.get('start'), vo.get('chixu'),
+            vo.get('autopass'), False)
+        self._zuwu_save(rid, row)
+        return None
+
+    def zuwu_quit(self):
+        """Command 108006: leave the dungeon, [1].
+
+        quitFuben clears center, persists, drops the attempt and expiry,
+        and answers [1] (the SC:APPLY_CHANG_MAP home routing needs the
+        unported stagecontroll history, so the role keeps its map).
+        """
+        from . import zuwu as zuwu_lib
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_row(rid)
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if vo is not None:
+            row['saodang_data'] = zuwu_lib.encode_sao(
+                vo.get('sdid'), vo.get('start'), vo.get('chixu'),
+                vo.get('autopass'), False)
+            self._zuwu_save(rid, row)
+        self._zuwu_attempt.pop(str(rid), None)
+        try:
+            self.stage_scheduler.cancel(f'zuwu_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        return frame(amf3_encode(['108006', [1]]))
+
+    def zuwu_saodang(self, msg):
+        """Command 108004 [dungeonId|null]: start a sweep.
+
+        saoDangFuben: a running sweep answers 114003; a null id sweeps
+        the lowest cleared dungeon with attempts left (114005 when
+        none); an explicit id needs unlock (114009) and attempts
+        (114002). The start burns one attempt, stages the vip-length
+        timer, and answers [1, id, endMs, autoPass].
+        """
+        from . import zuwu as zuwu_lib
+        args = self.safe(msg, 1, [])
+        raw = args[0] if isinstance(args, list) and args else args
+        if isinstance(args, list) and not args:
+            raw = None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_ensure(rid)
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if zuwu_lib.is_sweeping(vo):
+            return frame(amf3_encode(['108004', [0, zuwu_lib.ERR_SAODANGING]]))
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        if raw is None:
+            sid = zuwu_lib.first_sweep_id(everyday, pass_max)
+            if sid is None:
+                return frame(amf3_encode(
+                    ['108004', [0, zuwu_lib.ERR_NO_SAODANG_ID]]))
+            autopass = True
+        else:
+            try:
+                sid = int(raw)
+            except (TypeError, ValueError):
+                return frame(amf3_encode(
+                    ['108004', [0, zuwu_lib.ERR_SWEEP_LOCKED]]))
+            err = zuwu_lib.check_sweep_param(sid, pass_max, everyday)
+            if err is not None:
+                return frame(amf3_encode(['108004', [0, err]]))
+            autopass = False
+        duration = self.config.vip_zuwu_time_ms(
+            self._zuwu_vip_level(role)) if self.config is not None else 0
+        now = int(self._world_now_ms())
+        end = now + int(duration)
+        row['saodang_data'] = zuwu_lib.encode_sao(sid, now, int(duration),
+                                                  autopass)
+        row['everyday_time'] = now
+        everyday[int(sid)] = int(everyday.get(int(sid), 0)) - 1
+        row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+        self._zuwu_save(rid, row)
+        try:
+            self.stage_scheduler.cancel(f'zuwu_sweep:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        self.schedule_stage(f'zuwu_sweep:{rid}', '108004',
+                            lambda: self._zuwu_sweep_timer(rid),
+                            delay=int(duration), unit='MILLISECONDS')
+        return frame(amf3_encode(
+            ['108004', [1, int(sid), end, bool(autopass)]]))
+
+    def _zuwu_sweep_timer(self, rid):
+        """Sweep clock (ZW:FUBENSAODANGFINISH): settle and push rewards."""
+        row = self._zuwu_row(rid)
+        frames = self._zuwu_settle(rid, row)
+        if not frames:
+            return None
+        return tuple(frames)
+
+    def _zuwu_settle(self, rid, row, force=False):
+        """saoDangFinish: grant an elapsed sweep, chain auto-pass links.
+
+        Stale-day and idle calls are no-ops. A manual sweep grants and
+        clears; an auto sweep grants, then advances to the next dungeon
+        with attempts left (burning one attempt and re-arming the timer)
+        until the chain ends. Returns the 108003/108005 push frames.
+        Each link is persisted before its push, so a repeated settle
+        can never grant twice. force grants a running manual sweep
+        early (108010 refresh path).
+        """
+        from . import zuwu as zuwu_lib
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return []
+        role = roles[0] if roles else None
+        if role is None or str(_wire_id(role)) != str(rid):
+            return []
+        if not self._day_is_today(row.get('everyday_time'),
+                                  int(self._world_now_ms())):
+            return []
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if not zuwu_lib.is_sweeping(vo):
+            return []
+        if not force and \
+                zuwu_lib.sweep_end_ms(vo) > int(self._world_now_ms()):
+            return []
+        cfg = self._zuwu_cfg(vo['sdid'])
+        if cfg is None:
+            row['saodang_data'] = zuwu_lib.encode_sao(None, 0, 0)
+            self._zuwu_save(rid, row)
+            return []
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+        used, _total = zuwu_lib.used_total(everyday, buy, vo['sdid'])
+        models = self._zuwu_roll_models(cfg)
+        formarts = self._zuwu_grant_models(role, models)
+        if not vo['autopass']:
+            row['saodang_data'] = zuwu_lib.encode_sao(None, 0, 0)
+            self._zuwu_save(rid, row)
+            return [frame(amf3_encode(
+                ['108003', [int(cfg['id']), formarts]]))]
+        self._zuwu_refresh_daily(rid, row)
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        nxt = zuwu_lib.first_sweep_id(everyday, pass_max)
+        end = 0
+        if nxt is not None:
+            duration = self.config.vip_zuwu_time_ms(
+                self._zuwu_vip_level(role)) if self.config is not None else 0
+            now = int(self._world_now_ms())
+            end = now + int(duration)
+            vo = {'sdid': int(nxt), 'start': now, 'chixu': int(duration),
+                  'autopass': True, 'center': bool(vo.get('center'))}
+        out = [frame(amf3_encode(
+            ['108005', [int(cfg['id']), nxt,
+                        [nxt, end], formarts, used]]))]
+        if nxt is not None:
+            row['saodang_data'] = zuwu_lib.encode_sao(
+                vo['sdid'], vo['start'], vo['chixu'], True,
+                vo.get('center'))
+            row['everyday_time'] = int(self._world_now_ms())
+            everyday[int(nxt)] = int(everyday.get(int(nxt), 0)) - 1
+            row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+            self._zuwu_save(rid, row)
+            try:
+                self.stage_scheduler.cancel(f'zuwu_sweep:{rid}')
+            except (AttributeError, KeyError, ValueError):
+                pass
+            self.schedule_stage(
+                f'zuwu_sweep:{rid}', '108005',
+                lambda: self._zuwu_sweep_timer(rid),
+                delay=int(vo['chixu']), unit='MILLISECONDS')
+        else:
+            row['saodang_data'] = zuwu_lib.encode_sao(None, 0, 0)
+            self._zuwu_save(rid, row)
+        return out
+
+    def zuwu_refresh(self, msg):
+        """Command 108010 [dungeonId]: finish a sweep now for gold.
+
+        refreshFubenCd: idle answers 114007, auto-pass 114010, a wrong
+        id [0, 0.0]; otherwise the gold decrCheck/decr (1002 when
+        short) runs first, the sweep settles with its 108003 push, the
+        timer is cancelled, ZuWuFuBenRefreshEvent is skipped (no ported
+        subscriber), and [1] answers.
+        """
+        from . import zuwu as zuwu_lib
+        args = self.safe(msg, 1, [])
+        try:
+            did = int(args[0]) if isinstance(args, list) else int(args)
+        except (TypeError, ValueError):
+            did = 0
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_row(rid)
+        if row.get('saodang_data') is None and \
+                self.get_role_zuwufuben(rid) is None:
+            return frame(amf3_encode(
+                ['108010', [0, zuwu_lib.ERR_NOT_SAODANG]]))
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if not zuwu_lib.is_sweeping(vo):
+            return frame(amf3_encode(
+                ['108010', [0, zuwu_lib.ERR_NOT_SAODANG]]))
+        if vo['autopass']:
+            return frame(amf3_encode(
+                ['108010', [0, zuwu_lib.ERR_AUTO_PASS]]))
+        if int(did) != int(vo['sdid']):
+            return frame(amf3_encode(['108010', [0, 0.0]]))
+        cfg = self._zuwu_cfg(vo['sdid'])
+        if cfg is None:
+            return frame(amf3_encode(
+                ['108010', [0, zuwu_lib.ERR_NOT_SAODANG]]))
+        if not self._zuwu_spend_yb(role, cfg['gold']):
+            return frame(amf3_encode(
+                ['108010', [0, zuwu_lib.ERR_YB_NOT_ENOUGH]]))
+        frames = self._zuwu_settle(rid, row, force=True)
+        try:
+            self.stage_scheduler.cancel(f'zuwu_sweep:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        frames.append(frame(amf3_encode(['108010', [1]])))
+        return tuple(frames)
+
+    def zuwu_buy(self, msg):
+        """Command 108009 [dungeonId]: buy one more daily attempt.
+
+        buyFightCount: locked dungeons answer 114004, the vip cap 114006,
+        the gold decrCheck/decr runs first (1002 when short); bought and
+        remaining both grow by one and [1, id, used, total] answers.
+        """
+        from . import zuwu as zuwu_lib
+        args = self.safe(msg, 1, [])
+        try:
+            did = int(args[0]) if isinstance(args, list) else int(args)
+        except (TypeError, ValueError):
+            did = 0
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_ensure(rid)
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        if int(did) > pass_max + 1:
+            return frame(amf3_encode(
+                ['108009', [0, zuwu_lib.ERR_BUY_LOCKED]]))
+        buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+        cap = self.config.vip_zuwu_cishu(self._zuwu_vip_level(role)) \
+            if self.config is not None else 0
+        if int(buy.get(int(did), 0)) + 1 > int(cap):
+            return frame(amf3_encode(
+                ['108009', [0, zuwu_lib.ERR_BUY_MAX]]))
+        price = self.config.zuwu_goumai_price(
+            int(buy.get(int(did), 0)) + 1) if self.config is not None else None
+        if price is None:
+            return frame(amf3_encode(
+                ['108009', [0, zuwu_lib.ERR_BUY_MAX]]))
+        if not self._zuwu_spend_yb(role, price):
+            return frame(amf3_encode(
+                ['108009', [0, zuwu_lib.ERR_YB_NOT_ENOUGH]]))
+        buy[int(did)] = int(buy.get(int(did), 0)) + 1
+        row['buy_count_data'] = zuwu_lib.format_counts(buy)
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        everyday[int(did)] = int(everyday.get(int(did), 0)) + 1
+        row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+        self._zuwu_save(rid, row)
+        used, total = zuwu_lib.used_total(everyday, buy, did)
+        return frame(amf3_encode(['108009', [1, int(did), used, total]]))
+
+    def zuwu_buy_all(self):
+        """Command 108011: buy every remaining attempt the vip cap allows.
+
+        buyFightCountAll: no clears answers [0]; no buyable dungeon
+        answers [0, 114006]; otherwise the summed gold decrCheck/decr
+        runs first (1002 when short) and [1, [[id, used, total]]] answers.
+        """
+        from . import zuwu as zuwu_lib
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._zuwu_ensure(rid)
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        if pass_max == 0:
+            return frame(amf3_encode(['108011', [0]]))
+        buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        cap = self.config.vip_zuwu_cishu(self._zuwu_vip_level(role)) \
+            if self.config is not None else 0
+        total_cost = 0
+        for did in range(1, pass_max + 2):
+            if did > pass_max + 1:
+                break
+            if int(buy.get(did, 0)) + 1 > int(cap):
+                continue
+            price = self.config.zuwu_goumai_price(
+                int(buy.get(did, 0)) + 1) \
+                if self.config is not None else None
+            if price is None:
+                continue
+            total_cost += int(price)
+            buy[did] = int(buy.get(did, 0)) + 1
+            everyday[did] = int(everyday.get(did, 0)) + 1
+        if total_cost <= 0:
+            return frame(amf3_encode(
+                ['108011', [0, zuwu_lib.ERR_BUY_MAX]]))
+        if not self._zuwu_spend_yb(role, total_cost):
+            return frame(amf3_encode(
+                ['108011', [0, zuwu_lib.ERR_YB_NOT_ENOUGH]]))
+        row['buy_count_data'] = zuwu_lib.format_counts(buy)
+        row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+        self._zuwu_save(rid, row)
+        return frame(amf3_encode(
+            ['108011', [1, zuwu_lib.info_rows(everyday, buy)]]))
+
+    def _zuwu_on_enter(self, rid):
+        """handleLogin: a running sweep restarts its clock at login."""
+        from . import zuwu as zuwu_lib
+        row = self._zuwu_row(rid)
+        if row.get('saodang_data') is None:
+            return
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        if not zuwu_lib.is_sweeping(vo):
+            return
+        row['saodang_data'] = zuwu_lib.encode_sao(
+            vo.get('sdid'), int(self._world_now_ms()), vo.get('chixu'),
+            vo.get('autopass'), vo.get('center'))
+        self._zuwu_save(rid, row)
+
+    def _zuwu_on_disconnect(self):
+        """handleLogout: bank the sweep remainder and release the stage."""
+        from . import zuwu as zuwu_lib
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return
+        now = int(self._world_now_ms())
+        for role in roles or []:
+            try:
+                rid = _wire_id(role)
+            except Exception:
+                continue
+            self._zuwu_attempt.pop(str(rid), None)
+            row = self._zuwu_row(rid)
+            if row.get('saodang_data') is None:
+                continue
+            vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+            if not zuwu_lib.is_sweeping(vo):
+                continue
+            row['saodang_data'] = zuwu_lib.encode_sao(
+                vo.get('sdid'), vo.get('start'),
+                zuwu_lib.offline_chixu(vo, now),
+                vo.get('autopass'), False)
+            self._zuwu_save(rid, row)
+
+    def _zuwu_kill_frames(self, actor, dead_monster):
+        """Zuwu kill fan-out for one dead monster (role/pet killers)."""
+        killer_role = None
+        try:
+            if actor.get('kind') == 'role':
+                killer_role = actor.get('role')
+            elif actor.get('kind') == 'pet':
+                roles = self.get_roles(self.authed_user or '',
+                                       self.server_id or '')
+                killer_role = _find_role(roles, actor.get('owner'))
+        except Exception:
+            killer_role = None
+        if killer_role is None:
+            return []
+        tpl = dead_monster.get('template') or {}
+        try:
+            return self._zuwu_kill_progress(killer_role, tpl.get('id'))
+        except Exception:
+            return []
+
+    def _zuwu_kill_progress(self, owner_role, monster_tpl_id):
+        """ZuWuStageCopy.killMonster for shared-world dungeon kills.
+
+        Only the active attempt's wanted templates count; every kill
+        pushes 108008 like the stage copy, and reaching the wanted
+        total ends the copy (finishFuBen): unlock, rewards, 108003.
+        """
+        try:
+            rid = _wire_id(owner_role)
+        except Exception:
+            return []
+        attempt = self._zuwu_attempt.get(str(rid))
+        if attempt is None:
+            return []
+        cfg = self._zuwu_cfg(attempt.get('dungeon'))
+        if cfg is None:
+            return []
+        wanted = {str(mid): int(n) for mid, n in cfg.get('wanted') or []}
+        mid = str(monster_tpl_id)
+        if mid not in wanted:
+            return []
+        kills = dict(attempt.get('kills') or {})
+        kills[mid] = int(kills.get(mid, 0)) + 1
+        attempt['kills'] = kills
+        out = [frame(amf3_encode(['108008', mid]))]
+        if any(int(kills.get(m, 0)) < n for m, n in wanted.items()):
+            return out
+        out.extend(self._zuwu_victory(owner_role, rid, attempt, cfg))
+        return out
+
+    def _zuwu_victory(self, role, rid, attempt, cfg):
+        """finishFuBen: unlock, burn the attempt, grant, push 108003.
+
+        First clears advance passMax, activate the guardian (jihuoZuwu)
+        and open the next dungeon; every clear burns one attempt. The
+        fixed drops grant without the zubao lottery (finishReward is
+        called with lottery False); events have no ported subscribers
+        and are skipped like every other publish.
+        """
+        from . import zuwu as zuwu_lib
+        row = self._zuwu_row(rid)
+        vo = zuwu_lib.decode_sao(row.get('saodang_data'))
+        did = int(attempt.get('dungeon'))
+        try:
+            pass_max = int(row.get('pass_max_id') or 0)
+        except (TypeError, ValueError):
+            pass_max = 0
+        out = []
+        if did > pass_max:
+            out.extend(self._zuwu_jihuo(role, cfg.get('wuhunid')))
+            row['pass_max_id'] = did
+            everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+            buy = zuwu_lib.parse_counts(row.get('buy_count_data'))
+            everyday[did + 1] = 1
+            buy[did + 1] = 0
+            row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+            row['buy_count_data'] = zuwu_lib.format_counts(buy)
+        everyday = zuwu_lib.parse_counts(row.get('everyday_pass_data'))
+        everyday[did] = int(everyday.get(did, 0)) - 1
+        row['everyday_pass_data'] = zuwu_lib.format_counts(everyday)
+        if vo is not None:
+            row['saodang_data'] = zuwu_lib.encode_sao(
+                vo.get('sdid'), vo.get('start'), vo.get('chixu'),
+                vo.get('autopass'), False)
+        self._zuwu_save(rid, row)
+        formarts = self._zuwu_grant_models(
+            role, [list(g) for g in cfg.get('fixed_goods') or []])
+        self._zuwu_attempt.pop(str(rid), None)
+        try:
+            self.stage_scheduler.cancel(f'zuwu_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        out.append(frame(amf3_encode(['108003', [did, formarts]])))
+        return out
 
     def role_settings(self, msg):
         role_id = str(self.safe(msg, 1, '') or '')

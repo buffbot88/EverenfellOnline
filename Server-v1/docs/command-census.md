@@ -1,11 +1,11 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (228 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (239 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 
 - total Java numeric command IDs: 497
-- implemented: 185
+- implemented: 196
 - implemented-untested: 8
 - partial: 0
 - dispatched-no-direct-handler: 0
@@ -13,7 +13,8 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - inline-untested: 0
 - stub: 2
 - known-unhandled: 0
-- missing: 297
+- missing: 286
+- accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
 
@@ -27,7 +28,6 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 | --- | --- | --- | --- | --- | --- |
 | huodong | 0 | 0 | 0 | 38 | 38 |
 | gm | 1 | 0 | 0 | 24 | 25 |
-| friend | 0 | 0 | 0 | 17 | 17 |
 | pozhen | 0 | 0 | 0 | 12 | 12 |
 | task | 14 | 1 | 0 | 11 | 26 |
 | gonghuitask | 0 | 0 | 0 | 11 | 11 |
@@ -40,6 +40,7 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 | shenqi | 0 | 0 | 0 | 6 | 6 |
 | sixzhuanpan | 0 | 0 | 0 | 6 | 6 |
 | xunbao | 0 | 1 | 0 | 6 | 7 |
+| friend | 11 | 0 | 0 | 6 | 17 |
 | zhouhuan | 0 | 0 | 0 | 6 | 6 |
 | role | 3 | 1 | 0 | 5 | 9 |
 | hecheng | 0 | 0 | 0 | 5 | 5 |
@@ -108,7 +109,6 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 
 - huodong (38): 70000 (h70000), 70001 (h70001), 70100 (h70100), 70500 (h70500), 70501 (h70501), 70502 (h70502), 70503 (h70503), 70504 (h70504), 70505 (h70505), 70506 (h70506), 70507 (h70507), 70508 (h70508), 70509 (h70509), 70510 (h70510), 70511 (h70511), 70520 (h70520), 70530 (h70530), 70550 (h70550), 70551 (h70551), 70552 (CMD_70552), 70553 (CMD_70553), 70554 (CMD_70554), 70556 (ZUOQI_JINJIE), 70558 (GET_PROP), 70559 (RECHARGE_YB), 70580 (h70580), 71002 (h70002), 94000 (h94000), 94001 (h94001), 94002 (RANKHUODONG_LIST), 94003 (RANKHUODONG_SINGLE), 94004 (RANKHUODONG_MONSTER), 94005 (RANKHUODONG_GAIN), 94100 (RANKHUODONG2_LIST), 94101 (RANKHUODONG2_SINGLE), 94102 (RANKHUODONG2_MONSTER), 94103 (RANKHUODONG2_GAIN), 101000 (CMD_101000)
 - gm (24): 100 (GM_100), 101 (GM_101), 102 (GM_102), 103 (GM_103), 104 (GM_104), 105 (GM_105), 106 (GM_106), 107 (GM_107), 108 (GM_108), 109 (GM_109), 110 (GM_110), 111 (GM_111), 113 (GM_113), 114 (GM_114), 115 (GM_115), 116 (GM_116), 117 (GM_117), 118 (GM_118), 120 (GM_120), 130 (GM_130), 131 (GM_131), 140 (GM_140), 141 (GM_141), 200 (GM_200)
-- friend (17): 51000 (GET_FRIENDS), 51001 (ADD_FRIENDS), 51002 (DEL_FRIENDS), 51003 (ADD_FOE), 51004 (DEL_FOE), 51005 (ADD_BLACKLIST), 51006 (DEL_BLACKLIST), 51007 (ADD_CONTACTS), 51008 (DEL_CONTACTS), 51010 (ONLINE_FRIEND), 51011 (XINQING_UPDATE), 51012 (CHANGE_FRIEND_COUNT), 51013 (CHANGE_FOE_COUNT), 51014 (CHANGE_ROLE_INFO), 51015 (ROLE_FIGHT), 51016 (BEENADD_FRIEND), 51017 (BEENADD_FOE)
 - pozhen (11): 48001 (INFO), 48002 (SRART_PZ), 48003 (SAODANG), 48004 (REFRESH), 48005 (MOVE), 48006 (BUY_POZHEN_COUNT), 48007 (SAODANG_END), 48008 (SAODANG_QUICK), 48009 (RECOVERY), 48010 (STOP), 48011 (POZHENG_LINGQUGOODS)
 - task (11): 50004 (RECEVIE_TASK_MAIN), 50006 (CHANGE_TASK_MAIN_CONDITION), 50007 (NOTIFY_TASK_FINISH), 50012 (NOTIFY_CHAPTER_COMPLETE), 50102 (NOTIFY_RECEVIE_TAOFA_TASK), 50104 (NOTIFY_CHANGE_TAOFA_TASK), 50105 (PAY_TAOFA_TASK), 50207 (RICHANG_PAY_TASK), 50208 (RICHANG_CHANGE_MONSTER), 50210 (RECEVIE_RICHANG_TASK), 50211 (RICHANG_TASK_STOP)
 - gonghuitask (11): 81000 (GONGHUITASKCMD_GETRICHANG), 81001 (GONGHUITASKCMD_81001), 81002 (GONGHUITASKCMD_81002), 81003 (GONGHUITASKCMD_81003), 81004 (GONGHUITASKCMD_81004), 81005 (GONGHUITASKCMD_81005), 81006 (GONGHUITASKCMD_81006), 81007 (GONGHUITASKCMD_81007), 81008 (GONGHUITASKCMD_81008), 81009 (GONGHUITASKCMD_81009), 81010 (GONGHUITASKCMD_81010)
@@ -117,6 +117,7 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - guildfuben (7): 11003 (GUILDGUANGBO), 11130 (_11130), 118001 (CMD_118001), 118002 (CMD_118002), 118003 (CMD_118003), 118004 (CMD_118004), 118007 (CMD_118007)
 - xianjiechenhao (7): 91002 (CMD_91002), 91003 (CMD_91003), 91004 (CMD_91004), 91005 (CMD_91005), 91006 (CMD_91006), 91007 (CMD_91007), 91009 (CMD_91009)
 - hefuhuodong (7): 113000 (CMD_113000), 113001 (CMD_113001), 113002 (CMD_113002), 113003 (CMD_113003), 113004 (CMD_113004), 113005 (CMD_113005), 113006 (CMD_113006)
+- friend (6): 51010 (ONLINE_FRIEND), 51012 (CHANGE_FRIEND_COUNT), 51013 (CHANGE_FOE_COUNT), 51014 (CHANGE_ROLE_INFO), 51016 (BEENADD_FRIEND), 51017 (BEENADD_FOE)
 - kuafu (6): 125000 (CMD_125000), 125001 (CMD_125001), 125008 (CMD_125008), 125009 (CMD_125009), 125012 (CMD_125012), 125016 (_125016)
 - zhouhuan (6): 128000 (CMD_128000), 128001 (CMD_128001), 128002 (CMD_128002), 128003 (CMD_128003), 128004 (CMD_128004), 128005 (CMD_128005)
 - role (5): 12001 (ADD_EXP), 12007 (MONSTER_EXP), 12009 (SHENGWANG_CHANGE), 12050 (ZHENQI_CHANGE), 12304 (CHANGE_ROLE_TYPE)

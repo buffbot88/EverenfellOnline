@@ -627,6 +627,49 @@ CREATE TABLE IF NOT EXISTS booth_trade_log (
   created INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_booth_trade_log_role ON booth_trade_log(role_id);
+-- Friend lists (one-sided directed rows: owner adds target, no reciprocal
+-- row; foe rows carry the kill counter, capped at +/-999 like Java).
+CREATE TABLE IF NOT EXISTS role_friend (
+  id TEXT PRIMARY KEY,
+  user_role_id TEXT NOT NULL,
+  friend_id TEXT NOT NULL,
+  order_id INTEGER DEFAULT 0,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_role_friend_owner ON role_friend(user_role_id);
+CREATE INDEX IF NOT EXISTS idx_role_friend_target ON role_friend(friend_id);
+CREATE TABLE IF NOT EXISTS role_foe (
+  id TEXT PRIMARY KEY,
+  user_role_id TEXT NOT NULL,
+  foe_id TEXT NOT NULL,
+  foe_count INTEGER DEFAULT 0,
+  order_id INTEGER DEFAULT 0,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_role_foe_owner ON role_foe(user_role_id);
+CREATE INDEX IF NOT EXISTS idx_role_foe_target ON role_foe(foe_id);
+CREATE TABLE IF NOT EXISTS role_blacklist (
+  id TEXT PRIMARY KEY,
+  user_role_id TEXT NOT NULL,
+  blacklist_id TEXT NOT NULL,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_role_blacklist_owner ON role_blacklist(user_role_id);
+CREATE INDEX IF NOT EXISTS idx_role_blacklist_target ON role_blacklist(blacklist_id);
+CREATE TABLE IF NOT EXISTS role_contacts (
+  id TEXT PRIMARY KEY,
+  user_role_id TEXT NOT NULL,
+  contacts_id TEXT NOT NULL,
+  created INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_role_contacts_owner ON role_contacts(user_role_id);
+CREATE INDEX IF NOT EXISTS idx_role_contacts_target ON role_contacts(contacts_id);
+-- Friend headline (xinqing mood text, friendCount of added friends).
+CREATE TABLE IF NOT EXISTS friend_info (
+  user_role_id TEXT PRIMARY KEY,
+  xinqing TEXT,
+  friend_count INTEGER DEFAULT 0
+);
 -- Bag unlock state per role (legacy role_bag_state subset: capacities gate
 -- the 30000 lock VOs; *_slot_time feeds the unlock countdown).
 CREATE TABLE IF NOT EXISTS role_bag_state (
@@ -2605,10 +2648,11 @@ class Store:
             return True
 
     def get_role_brief(self, role_id):
-        """Cross-account id/name/level/exp lookup for stall lookups."""
+        """Cross-account identity card for stall and friend lookups."""
         with self.lock:
             row = self.db.execute(
-                'SELECT id, legacy_id, name, level, exp FROM characters'
+                'SELECT id, legacy_id, name, level, exp, sex, face, job'
+                ' FROM characters'
                 ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
                 (str(role_id), str(role_id))).fetchone()
             return dict(row) if row else None
@@ -2616,6 +2660,12 @@ class Store:
     @contextmanager
     def booth_tx(self):
         """One all-or-nothing stall mutation: BEGIN IMMEDIATE, commit/rollback."""
+        with self.atomic() as db:
+            yield db
+
+    @contextmanager
+    def atomic(self):
+        """One all-or-nothing mutation: BEGIN IMMEDIATE, commit/rollback."""
         with self.lock:
             try:
                 self.db.execute('BEGIN IMMEDIATE')
@@ -3035,3 +3085,169 @@ class Store:
             'SELECT id FROM booth_trade_log WHERE role_id=?'
             ' ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET 50)',
             (str(role_id),))
+
+    # -- friend lists (RoleFriend/RoleFoe/RoleBlacklist/RoleContacts) --
+    _FRIEND_TABLES = {
+        'friend': ('role_friend', 'friend_id'),
+        'foe': ('role_foe', 'foe_id'),
+        'blacklist': ('role_blacklist', 'blacklist_id'),
+        'contacts': ('role_contacts', 'contacts_id'),
+    }
+
+    def list_friend_links(self, kind, owner_id):
+        """Directed links of one owner (RoleFriendDao.cacheLoadAll)."""
+        table, _col = self._FRIEND_TABLES[kind]
+        with self.lock:
+            rows = self.db.execute(
+                f'SELECT * FROM {table} WHERE user_role_id=? ORDER BY rowid',
+                (str(owner_id),)).fetchall()
+            return [dict(r) for r in rows]
+
+    def has_friend_link(self, kind, owner_id, target_id):
+        """Whether the directed link exists (the *IdFilter queries)."""
+        table, col = self._FRIEND_TABLES[kind]
+        with self.lock:
+            row = self.db.execute(
+                f'SELECT id FROM {table}'
+                ' WHERE user_role_id=? AND '
+                f'{col}=?',
+                (str(owner_id), str(target_id))).fetchone()
+            return row is not None
+
+    def count_friend_links(self, kind, owner_id):
+        table, _col = self._FRIEND_TABLES[kind]
+        with self.lock:
+            row = self.db.execute(
+                f'SELECT COUNT(*) n FROM {table} WHERE user_role_id=?',
+                (str(owner_id),)).fetchone()
+            return int(row['n'] or 0)
+
+    def follower_ids(self, kind, target_id):
+        """Owners holding a link to the target (getFriendByFriendId etc)."""
+        table, col = self._FRIEND_TABLES[kind]
+        with self.lock:
+            rows = self.db.execute(
+                f'SELECT user_role_id FROM {table} WHERE {col}=?',
+                (str(target_id),)).fetchall()
+            return [r['user_role_id'] for r in rows]
+
+    def friend_add_tx(self, kind, owner_id, target_id, cap, extra=None):
+        """Add a link, evicting the oldest past the cap (Java cacheDelete).
+
+        Returns (True, evicted_row_or_None). extra sets RoleFoe.foe_count.
+        """
+        table, col = self._FRIEND_TABLES[kind]
+        with self.atomic() as db:
+            row = db.execute(
+                f'SELECT id FROM {table}'
+                ' WHERE user_role_id=? AND '
+                f'{col}=?',
+                (str(owner_id), str(target_id))).fetchone()
+            if row is not None:
+                return (False, None)
+            rows = db.execute(
+                f'SELECT id FROM {table}'
+                ' WHERE user_role_id=? ORDER BY rowid',
+                (str(owner_id),)).fetchall()
+            evicted = None
+            if len(rows) >= cap:
+                victim = rows[0]['id']
+                gone = db.execute(
+                    f'SELECT * FROM {table} WHERE id=?',
+                    (victim,)).fetchone()
+                db.execute(f'DELETE FROM {table} WHERE id=?', (victim,))
+                evicted = dict(gone) if gone else {'id': victim}
+            now = int(time.time() * 1000)
+            lid = f'fr{uuid.uuid4().hex[:16]}'
+            if kind == 'foe':
+                db.execute(
+                    'INSERT INTO role_foe(id, user_role_id, foe_id,'
+                    ' foe_count, order_id, created)'
+                    ' VALUES(?,?,?,?,?,?)',
+                    (lid, str(owner_id), str(target_id),
+                     extra if extra is not None else 0, 0, now))
+            else:
+                db.execute(
+                    f'INSERT INTO {table}(id, user_role_id, {col}, created)'
+                    ' VALUES(?,?,?,?)',
+                    (lid, str(owner_id), str(target_id), now))
+            return (True, evicted)
+
+    def friend_del_tx(self, kind, owner_id, target_id):
+        """Delete one directed link; False when it was absent."""
+        table, col = self._FRIEND_TABLES[kind]
+        with self.atomic() as db:
+            cur = db.execute(
+                f'DELETE FROM {table}'
+                ' WHERE user_role_id=? AND '
+                f'{col}=?',
+                (str(owner_id), str(target_id)))
+            return cur.rowcount > 0
+
+    def friend_touch_foe_tx(self, owner_id, target_id, delta,
+                            floor, ceil):
+        """Bump a foe counter, clamped (roleFight +/-1, caps +/-999)."""
+        with self.atomic() as db:
+            row = db.execute(
+                'SELECT foe_count FROM role_foe'
+                ' WHERE user_role_id=? AND foe_id=?',
+                (str(owner_id), str(target_id))).fetchone()
+            if row is None:
+                return None
+            try:
+                count = int(row['foe_count'] or 0) + delta
+            except (TypeError, ValueError):
+                count = delta
+            count = max(floor, min(ceil, count))
+            db.execute(
+                'UPDATE role_foe SET foe_count=?'
+                ' WHERE user_role_id=? AND foe_id=?',
+                (count, str(owner_id), str(target_id)))
+            return count
+
+    def get_friend_info(self, role_id):
+        """A role's headline row, or None (FriendInfoDao.dbLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT user_role_id, xinqing, friend_count FROM friend_info'
+                ' WHERE user_role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_friend_info(self, role_id, **fields):
+        """Upsert a headline row (known FriendInfo columns only)."""
+        known = {'xinqing', 'friend_count'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known friend columns')
+        names = ', '.join(['user_role_id', *fields])
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO friend_info({names}) VALUES(?,{placeholders})'
+                ' ON CONFLICT(user_role_id) DO UPDATE'
+                f' SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def friend_add_count_tx(self, role_id):
+        """Increment the added-friend counter, creating the row (addFriends)."""
+        with self.atomic() as db:
+            row = db.execute(
+                'SELECT friend_count FROM friend_info WHERE user_role_id=?',
+                (str(role_id),)).fetchone()
+            if row is None:
+                db.execute(
+                    'INSERT INTO friend_info(user_role_id, xinqing,'
+                    ' friend_count) VALUES(?,?,1)',
+                    (str(role_id), None))
+                return 1
+            try:
+                count = int(row['friend_count'] or 0) + 1
+            except (TypeError, ValueError):
+                count = 1
+            db.execute(
+                'UPDATE friend_info SET friend_count=? WHERE user_role_id=?',
+                (count, str(role_id)))
+            return count

@@ -34,6 +34,7 @@ class StageRegistry:
         self._maps = {}     # map_id -> {role_id: session}
         self._where = {}    # role_id -> map_id
         self._pos = {}      # role_id -> (tile_x, tile_y)
+        self._presence = {} # role_id -> session (login, placed or not)
         self.monsters = MonsterWorld()  # shared monster lifecycle for every session
 
     def register(self, role_id, map_id, session, x=None, y=None):
@@ -76,6 +77,7 @@ class StageRegistry:
             for role_id in owned:
                 self._drop_locked(role_id, self._where.pop(role_id))
                 self._pos.pop(role_id, None)
+                self._presence.pop(role_id, None)
             return len(owned)
 
     def peers(self, map_id, exclude_role=None):
@@ -97,6 +99,26 @@ class StageRegistry:
         with self._lock:
             map_id = self._where.get(role_id)
             return self._maps.get(map_id, {}).get(role_id) if map_id else None
+
+    def map_of(self, role_id):
+        """Map a role is placed on, or None when it is not placed."""
+        with self._lock:
+            return self._where.get(str(role_id))
+
+    def mark_online(self, role_id, session):
+        """Login presence (PublicRoleState): placed or not."""
+        with self._lock:
+            self._presence[str(role_id)] = session
+
+    def mark_offline(self, role_id):
+        """Drop login presence."""
+        with self._lock:
+            self._presence.pop(str(role_id), None)
+
+    def presence_of(self, role_id):
+        """Session of a logged-in role, or None (placement-independent)."""
+        with self._lock:
+            return self._presence.get(str(role_id))
 
     def surround(self, role_id):
         """(role_id, session) pairs in the 3x3 AOI block around a role, itself included."""

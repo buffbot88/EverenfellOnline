@@ -141,10 +141,13 @@ def main():
     lines.append('## Totals')
     lines.append('')
     lines.append(f'- total Java numeric command IDs: {total}')
-    for key in ('implemented', 'implemented-untested', 'partial',
-                'dispatched-no-direct-handler', 'inline',
-                'inline-untested', 'stub', 'known-unhandled', 'missing'):
+    order = ('implemented', 'implemented-untested', 'partial',
+             'dispatched-no-direct-handler', 'inline',
+             'inline-untested', 'stub', 'known-unhandled', 'missing')
+    for key in order:
         lines.append(f'- {key}: {counts.get(key, 0)}')
+    lines.append(f'- accounted: {sum(counts.values())} of {total} '
+                 f'({"exact" if sum(counts.values()) == total else "MISMATCH"})')
     lines.append('')
     lines.append('`implemented` = dispatched, handler not stub-marked, and '
                  'the ID string appears in the focused tests. '

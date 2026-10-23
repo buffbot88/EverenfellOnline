@@ -553,6 +553,57 @@ CMD_BOOTH_BUY_JB = 35114
 CMD_BOOTH_MONEY = 35115
 CMD_BOOTH_MONEY_CLAIM = 35116
 CMD_BOOTH_DETAILS = 35120
+# Friend lists (FriendAction/FriendServiceImpl bytecode): 11 inbound
+# commands, 6 push-only notifies. One-sided directed rows: adding is
+# immediate (no request/accept), and only the adder's side is stored.
+CMD_FRIEND_INFO = 51000
+CMD_FRIEND_ADD = 51001
+CMD_FRIEND_DEL = 51002
+CMD_FOE_ADD = 51003
+CMD_FOE_DEL = 51004
+CMD_BLACKLIST_ADD = 51005
+CMD_BLACKLIST_DEL = 51006
+CMD_CONTACTS_ADD = 51007
+CMD_CONTACTS_DEL = 51008
+CMD_FRIEND_ONLINE = 51010
+CMD_FRIEND_XINQING = 51011
+CMD_FRIEND_COUNT = 51012
+CMD_FOE_COUNT = 51013
+CMD_FRIEND_ROLE_INFO = 51014
+CMD_FRIEND_FIGHT = 51015
+CMD_FRIEND_BEEN_ADD = 51016
+CMD_FOE_BEEN_ADD = 51017
+# FriendErrorCode ints (jar constants).
+FRIEND_ERR_ROLE_NOT_EXISTS = 450001
+FRIEND_ERR_NOT_ADD = 450020
+FRIEND_ERR_COUNT_LIMIT = 450021
+FRIEND_ERR_EXISTS = 450022
+FRIEND_ERR_EXISTS_BLACKLIST = 450023
+FRIEND_ERR_ONLINE = 450024
+FRIEND_ERR_OFFLINE = 450025
+FRIEND_ERR_FIGHT_FAIL = 450026
+FRIEND_ERR_FIGHT_WIN = 450027
+FRIEND_ERR_XINQING_MAX = 450030
+FRIEND_ERR_XINQING_ILLEGAL = 450031
+FRIEND_ERR_FOE_NOT_ADD = 450040
+FRIEND_ERR_FOE_COUNT_LIMIT = 450041
+FRIEND_ERR_FOE_EXISTS = 450042
+FRIEND_ERR_FOE_FIGHT_FAIL = 450048
+FRIEND_ERR_FOE_FIGHT_WIN = 450049
+FRIEND_ERR_BLACKLIST_NOT_ADD = 450060
+FRIEND_ERR_BLACKLIST_EXISTS = 450062
+FRIEND_ERR_BLACKLIST_EXISTS_FRIEND = 450063
+# FriendConstants (jar clinit).
+FRIEND_MAX_COUNT = 30
+FRIEND_ONLINE_STATE = 1
+FRIEND_OFFLINE_STATE = 0
+FRIEND_TYPE_FRIEND = 0
+FRIEND_TYPE_BLACKLIST = 1
+FRIEND_TYPE_FOE = 2
+FRIEND_TYPE_CONTACTS = 3
+FRIEND_FOE_COUNT_MAX = 999
+FRIEND_FOE_COUNT_MIN = -999
+FRIEND_XINQING_MAX = 48
 # BoothErrorCodeOutput ints (jar clinit) and GeneralErrorCode cells.
 BOOTH_ERR_GOODS_EXPIRE = 1007
 BOOTH_ERR_YB_NOT_ENOUGH = 1002
@@ -717,6 +768,25 @@ def check_role_name(name):
     return _ROLE_NAME_RE.fullmatch(name) is not None
 
 
+_XINQING_BAD_RE = re.compile(r'[`~@#$%^*+().,?\'":;\[\]{}|<>/\\\s]')
+
+
+def check_xinqing(text):
+    """Port of NameFieldCheck.checkInputName minus the word-filter list.
+
+    checkIntervalChar is the same CJK class as role names (without the
+    s/S rule checkInputName2 adds); checkDeleteChar rejects ASCII
+    punctuation and whitespace. Empty mood text is allowed by Java.
+    """
+    if not isinstance(text, str):
+        return False
+    if text == '':
+        return True
+    if _XINQING_BAD_RE.search(text):
+        return False
+    return _ROLE_NAME_RE.fullmatch(text) is not None
+
+
 def _wire_id(r):
     """Role id on the wire: the migrated legacy id the client knows (capture
     uses 'fu0UR1-0-1-1'), falling back to the local row id for fresh roles."""
@@ -852,6 +922,11 @@ class Session:
                  booth_delist_goods_tx=None, booth_buy_goods_tx=None,
                  booth_money_position_tx=None, booth_money_buy_tx=None,
                  booth_claim_tx=None,
+                 list_friend_links=None, has_friend_link=None,
+                 count_friend_links=None, follower_ids=None,
+                 friend_add_tx=None, friend_del_tx=None,
+                 friend_touch_foe_tx=None, get_friend_info=None,
+                 save_friend_info=None, friend_add_count_tx=None,
                  get_task_main=None, save_task_main=None,
                  get_task_taofa=None, get_task_taofas=None,
                  insert_task_taofa=None, update_task_taofa=None,
@@ -1021,6 +1096,20 @@ class Session:
         self.save_booth_trade_log = (save_booth_trade_log
                                       or (lambda *a: False))
         self.get_role_brief = get_role_brief or (lambda r: None)
+        self.list_friend_links = list_friend_links or (lambda k, r: [])
+        self.has_friend_link = has_friend_link or (lambda k, o, t: False)
+        self.count_friend_links = (count_friend_links
+                                   or (lambda k, r: 0))
+        self.follower_ids = follower_ids or (lambda k, t: [])
+        self.friend_add_tx = friend_add_tx or (lambda *a: (False, None))
+        self.friend_del_tx = friend_del_tx or (lambda *a: False)
+        self.friend_touch_foe_tx = (friend_touch_foe_tx
+                                    or (lambda *a: None))
+        self.get_friend_info = get_friend_info or (lambda r: None)
+        self.save_friend_info = (save_friend_info
+                                 or (lambda *a, **k: False))
+        self.friend_add_count_tx = (friend_add_count_tx
+                                    or (lambda r: 0))
         self.booth_list_goods_tx = (booth_list_goods_tx
                                      or (lambda *a: 'gone'))
         self.booth_delist_goods_tx = (booth_delist_goods_tx
@@ -1677,6 +1766,28 @@ class Session:
             return self.booth_money()
         if cmd_num == CMD_BOOTH_MONEY_CLAIM:
             return self.booth_money_claim()
+        if cmd_num == CMD_FRIEND_INFO:
+            return self.friend_info()
+        if cmd_num == CMD_FRIEND_ADD:
+            return self.friend_add(msg)
+        if cmd_num == CMD_FRIEND_DEL:
+            return self.friend_del(msg)
+        if cmd_num == CMD_FOE_ADD:
+            return self.foe_add(msg)
+        if cmd_num == CMD_FOE_DEL:
+            return self.foe_del(msg)
+        if cmd_num == CMD_BLACKLIST_ADD:
+            return self.blacklist_add(msg)
+        if cmd_num == CMD_BLACKLIST_DEL:
+            return self.blacklist_del(msg)
+        if cmd_num == CMD_CONTACTS_ADD:
+            return self.contacts_add(msg)
+        if cmd_num == CMD_CONTACTS_DEL:
+            return self.contacts_del(msg)
+        if cmd_num == CMD_FRIEND_XINQING:
+            return self.friend_xinqing(msg)
+        if cmd_num == CMD_FRIEND_FIGHT:
+            return self.friend_fight(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
                         86000, 85000, 87000, 70500, 91002, 90000,
@@ -2853,6 +2964,566 @@ class Session:
              [1, self._booth_money(take_jb),
               self._booth_money(take_yb)]]))
 
+    # -- friends (FriendAction/FriendServiceImpl bytecode) --
+    def _friend_self(self):
+        """Requester role and canonical id: placed role, else first role."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        if self.stage_registry is not None:
+            try:
+                owned = self.stage_registry.roles_of(self)
+            except Exception:
+                owned = []
+            if owned:
+                role = _find_role(roles, owned[0])
+                if role is not None:
+                    return role, str(owned[0])
+        role = roles[0] if roles else None
+        if role is None:
+            return None, None
+        return role, str(role.get('id'))
+
+    def _friend_target(self, ref):
+        """Canonical id and brief for a wire role reference, or (None, None)."""
+        try:
+            brief = self.get_role_brief(ref)
+        except Exception:
+            brief = None
+        if brief is None:
+            return None, None
+        return str(brief.get('id')), brief
+
+    def _friend_online(self, cid):
+        """Public online state: placed session or login presence."""
+        if self.stage_registry is None:
+            return False
+        try:
+            if self.stage_registry.session_of(cid) is not None:
+                return True
+            return self.stage_registry.presence_of(cid) is not None
+        except Exception:
+            return False
+
+    def _friend_map(self, cid):
+        """Stage map a role sits on, or None (getMapId null branch)."""
+        if self.stage_registry is None:
+            return None
+        try:
+            return self.stage_registry.map_of(cid)
+        except Exception:
+            return None
+
+    def _friend_has_booth(self, cid):
+        """Whether the role holds any stall listing (hasBooth cell)."""
+        try:
+            return bool(self.list_booth_sells(cid))
+        except Exception:
+            return False
+
+    def _friend_xinqing(self, cid):
+        """Mood text of a role, or None (missing FriendInfo row)."""
+        try:
+            info = self.get_friend_info(cid)
+        except Exception:
+            return None
+        return (info or {}).get('xinqing')
+
+    def _friend_vo(self, cid, type_id, count_a, order, brief=None):
+        """FriendVoOutput 13-slot card: id/name/sex/face/mood/level/type/\n        online/job/mapId/count/order/stall."""
+        if brief is None:
+            try:
+                brief = self.get_role_brief(cid)
+            except Exception:
+                brief = None
+        brief = brief or {}
+        try:
+            online = (FRIEND_ONLINE_STATE if self._friend_online(cid)
+                      else FRIEND_OFFLINE_STATE)
+        except Exception:
+            online = FRIEND_OFFLINE_STATE
+        return [str(brief.get('id') if brief.get('id') is not None
+                    else cid),
+                brief.get('name'), brief.get('sex'), brief.get('face'),
+                self._friend_xinqing(cid), brief.get('level'),
+                type_id, online, brief.get('job'), self._friend_map(cid),
+                count_a, order,
+                bool(self._friend_has_booth(cid))]
+
+    @staticmethod
+    def _friend_err(cmd, payload):
+        """FriendErrorCodeOutput shape: [0, code] plus any extra cells."""
+        return frame(amf3_encode([str(cmd), [0, *payload]]))
+
+    def _friend_push(self, cid, cmd, payload):
+        """PublicMsgQueue flush to one role: live sessions get frames."""
+        if self.stage_registry is None:
+            return []
+        try:
+            sess = self.stage_registry.session_of(cid)
+        except Exception:
+            return []
+        if sess is None:
+            try:
+                sess = self.stage_registry.presence_of(cid)
+            except Exception:
+                sess = None
+        if sess is None:
+            return []
+        out = frame(amf3_encode([str(cmd), payload]))
+        if sess is self:
+            return [out]
+        try:
+            sess.push_frames([out])
+        except Exception:
+            pass
+        return []
+
+    def _friend_followers(self, cid, kinds=('friend', 'foe', 'contacts',
+                                            'blacklist')):
+        """Attention roles: owners listing cid, in Java's list order."""
+        seen = []
+        for kind in kinds:
+            try:
+                owners = self.follower_ids(kind, cid) or []
+            except Exception:
+                owners = []
+            for owner in owners:
+                if owner not in seen:
+                    seen.append(str(owner))
+        return seen
+
+    def _friend_notify_followers(self, cid, cmd, payload,
+                                 skip=None, online_only=True):
+        """Fan one push out to every attention role; own frames join reply."""
+        lead = []
+        for owner in self._friend_followers(cid):
+            if skip is not None and str(owner) == str(skip):
+                continue
+            if online_only and not self._friend_online(owner):
+                continue
+            lead.extend(self._friend_push(owner, cmd, payload))
+        return lead
+
+    def friend_info(self):
+        """Command 51000: [count, mood, friends, foes, blacklist, contacts]."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        try:
+            info = self.get_friend_info(cid)
+        except Exception:
+            info = None
+        cards = []
+        for kind, type_id in (('friend', FRIEND_TYPE_FRIEND),
+                              ('foe', FRIEND_TYPE_FOE),
+                              ('blacklist', FRIEND_TYPE_BLACKLIST),
+                              ('contacts', FRIEND_TYPE_CONTACTS)):
+            try:
+                links = self.list_friend_links(kind, cid) or []
+            except Exception:
+                links = []
+            group = []
+            for link in links:
+                target = str(link.get({
+                    'friend': 'friend_id', 'foe': 'foe_id',
+                    'blacklist': 'blacklist_id',
+                    'contacts': 'contacts_id'}[kind]) or '')
+                try:
+                    count_a = int(link.get('foe_count') or 0) \
+                        if kind == 'foe' else 0
+                except (TypeError, ValueError):
+                    count_a = 0
+                try:
+                    order = int(link.get('order_id') or 0)
+                except (TypeError, ValueError):
+                    order = 0
+                group.append(self._friend_vo(target, type_id, count_a,
+                                             order))
+            cards.append(group)
+        count = 0
+        mood = None
+        if info is not None:
+            try:
+                count = int(info.get('friend_count') or 0)
+            except (TypeError, ValueError):
+                count = 0
+            mood = info.get('xinqing')
+        return frame(amf3_encode([str(CMD_FRIEND_INFO),
+                                 [count, mood, *cards]]))
+
+    def _friend_add_link(self, kind, cmd, type_id, msg, cap,
+                         self_code, missing_code, exists_code,
+                         exists_blacklist_code, been_cmd):
+        """Shared add flow: guards, directed row, count, notifies, card."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        ref = self.safe(msg, 1)
+        if isinstance(ref, list):
+            ref = ref[0] if ref else None
+        if not ref or not isinstance(ref, str):
+            return None
+        target_cid, brief = self._friend_target(ref)
+        if target_cid is None:
+            return self._friend_err(cmd, [missing_code])
+        if target_cid == cid:
+            return self._friend_err(cmd, [self_code])
+        try:
+            links = self.list_friend_links(kind, cid) or []
+        except Exception:
+            links = []
+        if len(links) >= cap:
+            return self._friend_err(cmd, [FRIEND_ERR_COUNT_LIMIT
+                                          if kind == 'friend' else
+                                          FRIEND_ERR_FOE_COUNT_LIMIT,
+                                          cap])
+        try:
+            dup = self.has_friend_link(kind, cid, target_cid)
+        except Exception:
+            dup = False
+        if dup:
+            return self._friend_err(cmd, [exists_code,
+                                          (brief or {}).get('name')])
+        if exists_blacklist_code is not None:
+            try:
+                blocked = self.has_friend_link('blacklist', cid,
+                                               target_cid)
+            except Exception:
+                blocked = False
+            if blocked:
+                return self._friend_err(cmd, [exists_blacklist_code,
+                                              (brief or {}).get('name')])
+        try:
+            added, _evicted = self.friend_add_tx(kind, cid, target_cid,
+                                                 cap)
+        except Exception:
+            return None
+        if not added:
+            return self._friend_err(cmd, [exists_code,
+                                          (brief or {}).get('name')])
+        count = 0
+        if kind == 'friend':
+            try:
+                count = self.friend_add_count_tx(target_cid)
+            except Exception:
+                count = 0
+        lead = []
+        if kind == 'friend':
+            lead.extend(self._friend_push(target_cid, CMD_FRIEND_COUNT,
+                                          count))
+        if self._friend_online(target_cid):
+            mine = self._friend_vo(cid, type_id, 0, 0)
+            # Java sends the been-add card before computing hasBooth,
+            # so its stall cell is always false.
+            mine[12] = False
+            lead.extend(self._friend_push(target_cid, been_cmd, mine))
+        theirs = self._friend_vo(target_cid, type_id, 0, 0, brief)
+        reply = [str(cmd), [1, theirs]]
+        if lead:
+            return (*lead, frame(amf3_encode(reply)))
+        return frame(amf3_encode(reply))
+
+    def friend_add(self, msg):
+        """Command 51001: add a friend C> targetRoleId."""
+        return self._friend_add_link('friend', CMD_FRIEND_ADD,
+                                     FRIEND_TYPE_FRIEND, msg,
+                                     FRIEND_MAX_COUNT, FRIEND_ERR_NOT_ADD,
+                                     FRIEND_ERR_ROLE_NOT_EXISTS,
+                                     FRIEND_ERR_EXISTS,
+                                     FRIEND_ERR_EXISTS_BLACKLIST,
+                                     CMD_FRIEND_BEEN_ADD)
+
+    def foe_add(self, msg):
+        """Command 51003: add a foe C> targetRoleId."""
+        return self._friend_add_link('foe', CMD_FOE_ADD, FRIEND_TYPE_FOE,
+                                     msg, FRIEND_MAX_COUNT,
+                                     FRIEND_ERR_FOE_NOT_ADD,
+                                     FRIEND_ERR_ROLE_NOT_EXISTS,
+                                     FRIEND_ERR_FOE_EXISTS, None,
+                                     CMD_FOE_BEEN_ADD)
+
+    def _friend_del_link(self, kind, cmd, msg):
+        """Shared removal: drop the directed row, answer [1, targetId]."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        ref = self.safe(msg, 1)
+        if isinstance(ref, list):
+            ref = ref[0] if ref else None
+        if not ref or not isinstance(ref, str):
+            return None
+        target_cid, _brief = self._friend_target(ref)
+        if target_cid is None:
+            return None
+        try:
+            dropped = self.friend_del_tx(kind, cid, target_cid)
+        except Exception:
+            return None
+        if not dropped:
+            return None
+        return frame(amf3_encode([str(cmd), [1, target_cid]]))
+
+    def friend_del(self, msg):
+        """Command 51002: remove a friend C> targetRoleId."""
+        return self._friend_del_link('friend', CMD_FRIEND_DEL, msg)
+
+    def foe_del(self, msg):
+        """Command 51004: remove a foe C> targetRoleId."""
+        return self._friend_del_link('foe', CMD_FOE_DEL, msg)
+
+    def blacklist_del(self, msg):
+        """Command 51006: unblock C> targetRoleId."""
+        return self._friend_del_link('blacklist', CMD_BLACKLIST_DEL, msg)
+
+    def contacts_del(self, msg):
+        """Command 51008: drop a contact C> targetRoleId."""
+        return self._friend_del_link('contacts', CMD_CONTACTS_DEL, msg)
+
+    def _friend_capped_add(self, kind, cmd, type_id, msg, cap,
+                           self_silent):
+        """Blacklist/contact add: evict oldest past cap, answer card."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        ref = self.safe(msg, 1)
+        if isinstance(ref, list):
+            ref = ref[0] if ref else None
+        if not ref or not isinstance(ref, str):
+            return None
+        target_cid, brief = self._friend_target(ref)
+        if target_cid is None:
+            if self_silent:
+                return None
+            return self._friend_err(cmd, [FRIEND_ERR_ROLE_NOT_EXISTS])
+        if target_cid == cid:
+            if self_silent:
+                return None
+            return self._friend_err(cmd, [FRIEND_ERR_BLACKLIST_NOT_ADD
+                                          if kind == 'blacklist' else
+                                          FRIEND_ERR_FOE_NOT_ADD])
+        try:
+            dup = self.has_friend_link(kind, cid, target_cid)
+        except Exception:
+            dup = False
+        if dup:
+            if self_silent:
+                return None
+            return self._friend_err(
+                cmd, [FRIEND_ERR_BLACKLIST_EXISTS
+                      if kind == 'blacklist' else FRIEND_ERR_FOE_NOT_ADD,
+                      (brief or {}).get('name')])
+        if kind == 'blacklist':
+            try:
+                is_friend = self.has_friend_link('friend', cid,
+                                                 target_cid)
+            except Exception:
+                is_friend = False
+            if is_friend:
+                return self._friend_err(
+                    cmd, [FRIEND_ERR_BLACKLIST_EXISTS_FRIEND,
+                          (brief or {}).get('name')])
+        try:
+            added, evicted = self.friend_add_tx(kind, cid, target_cid,
+                                                cap)
+        except Exception:
+            return None
+        if not added:
+            return None
+        vo = self._friend_vo(target_cid, type_id, 0, 0, brief)
+        if kind == 'blacklist':
+            out = [frame(amf3_encode([str(cmd), [1, vo]]))]
+            if evicted is not None:
+                out.append(frame(amf3_encode(
+                    [str(CMD_BLACKLIST_DEL),
+                     [1, evicted.get('blacklist_id')]])))
+            return out[0] if len(out) == 1 else tuple(out)
+        out = frame(amf3_encode([str(cmd), vo]))
+        if evicted is None:
+            return out
+        return (out, frame(amf3_encode(
+            [str(CMD_CONTACTS_DEL), [1, evicted.get('contacts_id')]])))
+
+    def blacklist_add(self, msg):
+        """Command 51005: block C> targetRoleId (friend conflict rejects)."""
+        return self._friend_capped_add('blacklist', CMD_BLACKLIST_ADD,
+                                       FRIEND_TYPE_BLACKLIST, msg,
+                                       FRIEND_MAX_COUNT, False)
+
+    def contacts_add(self, msg):
+        """Command 51007: add a contact C> targetRoleId."""
+        return self._friend_capped_add('contacts', CMD_CONTACTS_ADD,
+                                       FRIEND_TYPE_CONTACTS, msg,
+                                       FRIEND_MAX_COUNT, True)
+
+    def friend_xinqing(self, msg):
+        """Command 51011: set mood C> text ([1, text] or [0, code, old])."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        text = self.safe(msg, 1)
+        if not isinstance(text, str):
+            return None
+        try:
+            info = self.get_friend_info(cid)
+        except Exception:
+            info = None
+        old = (info or {}).get('xinqing') or ''
+        if text == old:
+            return frame(amf3_encode([str(CMD_FRIEND_XINQING), [1, text]]))
+        if len(text) > FRIEND_XINQING_MAX:
+            return self._friend_err(CMD_FRIEND_XINQING,
+                                    [FRIEND_ERR_XINQING_MAX, old])
+        if text != '' and not check_xinqing(text):
+            return self._friend_err(CMD_FRIEND_XINQING,
+                                    [FRIEND_ERR_XINQING_ILLEGAL, old])
+        try:
+            self.save_friend_info(cid, xinqing=text)
+        except Exception:
+            return None
+        return frame(amf3_encode([str(CMD_FRIEND_XINQING), [1, text]]))
+
+    def friend_fight(self, msg):
+        """Command 51015: spar result C> [loserId, winnerId, mapId]."""
+        _role, cid = self._friend_self()
+        if cid is None:
+            return None
+        args = self.safe(msg, 1, [])
+        if not isinstance(args, list) or len(args) < 3:
+            return None
+        loser_ref = args[0] if isinstance(args[0], str) else None
+        winner_ref = args[1] if isinstance(args[1], str) else None
+        map_id = args[2]
+        if loser_ref is None or winner_ref is None:
+            return None
+        winner_cid, winner_brief = self._friend_target(winner_ref)
+        loser_cid, loser_brief = self._friend_target(loser_ref)
+        if winner_cid is None or loser_cid is None:
+            return None
+        lead = []
+        try:
+            has = self.has_friend_link('foe', winner_cid, loser_cid)
+        except Exception:
+            has = False
+        if has:
+            try:
+                count = self.friend_touch_foe_tx(
+                    winner_cid, loser_cid, 1, FRIEND_FOE_COUNT_MIN,
+                    FRIEND_FOE_COUNT_MAX)
+            except Exception:
+                count = None
+            if count is not None:
+                lead.extend(self._friend_push(
+                    winner_cid, CMD_FOE_COUNT,
+                    [loser_cid, count, 1]))
+        else:
+            count = None
+        try:
+            back = self.has_friend_link('foe', loser_cid, winner_cid)
+        except Exception:
+            back = False
+        if back:
+            try:
+                back_count = self.friend_touch_foe_tx(
+                    loser_cid, winner_cid, -1, FRIEND_FOE_COUNT_MIN,
+                    FRIEND_FOE_COUNT_MAX)
+            except Exception:
+                back_count = None
+            if back_count is not None:
+                lead.extend(self._friend_push(
+                    loser_cid, CMD_FOE_COUNT,
+                    [winner_cid, back_count, -1]))
+        else:
+            try:
+                added, _evicted = self.friend_add_tx(
+                    'foe', loser_cid, winner_cid, FRIEND_MAX_COUNT,
+                    extra=-1)
+            except Exception:
+                added = False
+            if added:
+                card = self._friend_vo(winner_cid, FRIEND_TYPE_FOE, -1, 0,
+                                       winner_brief)
+                lead.extend(self._friend_push(
+                    loser_cid, CMD_FOE_ADD, [1, card]))
+        try:
+            winner_triple = [winner_cid,
+                             (winner_brief or {}).get('name'),
+                             (winner_brief or {}).get('sex')]
+            loser_triple = [loser_cid, (loser_brief or {}).get('name'),
+                            (loser_brief or {}).get('sex')]
+        except Exception:
+            return tuple(lead) if lead else None
+        for owner in self._friend_followers(winner_cid, ('friend',)):
+            if owner == loser_cid:
+                continue
+            if self._friend_online(owner):
+                lead.extend(self._friend_push(
+                    owner, CMD_FRIEND_FIGHT,
+                    [FRIEND_ERR_FIGHT_WIN, winner_triple, map_id,
+                     loser_triple]))
+        for owner in self._friend_followers(loser_cid, ('friend',)):
+            if owner == winner_cid:
+                continue
+            if self._friend_online(owner):
+                lead.extend(self._friend_push(
+                    owner, CMD_FRIEND_FIGHT,
+                    [FRIEND_ERR_FIGHT_FAIL, loser_triple, map_id,
+                     winner_triple]))
+        for owner in self._friend_followers(winner_cid, ('foe',)):
+            if owner == loser_cid:
+                continue
+            if self._friend_online(owner):
+                lead.extend(self._friend_push(
+                    owner, CMD_FRIEND_FIGHT,
+                    [FRIEND_ERR_FOE_FIGHT_WIN, winner_triple, map_id,
+                     loser_triple]))
+        for owner in self._friend_followers(loser_cid, ('foe',)):
+            if owner == winner_cid:
+                continue
+            if self._friend_online(owner):
+                lead.extend(self._friend_push(
+                    owner, CMD_FRIEND_FIGHT,
+                    [FRIEND_ERR_FOE_FIGHT_FAIL, loser_triple, map_id,
+                     winner_triple]))
+        return tuple(lead) if lead else None
+
+    def _friend_on_enter(self, cid):
+        """LoginInit: mark presence, tell online followers I'm online."""
+        if self.stage_registry is not None:
+            try:
+                self.stage_registry.mark_online(cid, self)
+            except Exception:
+                pass
+        return self._friend_notify_followers(
+            cid, CMD_FRIEND_ONLINE, [cid, FRIEND_ONLINE_STATE])
+
+    def _friend_on_disconnect(self):
+        """RoleOffline: tell online followers I'm offline, drop presence."""
+        if self.stage_registry is None:
+            return []
+        try:
+            owned = self.stage_registry.roles_of(self)
+        except Exception:
+            return []
+        lead = []
+        for cid in owned:
+            lead.extend(self._friend_notify_followers(
+                cid, CMD_FRIEND_ONLINE, [cid, FRIEND_OFFLINE_STATE]))
+            try:
+                self.stage_registry.mark_offline(cid)
+            except Exception:
+                pass
+        return lead
+
+    def _friend_on_level(self, cid, level):
+        """LevelUpgrade: [roleId, level, null, null] to every follower."""
+        return self._friend_notify_followers(
+            cid, CMD_FRIEND_ROLE_INFO, [cid, level, None, None],
+            online_only=False)
+
+    def _friend_on_map(self, cid, map_id):
+        """ChangeMap: [roleId, -1, mapId, null] to online followers."""
+        return self._friend_notify_followers(
+            cid, CMD_FRIEND_ROLE_INFO, [cid, -1, map_id, None])
+
     def loading_stub(self, msg, cmd_num):
         """Post-21000 loading replies: exact fresh-role Java shapes.
 
@@ -3080,6 +3751,11 @@ class Session:
                 task_frames = self._task_on_enter(_wire_id(role)) or []
             except Exception:
                 pass
+            try:
+                task_frames.extend(
+                    self._friend_on_enter(_wire_id(role)) or [])
+            except Exception:
+                pass
             return (*bootstrap, *task_frames,
                     frame(amf3_encode(['10003', result])))
 
@@ -3097,10 +3773,23 @@ class Session:
         # reconnect/enter-world returns the role where it actually is.
         if target_map:
             self.save_role_state(role_id, map_id=map_id, map_x=x, map_y=y)
+        try:
+            before = self.stage_registry.map_of(_wire_id(role)) \
+                if self.stage_registry is not None else None
+        except Exception:
+            before = None
         if self.stage_registry is not None:
             self.stage_registry.register(_wire_id(role), map_id, self,
                                          x=x, y=y)
-        return frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
+        changed = []
+        if before is not None and str(before) != str(map_id):
+            try:
+                changed = self._friend_on_map(_wire_id(role), map_id) \
+                    or []
+            except Exception:
+                changed = []
+        reply = frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
+        return (*changed, reply) if changed else reply
 
     def xianjie_id_for(self, stored):
         """Active xianjie id for a role_xianjiechenhao row, or None.
@@ -10895,6 +11584,11 @@ class Session:
         for lv in range(old_level + 1, level + 1):
             frames.extend(self._skill_level_learn(rid, lv))
         frames.extend(self._task_on_level(role, rid))
+        if level != old_level:
+            try:
+                frames.extend(self._friend_on_level(rid, level) or [])
+            except Exception:
+                pass
         return frames
 
     def _role_shanbi_at(self, role, level):

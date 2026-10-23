@@ -152,6 +152,16 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_booth=self.server.save_booth,
             get_booth_sell=self.server.get_booth_sell,
             get_booth_sell_by_slot=self.server.get_booth_sell_by_slot,
+            list_friend_links=self.server.list_friend_links,
+            has_friend_link=self.server.has_friend_link,
+            count_friend_links=self.server.count_friend_links,
+            follower_ids=self.server.follower_ids,
+            friend_add_tx=self.server.friend_add_tx,
+            friend_del_tx=self.server.friend_del_tx,
+            friend_touch_foe_tx=self.server.friend_touch_foe_tx,
+            get_friend_info=self.server.get_friend_info,
+            save_friend_info=self.server.save_friend_info,
+            friend_add_count_tx=self.server.friend_add_count_tx,
             list_booth_sells=self.server.list_booth_sells,
             save_booth_sell=self.server.save_booth_sell,
             delete_booth_sell=self.server.delete_booth_sell,
@@ -208,6 +218,12 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
         except (ConnectionResetError, BrokenPipeError, ValueError) as e:
             log.info('game conn closed: %s', e)
         finally:
+            try:
+                # Notifies ride the followers' sessions; nothing goes
+                # back down the closing connection.
+                sess._friend_on_disconnect()
+            except Exception:
+                pass
             try:
                 sess._juqing_on_disconnect()
             except Exception:
@@ -388,6 +404,16 @@ def main():
     tcpd.list_public_booths = store.list_public_booths
     tcpd.list_booth_trade_logs = store.list_booth_trade_logs
     tcpd.save_booth_trade_log = store.save_booth_trade_log
+    tcpd.list_friend_links = store.list_friend_links
+    tcpd.has_friend_link = store.has_friend_link
+    tcpd.count_friend_links = store.count_friend_links
+    tcpd.follower_ids = store.follower_ids
+    tcpd.friend_add_tx = store.friend_add_tx
+    tcpd.friend_del_tx = store.friend_del_tx
+    tcpd.friend_touch_foe_tx = store.friend_touch_foe_tx
+    tcpd.get_friend_info = store.get_friend_info
+    tcpd.save_friend_info = store.save_friend_info
+    tcpd.friend_add_count_tx = store.friend_add_count_tx
     tcpd.get_role_brief = store.get_role_brief
     tcpd.get_task_main = store.get_task_main
     tcpd.save_task_main = store.save_task_main

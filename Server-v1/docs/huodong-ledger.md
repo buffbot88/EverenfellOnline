@@ -20,10 +20,12 @@ Zonghe group (19 inbound, all `missing`): 70000/70001 (first recharge),
 buy/generic claim), 70552/70553/70554 (consumption rank/rebate).
 Every one is driven by `ZongheHuodongCategoryConfig` rows from the
 GM-pushed remote JSON (`AbsZongheHuodongRemoteRefreshAble-
-ConfigureParser`); no shipped snapshot exists in `reference/`, so
-thresholds/rewards cannot be grounded. Pushes 70520 (`[configId, 1]`
-progress) and 71002 (`[configId, yb, 1]` first-recharge) are
-`push-only` for the same reason.
+ConfigureParser`); the authentic `fu0` snapshot ships in the CLIENT
+tree (`MKO_Client/.../gameanalyze/compositiveactivity/fu0`, md5-pinned)
+— see `docs/zonghe-finding.md` for the verified schema, routing
+tables, and the families still absent from that snapshot. Pushes 70520
+(`[configId, 1]`) progress and 71002 (`[configId, yb, 1]`
+first-recharge) are `push-only` pending the service port.
 
 Rank-1 group (94002-94005, `missing`): classpath config
 (`kaifuhuodong.jat` shape matches `RankHuodongConfig` fields) but the
@@ -82,12 +84,12 @@ getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
 
 ## Genuine remaining gaps
 
-- Zonghe families need the remote-refresh JSON snapshot
-  (`AbsZongheHuodongRemoteRefreshAbleConfigureParser.configureDataResolve`);
-  no shipped snapshot exists in `reference/`, so thresholds/rewards
-  cannot be grounded. Recovering a snapshot (or deciding on a seeded
-  stand-in) is the blocker for 70000/70001/70500-70502/70505-70509/
-  70530/70550/70551/70552-70554/70580/70520/71002.
+- Zonghe families: snapshot RECOVERED (`.../compositiveactivity/fu0`,
+  see `docs/zonghe-finding.md`). Remaining work is the Python loader +
+  service port for 70000/70001/70500-70502/70505-70509/
+  70530/70550/70551/70552-70554/70580/70520/71002, plus the still-
+  unrecovered inbound-ID→method routing table and the families absent
+  from `fu0` (ct 3/4/6/7/8/11-17/19/20/23/35). No seeded stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/
   handleKillBossRankData + quartz settlement); paihang itself is unported.

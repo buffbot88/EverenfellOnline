@@ -188,6 +188,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_task_gonghui=self.server.get_task_gonghui,
             save_task_gonghui=self.server.save_task_gonghui,
             delete_task_gonghui=self.server.delete_task_gonghui,
+            get_role_pozhen=self.server.get_role_pozhen,
+            save_role_pozhen=self.server.save_role_pozhen,
             get_guild_id=self.server.get_guild_id,
             save_guild_member=self.server.save_guild_member,
             add_guild_gongxian=self.server.add_guild_gongxian,
@@ -436,6 +438,8 @@ def main():
     tcpd.get_task_gonghui = store.get_task_gonghui
     tcpd.save_task_gonghui = store.save_task_gonghui
     tcpd.delete_task_gonghui = store.delete_task_gonghui
+    tcpd.get_role_pozhen = store.get_role_pozhen
+    tcpd.save_role_pozhen = store.save_role_pozhen
     tcpd.get_guild_id = store.get_guild_id
     tcpd.save_guild_member = store.save_guild_member
     tcpd.add_guild_gongxian = store.add_guild_gongxian

@@ -1,0 +1,875 @@
+Compiled from "BoothOnlineOutput.java"
+public class com.xianling.public_.booth.output.BoothOnlineOutput {
+  public com.xianling.public_.booth.output.BoothOnlineOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] getOnlineBooths(java.lang.String, java.util.List<com.xianling.public_.booth.entity.Booth>);
+    Code:
+       0: aconst_null
+       1: astore_2
+       2: aload_1
+       3: ifnull        71
+       6: aload_1
+       7: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      12: ifle          71
+      15: aload_1
+      16: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      21: anewarray     #3                  // class java/lang/Object
+      24: astore_2
+      25: iconst_0
+      26: istore_3
+      27: aload_1
+      28: invokeinterface #4,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      33: astore        4
+      35: aload         4
+      37: invokeinterface #5,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      42: ifeq          71
+      45: aload         4
+      47: invokeinterface #6,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      52: checkcast     #7                  // class com/xianling/public_/booth/entity/Booth
+      55: astore        5
+      57: aload_2
+      58: iload_3
+      59: iinc          3, 1
+      62: aload         5
+      64: invokevirtual #8                  // Method com/xianling/public_/booth/entity/Booth.fomart:()Ljava/lang/Object;
+      67: aastore
+      68: goto          35
+      71: iconst_2
+      72: anewarray     #3                  // class java/lang/Object
+      75: dup
+      76: iconst_0
+      77: aload_0
+      78: aastore
+      79: dup
+      80: iconst_1
+      81: aload_2
+      82: aastore
+      83: areturn
+}
+Compiled from "BoothSeachOutput.java"
+public class com.xianling.public_.booth.output.BoothSeachOutput {
+  public com.xianling.public_.booth.output.BoothSeachOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] seachBoothByMoney(java.util.List<com.xianling.public_.booth.entity.Booth>);
+    Code:
+       0: aconst_null
+       1: astore_1
+       2: aload_0
+       3: ifnull        68
+       6: aload_0
+       7: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      12: ifle          68
+      15: aload_0
+      16: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      21: anewarray     #3                  // class java/lang/Object
+      24: astore_1
+      25: iconst_0
+      26: istore_2
+      27: aload_0
+      28: invokeinterface #4,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      33: astore_3
+      34: aload_3
+      35: invokeinterface #5,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      40: ifeq          68
+      43: aload_3
+      44: invokeinterface #6,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      49: checkcast     #7                  // class com/xianling/public_/booth/entity/Booth
+      52: astore        4
+      54: aload_1
+      55: iload_2
+      56: iinc          2, 1
+      59: aload         4
+      61: invokevirtual #8                  // Method com/xianling/public_/booth/entity/Booth.fomart:()Ljava/lang/Object;
+      64: aastore
+      65: goto          34
+      68: aload_1
+      69: areturn
+}
+Compiled from "BoothGoodsOutput.java"
+public class com.xianling.public_.booth.output.BoothGoodsOutput {
+  public com.xianling.public_.booth.output.BoothGoodsOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] getBoothsGoods(java.lang.String, java.util.List<com.xianling.public_.booth.entity.BoothSell>, com.xianling.public_.booth.entity.BoothSell, com.xianling.public_.booth.entity.BoothSell);
+    Code:
+       0: aconst_null
+       1: astore        4
+       3: aload_1
+       4: ifnull        126
+       7: aload_1
+       8: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      13: ifle          126
+      16: aload_1
+      17: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      22: anewarray     #3                  // class java/lang/Object
+      25: astore        4
+      27: iconst_0
+      28: istore        5
+      30: aload_1
+      31: invokeinterface #4,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      36: astore        6
+      38: aload         6
+      40: invokeinterface #5,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      45: ifeq          121
+      48: aload         6
+      50: invokeinterface #6,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      55: checkcast     #7                  // class com/xianling/public_/booth/entity/BoothSell
+      58: astore        7
+      60: aload         4
+      62: iload         5
+      64: iinc          5, 1
+      67: iconst_5
+      68: anewarray     #3                  // class java/lang/Object
+      71: dup
+      72: iconst_0
+      73: aload         7
+      75: invokevirtual #8                  // Method com/xianling/public_/booth/entity/BoothSell.getId:()Ljava/lang/String;
+      78: aastore
+      79: dup
+      80: iconst_1
+      81: aload         7
+      83: invokestatic  #9                  // Method com/xianling/gamerule/goods/output/StoreGoodsOutput.formart:(Lcom/xianling/gamerule/goods/entity/StoreGoods;)Ljava/util/Map;
+      86: aastore
+      87: dup
+      88: iconst_2
+      89: aload         7
+      91: invokevirtual #10                 // Method com/xianling/public_/booth/entity/BoothSell.getSellYb:()J
+      94: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      97: aastore
+      98: dup
+      99: iconst_3
+     100: aload         7
+     102: invokevirtual #12                 // Method com/xianling/public_/booth/entity/BoothSell.getSellJb:()J
+     105: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+     108: aastore
+     109: dup
+     110: iconst_4
+     111: aload         7
+     113: invokevirtual #13                 // Method com/xianling/public_/booth/entity/BoothSell.getSlotNum:()Ljava/lang/Integer;
+     116: aastore
+     117: aastore
+     118: goto          38
+     121: aload         4
+     123: invokestatic  #14                 // Method sortBoothGoods:([Ljava/lang/Object;)V
+     126: aconst_null
+     127: astore        5
+     129: aload_2
+     130: ifnull        159
+     133: iconst_2
+     134: anewarray     #3                  // class java/lang/Object
+     137: dup
+     138: iconst_0
+     139: aload_2
+     140: invokevirtual #10                 // Method com/xianling/public_/booth/entity/BoothSell.getSellYb:()J
+     143: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+     146: aastore
+     147: dup
+     148: iconst_1
+     149: aload_2
+     150: invokevirtual #12                 // Method com/xianling/public_/booth/entity/BoothSell.getSellJb:()J
+     153: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+     156: aastore
+     157: astore        5
+     159: aconst_null
+     160: astore        6
+     162: aload_3
+     163: ifnull        192
+     166: iconst_2
+     167: anewarray     #3                  // class java/lang/Object
+     170: dup
+     171: iconst_0
+     172: aload_3
+     173: invokevirtual #12                 // Method com/xianling/public_/booth/entity/BoothSell.getSellJb:()J
+     176: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+     179: aastore
+     180: dup
+     181: iconst_1
+     182: aload_3
+     183: invokevirtual #10                 // Method com/xianling/public_/booth/entity/BoothSell.getSellYb:()J
+     186: invokestatic  #11                 // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+     189: aastore
+     190: astore        6
+     192: iconst_4
+     193: anewarray     #3                  // class java/lang/Object
+     196: dup
+     197: iconst_0
+     198: aload_0
+     199: aastore
+     200: dup
+     201: iconst_1
+     202: aload         4
+     204: aastore
+     205: dup
+     206: iconst_2
+     207: aload         5
+     209: aastore
+     210: dup
+     211: iconst_3
+     212: aload         6
+     214: aastore
+     215: areturn
+
+  private static void sortBoothGoods(java.lang.Object[]);
+    Code:
+       0: aload_0
+       1: ifnull        111
+       4: aload_0
+       5: arraylength
+       6: ifle          111
+       9: iconst_0
+      10: istore_1
+      11: iload_1
+      12: aload_0
+      13: arraylength
+      14: iconst_1
+      15: isub
+      16: if_icmpge     111
+      19: aload_0
+      20: iload_1
+      21: aaload
+      22: checkcast     #15                 // class "[Ljava/lang/Object;"
+      25: checkcast     #15                 // class "[Ljava/lang/Object;"
+      28: astore_2
+      29: aload_2
+      30: iconst_4
+      31: aaload
+      32: checkcast     #16                 // class java/lang/Integer
+      35: invokevirtual #17                 // Method java/lang/Integer.intValue:()I
+      38: istore_3
+      39: iload_1
+      40: iconst_1
+      41: iadd
+      42: istore        4
+      44: iload         4
+      46: aload_0
+      47: arraylength
+      48: if_icmpge     105
+      51: aload_0
+      52: iload         4
+      54: aaload
+      55: checkcast     #15                 // class "[Ljava/lang/Object;"
+      58: checkcast     #15                 // class "[Ljava/lang/Object;"
+      61: astore        5
+      63: aload         5
+      65: iconst_4
+      66: aaload
+      67: checkcast     #16                 // class java/lang/Integer
+      70: invokevirtual #17                 // Method java/lang/Integer.intValue:()I
+      73: istore        6
+      75: iload_3
+      76: iload         6
+      78: if_icmple     99
+      81: aload_0
+      82: iload_1
+      83: aaload
+      84: astore        7
+      86: aload_0
+      87: iload_1
+      88: aload_0
+      89: iload         4
+      91: aaload
+      92: aastore
+      93: aload_0
+      94: iload         4
+      96: aload         7
+      98: aastore
+      99: iinc          4, 1
+     102: goto          44
+     105: iinc          1, 1
+     108: goto          11
+     111: return
+}
+Compiled from "BoothBuyOutput.java"
+public class com.xianling.public_.booth.output.BoothBuyOutput {
+  public com.xianling.public_.booth.output.BoothBuyOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] buyBoothGoods(java.lang.String, com.xianling.public_.booth.entity.BoothSell, com.xianling.gamerule.goods.creator.ItemModel);
+    Code:
+       0: bipush        6
+       2: anewarray     #2                  // class java/lang/Object
+       5: dup
+       6: iconst_0
+       7: iconst_1
+       8: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      11: aastore
+      12: dup
+      13: iconst_1
+      14: aload_1
+      15: invokestatic  #4                  // Method com/xianling/gamerule/goods/output/StoreGoodsOutput.formart:(Lcom/xianling/gamerule/goods/entity/StoreGoods;)Ljava/util/Map;
+      18: aastore
+      19: dup
+      20: iconst_2
+      21: aload_1
+      22: invokevirtual #5                  // Method com/xianling/public_/booth/entity/BoothSell.getSellYb:()J
+      25: invokestatic  #6                  // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      28: aastore
+      29: dup
+      30: iconst_3
+      31: aload_1
+      32: invokevirtual #7                  // Method com/xianling/public_/booth/entity/BoothSell.getSellJb:()J
+      35: invokestatic  #6                  // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      38: aastore
+      39: dup
+      40: iconst_4
+      41: aload_1
+      42: invokevirtual #8                  // Method com/xianling/public_/booth/entity/BoothSell.getId:()Ljava/lang/String;
+      45: aastore
+      46: dup
+      47: iconst_5
+      48: aload_0
+      49: aastore
+      50: areturn
+
+  public static java.lang.Object[] buySellYb(com.xianling.public_.booth.entity.BoothSell, java.lang.Object, java.lang.String);
+    Code:
+       0: new           #9                  // class java/util/ArrayList
+       3: dup
+       4: invokespecial #10                 // Method java/util/ArrayList."<init>":()V
+       7: astore_3
+       8: aload_3
+       9: iconst_1
+      10: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      13: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      18: pop
+      19: aload_3
+      20: aload_2
+      21: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      26: pop
+      27: aload_1
+      28: invokevirtual #12                 // Method java/lang/Object.toString:()Ljava/lang/String;
+      31: ldc           #13                 // String ,
+      33: invokevirtual #14                 // Method java/lang/String.split:(Ljava/lang/String;)[Ljava/lang/String;
+      36: astore        4
+      38: iconst_0
+      39: istore        5
+      41: iload         5
+      43: aload         4
+      45: arraylength
+      46: if_icmpge     67
+      49: aload_3
+      50: aload         4
+      52: iload         5
+      54: aaload
+      55: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      60: pop
+      61: iinc          5, 1
+      64: goto          41
+      67: aload_3
+      68: invokeinterface #15,  1           // InterfaceMethod java/util/List.toArray:()[Ljava/lang/Object;
+      73: areturn
+
+  public static java.lang.Object[] buySellJb(com.xianling.public_.booth.entity.BoothSell, java.lang.Object, java.lang.String);
+    Code:
+       0: new           #9                  // class java/util/ArrayList
+       3: dup
+       4: invokespecial #10                 // Method java/util/ArrayList."<init>":()V
+       7: astore_3
+       8: aload_3
+       9: iconst_1
+      10: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      13: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      18: pop
+      19: aload_3
+      20: aload_2
+      21: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      26: pop
+      27: aload_1
+      28: invokevirtual #12                 // Method java/lang/Object.toString:()Ljava/lang/String;
+      31: ldc           #13                 // String ,
+      33: invokevirtual #14                 // Method java/lang/String.split:(Ljava/lang/String;)[Ljava/lang/String;
+      36: astore        4
+      38: iconst_0
+      39: istore        5
+      41: iload         5
+      43: aload         4
+      45: arraylength
+      46: if_icmpge     67
+      49: aload_3
+      50: aload         4
+      52: iload         5
+      54: aaload
+      55: invokeinterface #11,  2           // InterfaceMethod java/util/List.add:(Ljava/lang/Object;)Z
+      60: pop
+      61: iinc          5, 1
+      64: goto          41
+      67: aload_3
+      68: invokeinterface #15,  1           // InterfaceMethod java/util/List.toArray:()[Ljava/lang/Object;
+      73: areturn
+}
+Compiled from "BoothChangeOutput.java"
+public class com.xianling.public_.booth.output.BoothChangeOutput {
+  public com.xianling.public_.booth.output.BoothChangeOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] changePrice(com.xianling.public_.booth.entity.BoothSell);
+    Code:
+       0: iconst_4
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: aload_0
+       7: invokevirtual #3                  // Method com/xianling/public_/booth/entity/BoothSell.getId:()Ljava/lang/String;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: aconst_null
+      14: aastore
+      15: dup
+      16: iconst_2
+      17: aload_0
+      18: invokevirtual #4                  // Method com/xianling/public_/booth/entity/BoothSell.getSellYb:()J
+      21: invokestatic  #5                  // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      24: aastore
+      25: dup
+      26: iconst_3
+      27: aload_0
+      28: invokevirtual #6                  // Method com/xianling/public_/booth/entity/BoothSell.getSellJb:()J
+      31: invokestatic  #5                  // Method java/lang/Long.valueOf:(J)Ljava/lang/Long;
+      34: aastore
+      35: astore_1
+      36: iconst_2
+      37: anewarray     #2                  // class java/lang/Object
+      40: dup
+      41: iconst_0
+      42: iconst_1
+      43: invokestatic  #7                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      46: aastore
+      47: dup
+      48: iconst_1
+      49: aload_1
+      50: aastore
+      51: areturn
+
+  public static java.lang.Object[] changeIndex(com.xianling.public_.booth.entity.BoothSell);
+    Code:
+       0: iconst_3
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_1
+       7: invokestatic  #7                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: aload_0
+      14: invokevirtual #3                  // Method com/xianling/public_/booth/entity/BoothSell.getId:()Ljava/lang/String;
+      17: aastore
+      18: dup
+      19: iconst_2
+      20: aload_0
+      21: invokevirtual #8                  // Method com/xianling/public_/booth/entity/BoothSell.getSlotNum:()Ljava/lang/Integer;
+      24: aastore
+      25: areturn
+}
+Compiled from "BoothLogOutput.java"
+public class com.xianling.public_.booth.output.BoothLogOutput {
+  public com.xianling.public_.booth.output.BoothLogOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] getBoothLog(java.util.List<com.xianling.public_.booth.entity.BoothTradeLog>);
+    Code:
+       0: aconst_null
+       1: astore_1
+       2: aload_0
+       3: ifnull        68
+       6: aload_0
+       7: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      12: ifle          68
+      15: aload_0
+      16: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      21: anewarray     #3                  // class java/lang/Object
+      24: astore_1
+      25: iconst_0
+      26: istore_2
+      27: aload_0
+      28: invokeinterface #4,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      33: astore_3
+      34: aload_3
+      35: invokeinterface #5,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      40: ifeq          68
+      43: aload_3
+      44: invokeinterface #6,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      49: checkcast     #7                  // class com/xianling/public_/booth/entity/BoothTradeLog
+      52: astore        4
+      54: aload_1
+      55: iload_2
+      56: iinc          2, 1
+      59: aload         4
+      61: invokevirtual #8                  // Method com/xianling/public_/booth/entity/BoothTradeLog.getLogCode:()Ljava/lang/String;
+      64: aastore
+      65: goto          34
+      68: aload_1
+      69: areturn
+}
+Compiled from "BoothTradeLogOutput.java"
+public class com.xianling.public_.booth.output.BoothTradeLogOutput {
+  public com.xianling.public_.booth.output.BoothTradeLogOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] getBoothLog(java.util.List<com.xianling.public_.booth.entity.BoothTradeLog>);
+    Code:
+       0: aconst_null
+       1: astore_1
+       2: aload_0
+       3: ifnull        68
+       6: aload_0
+       7: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      12: ifle          68
+      15: aload_0
+      16: invokeinterface #2,  1            // InterfaceMethod java/util/List.size:()I
+      21: anewarray     #3                  // class java/lang/Object
+      24: astore_1
+      25: iconst_0
+      26: istore_2
+      27: aload_0
+      28: invokeinterface #4,  1            // InterfaceMethod java/util/List.iterator:()Ljava/util/Iterator;
+      33: astore_3
+      34: aload_3
+      35: invokeinterface #5,  1            // InterfaceMethod java/util/Iterator.hasNext:()Z
+      40: ifeq          68
+      43: aload_3
+      44: invokeinterface #6,  1            // InterfaceMethod java/util/Iterator.next:()Ljava/lang/Object;
+      49: checkcast     #7                  // class com/xianling/public_/booth/entity/BoothTradeLog
+      52: astore        4
+      54: aload_1
+      55: iload_2
+      56: iinc          2, 1
+      59: aload         4
+      61: invokevirtual #8                  // Method com/xianling/public_/booth/entity/BoothTradeLog.getLogCode:()Ljava/lang/String;
+      64: aastore
+      65: goto          34
+      68: aload_1
+      69: areturn
+}
+Compiled from "BoothErrorCodeOutput.java"
+public class com.xianling.public_.booth.output.BoothErrorCodeOutput {
+  public com.xianling.public_.booth.output.BoothErrorCodeOutput();
+    Code:
+       0: aload_0
+       1: invokespecial #1                  // Method java/lang/Object."<init>":()V
+       4: return
+
+  public static java.lang.Object[] goodsExpire();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: getstatic     #4                  // Field com/xianling/gamerule/errorcode/GeneralErrorCode.GOODS_EXPIRE:Ljava/lang/Integer;
+      16: aastore
+      17: areturn
+
+  public static java.lang.Object[] ybNotEnough();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: getstatic     #5                  // Field com/xianling/gamerule/errorcode/GeneralErrorCode.YB_NOT_ENOUGH:Ljava/lang/Integer;
+      16: aastore
+      17: areturn
+
+  public static java.lang.Object[] jbNotEnough();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: getstatic     #6                  // Field com/xianling/gamerule/errorcode/GeneralErrorCode.JB_NOT_ENOUGH:Ljava/lang/Integer;
+      16: aastore
+      17: areturn
+
+  public static java.lang.Object[] bagSlotNotEnough();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: getstatic     #7                  // Field com/xianling/gamerule/errorcode/GeneralErrorCode.BAG_SLOT_NOT_ENOUGH:Ljava/lang/Integer;
+      16: aastore
+      17: areturn
+
+  public static java.lang.Object[] nameNoAllow();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #8                  // int 424044
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] noBindGoods();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #9                  // int 424046
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] goodsCountMax();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #10                 // int 424068
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] roleBoothCountMax();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #11                 // int 424047
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] noInputMoney();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #12                 // int 424048
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] goodsNoInBooth();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #13                 // int 424049
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] sellRoleOffline();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #14                 // int 424050
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] sellYbMax();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #15                 // int 424052
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] sellIndexSame();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #16                 // int 424053
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] noBuySelfGoods();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #17                 // int 424054
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] changeRefresh();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #18                 // int 424067
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] jbOrYbMoreMax();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #19                 // int 424060
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] jbSellNoExist();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #20                 // int 424061
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] ybSellNoExist();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #21                 // int 424062
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+
+  public static java.lang.Object[] roleYbNotEnough();
+    Code:
+       0: iconst_2
+       1: anewarray     #2                  // class java/lang/Object
+       4: dup
+       5: iconst_0
+       6: iconst_0
+       7: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      10: aastore
+      11: dup
+      12: iconst_1
+      13: ldc           #22                 // int 424069
+      15: invokestatic  #3                  // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      18: aastore
+      19: areturn
+}

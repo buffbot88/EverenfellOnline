@@ -473,6 +473,42 @@ TASK_ERR_GONGHUI_DONE = 81101
 TASK_ERR_GONGHUI_DIFF_MIN = 81102
 TASK_ERR_GONGHUI_THICK_MAX = 81103
 TASK_ERR_GONGHUI_YB_SHORT = 1003
+# Pozhen inbound routes (PoZhenAction): 48001 info, 48002 start,
+# 48003 saodang, 48004 refresh, 48005 move, 48006 buy count, 48007 sweep
+# end, 48008 quick sweep, 48009 recovery, 48010 stop, 48011 claim goods
+# (a void grant: the action discards the service result, so, like the
+# gonghui 81008 void reply, success is silent on the wire).
+CMD_POZHEN_INFO = 48001
+CMD_POZHEN_START = 48002
+CMD_POZHEN_SAODANG = 48003
+CMD_POZHEN_REFRESH = 48004
+CMD_POZHEN_MOVE = 48005
+CMD_POZHEN_BUY = 48006
+CMD_POZHEN_SDOVER = 48007
+CMD_POZHEN_QUICKLY = 48008
+CMD_POZHEN_RECOVERY = 48009
+CMD_POZHEN_STOP = 48010
+CMD_POZHEN_GET_GOODS = 48011
+# PozhenErrorCode (pozhen/output/PozhenErrorCode clinit) + GeneralErrorCode
+# YB_NOT_ENOUGH (1003) and the shared 50006 gate. FULL_COUNT is 584006
+# and YB_LESS 584005 (swapped vs declaration order); the unused codes
+# (YB_LESS, JB_LESS, BAG_FULL, NOT_YET, AREADY_PASS, MAX_REFRESH_COUNT,
+# JIASU_SAODANG_COUNT_LESS, BROADCAST) have no call site in these paths.
+POZHEN_ERR_LEVEL_LESS = 584000
+POZHEN_ERR_DIANSHU_LESS = 584001
+POZHEN_ERR_YUEJI = 584002
+POZHEN_ERR_NOT_EXIST = 584003
+POZHEN_ERR_FULL_BUY = 584004
+POZHEN_ERR_FULL_COUNT = 584006
+POZHEN_ERR_NO_SAODANG = 584007
+POZHEN_ERR_SAODANGING = 584008
+POZHEN_ERR_CANNT_SD = 584011
+POZHEN_ERR_TOP = 584012
+POZHEN_ERR_JIASU_YB_LESS = 584013
+POZHEN_ERR_NO_REFRESH = 584020
+POZHEN_ERR_TIME_LESS = 584015
+POZHEN_ERR_YB_SHORT = 1003
+POZHEN_ERR_LEVEL_GATE = 50006
 # GongHuiTaskConstants (jar clinit) + condition export impl costs.
 GONGHUI_MIN_LEVEL = 30
 GONGHUI_MAX_LOOP = 20
@@ -963,7 +999,8 @@ class Session:
                  save_task_taofa_state=None, get_task_richang=None,
                  save_task_richang=None, delete_task_richang=None,
                  get_task_gonghui=None, save_task_gonghui=None,
-                 delete_task_gonghui=None, get_guild_id=None,
+                 delete_task_gonghui=None, get_role_pozhen=None,
+                 save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
@@ -1170,6 +1207,9 @@ class Session:
         self.delete_task_richang = delete_task_richang or (lambda r: False)
         self.get_task_gonghui = get_task_gonghui or (lambda r: None)
         self.save_task_gonghui = save_task_gonghui or \
+            (lambda *a, **k: False)
+        self.get_role_pozhen = get_role_pozhen or (lambda r: None)
+        self.save_role_pozhen = save_role_pozhen or \
             (lambda *a, **k: False)
         self.delete_task_gonghui = delete_task_gonghui or (lambda r: False)
         self.get_guild_id = get_guild_id or (lambda r: None)
@@ -1546,6 +1586,28 @@ class Session:
             return self.gonghui_complete_best()
         if cmd_num == CMD_GONGHUI_NOTIFY_LOOP:
             return self.gonghui_notify_loop()
+        if cmd_num == CMD_POZHEN_INFO:
+            return self.pozhen_info()
+        if cmd_num == CMD_POZHEN_START:
+            return self.pozhen_start(msg)
+        if cmd_num == CMD_POZHEN_SAODANG:
+            return self.pozhen_saodang(msg)
+        if cmd_num == CMD_POZHEN_REFRESH:
+            return self.pozhen_refresh()
+        if cmd_num == CMD_POZHEN_MOVE:
+            return self.pozhen_move(msg)
+        if cmd_num == CMD_POZHEN_BUY:
+            return self.pozhen_buy()
+        if cmd_num == CMD_POZHEN_SDOVER:
+            return self.pozhen_sdover()
+        if cmd_num == CMD_POZHEN_QUICKLY:
+            return self.pozhen_quickly()
+        if cmd_num == CMD_POZHEN_RECOVERY:
+            return self.pozhen_recovery()
+        if cmd_num == CMD_POZHEN_STOP:
+            return self.pozhen_stop()
+        if cmd_num == CMD_POZHEN_GET_GOODS:
+            return self.pozhen_get_goods(msg)
         if cmd_num == CMD_ZUOQI_PANEL:
             return self.zuoqi_panel(msg)
         if cmd_num == CMD_ZUOQI_RIDE:
@@ -6377,6 +6439,7 @@ class Session:
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else None
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
+        pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
@@ -6413,6 +6476,15 @@ class Session:
             # [0] rank-based shenjiang fight and [1] jiangxingtu fight are not
             # ported yet; both are 0 for the captured role's legacy rows.
             shenjiang_slot = [0, 0, self.config.shenjiang_skill_upgrade_fight(shenjiang)]
+            # ZhanDouLiServiceImpl.pozhenfight: getFight over the
+            # cleared layer's attribute bag (0 with no progress: Java's
+            # null map reads as no contribution from empty sources).
+            if role is not None:
+                try:
+                    pozhen = self.config.fight_value(
+                        self.pozhen_attribute_map(role.get('id')))
+                except Exception:
+                    pozhen = 0
             try:
                 buffs = self.get_role_attr_buffs(role.get('id')) or []
             except Exception:
@@ -6431,8 +6503,8 @@ class Session:
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
-            [0, 0], vip, shenjiang_slot, 0, 0, dan, [0, 0], xianjie, 0, 0, 0,
-            0, [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
+            [0, 0], vip, shenjiang_slot, pozhen, 0, dan, [0, 0], xianjie,
+            0, 0, 0, 0, [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def equip_info(self):
         """Command 31000: RoleEquipSlotServiceImpl.getInfoEquip -> formart1(List).
@@ -13758,6 +13830,968 @@ class Session:
                 pass
         self._gonghui_save(rid, row)
         return frames
+
+    # Battle-formation (pozhen 48001-48011). Evidence: PoZhenAction (11
+    # inbound; 48011 getGoods is a void grant), RolePozhenServiceImpl plus
+    # the MopupInner sweep math, PoZhenUtil splitPZ/zuzhiMax/megre, the
+    # PoZhenBiao.dat/PoZhenXinXi/PoZhenShuaXin loaders, and the shipped
+    # PoZhenBiao (150 rows, 10 layers), PoZhenShuaXin, PoZhenXinXi,
+    # vipbiao (pozhen/pozhentime) and ZuBaoDiaoLuoBiao (@pozhen001-110).
+    @staticmethod
+    def _pozhen_split(text):
+        """PoZhenUtil.splitPZ: 'main-idx' ints, [1, 0] when absent."""
+        if not text:
+            return [1, 0]
+        try:
+            parts = str(text).split('-')
+            return [int(parts[0]), int(parts[1])]
+        except (TypeError, ValueError, IndexError):
+            return [1, 0]
+
+    @staticmethod
+    def _pozhen_loc_map(text):
+        """PoZhenUtil.megre(String): 'main-idx;...' to {main: idx}."""
+        loc = {}
+        if not text:
+            return loc
+        for cell in str(text).split(';'):
+            if not cell:
+                continue
+            try:
+                key, val = cell.split('-')
+                loc[int(key)] = int(val)
+            except (TypeError, ValueError):
+                continue
+        return loc
+
+    @staticmethod
+    def _pozhen_loc_str(loc):
+        """PoZhenUtil.megre(Map): {main: idx} to 'main-idx;...' ('' empty)."""
+        if not loc:
+            return ''
+        return ';'.join(f'{key}-{loc[key]}' for key in loc)
+
+    def _pozhen_role(self):
+        """(role, rid) for the authed account's first role."""
+        role, rid = self._task_role()
+        if role is None or rid is None:
+            return None, None
+        return role, rid
+
+    def _pozhen_vip_max(self, rid):
+        """VipConfig.getPozhen: daily point cap for the role's tier."""
+        if self.config is None:
+            return 0
+        return self.config.vip_pozhen_count(self._role_vip_level(rid))
+
+    def _pozhen_sweep_ms(self, rid):
+        """VipConfig.getPoZhenSaoDangTime: millis per sweep point."""
+        if self.config is None:
+            return 0
+        return self.config.vip_pozhen_saodang_ms(
+            self._role_vip_level(rid))
+
+    def _pozhen_save(self, rid, row):
+        """Persist a formation row dict under its role id."""
+        fields = {key: row.get(key) for key in (
+            'max_location', 'locations', 'can_use_count', 'buy_count',
+            'refresh_count', 'in_mopup', 'sd_main_id', 'mopup_time',
+            'recovery_time', 'refresh_time', 'award_rate', 'expire_time')}
+        try:
+            self.save_role_pozhen(rid, **fields)
+        except Exception:
+            pass
+
+    def _pozhen_create(self, rid, vip_max):
+        """createRolePoZhen: zeroed row with a full point bar, saved."""
+        now = int(time.time() * 1000)
+        row = {'max_location': None, 'locations': None,
+               'can_use_count': vip_max, 'buy_count': 0,
+               'refresh_count': 0, 'in_mopup': 0, 'sd_main_id': 0,
+               'mopup_time': 0, 'recovery_time': 0, 'refresh_time': now,
+               'award_rate': None, 'expire_time': None}
+        self._pozhen_save(rid, row)
+        return row
+
+    def _pozhen_online(self, row, rid, vip_max):
+        """pozhenOnline: a stale refresh day refills the bar, saved."""
+        now = int(time.time() * 1000)
+        if not self._same_day_ms(row.get('refresh_time'), now):
+            row['buy_count'] = 0
+            row['can_use_count'] = vip_max
+            row['refresh_count'] = 0
+            row['recovery_time'] = 0
+            row['refresh_time'] = now
+            self._pozhen_save(rid, row)
+        return row
+
+    def _pozhen_cal_cur(self, row):
+        """calCurCeng: [max layer, idx], rolling over a cleared layer."""
+        cur = self._pozhen_split((row or {}).get('max_location'))
+        if self.config is None:
+            return cur
+        cfg = self.config.pozhen_layer(cur[0])
+        if cfg is None:
+            return cur
+        if cur[1] < cfg['max']:
+            return cur
+        nxt = self.config.pozhen_layer(cur[0] + 1)
+        if nxt is None:
+            return cur
+        return [cur[0] + 1, nxt['min'] - 1]
+
+    @staticmethod
+    def _pozhen_compute_next(cfg, idx):
+        """computeNext: [main, idx + 1], or [main + 1, min] past max."""
+        if idx < cfg['max']:
+            return [cfg['main_id'], idx + 1]
+        return [cfg['main_id'] + 1, cfg['min']]
+
+    def _pozhen_check_can(self, row, main_id, idx):
+        """checkCanPozhen: error code or None when the cell may start."""
+        if row is None:
+            return POZHEN_ERR_LEVEL_LESS
+        try:
+            if int(row.get('can_use_count') or 0) <= 0:
+                return POZHEN_ERR_DIANSHU_LESS
+        except (TypeError, ValueError):
+            return POZHEN_ERR_DIANSHU_LESS
+        cfg = self.config.pozhen_layer(main_id)
+        if cfg is None:
+            return POZHEN_ERR_NOT_EXIST
+        if idx not in cfg['subs']:
+            return POZHEN_ERR_NOT_EXIST
+        cur = self._pozhen_split(row.get('max_location'))
+        cur_cfg = self.config.pozhen_layer(cur[0])
+        nxt = self._pozhen_compute_next(cur_cfg, cur[1]) \
+            if cur_cfg is not None else None
+        if nxt is None:
+            if main_id > cur[0]:
+                return POZHEN_ERR_NOT_EXIST
+            if main_id == cur[0] and idx > cur[1]:
+                return POZHEN_ERR_NOT_EXIST
+        else:
+            if main_id > nxt[0] or \
+                    (main_id == nxt[0] and idx > nxt[1]):
+                return POZHEN_ERR_YUEJI
+            if main_id == nxt[0] and idx == nxt[1]:
+                return None
+        loc = self._pozhen_loc_map(row.get('locations'))
+        if main_id not in loc:
+            return POZHEN_ERR_YUEJI
+        if idx <= loc[main_id]:
+            return POZHEN_ERR_NO_REFRESH
+        return None
+
+    def _pozhen_decr(self, row, rid, count):
+        """decrPoZhenDianShu: spend points, stamping recovery at full."""
+        try:
+            have = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            return False
+        if have < count:
+            return False
+        if have == self._pozhen_vip_max(rid):
+            row['recovery_time'] = int(time.time() * 1000)
+        row['can_use_count'] = have - count
+        return True
+
+    def _pozhen_win_and_add(self, role, rid, sub, row):
+        """computeWinAndAdd: level-scaled jb/exp/zhenqi + zubao bag drop.
+
+        Grants YXB/exp/zhenqi/bag immediately like the jar; the buff
+        multiplies jb and exp only (zhenqi rides unscaled). Returns
+        ([jb, exp, zhenqi, itemVo], level-up frames), or None when the
+        zubao group misses (the jar returns null and the caller faults;
+        unreachable: every shipped sub rolls a configured @pozhen group).
+        """
+        level = self._task_role_level(role)
+        jb = level * sub['jb'] + sub['jb1']
+        exp = level * sub['exp'] + sub['exp1']
+        zhenqi = level * sub['zhenqi'] + sub['zhenqi1']
+        try:
+            buff_live = row.get('expire_time') is not None and \
+                int(row.get('expire_time') or 0) > int(time.time() * 1000)
+        except (TypeError, ValueError):
+            buff_live = False
+        if buff_live:
+            try:
+                rate = float(row.get('award_rate')
+                             if row.get('award_rate') is not None else 1.0)
+            except (TypeError, ValueError):
+                rate = 1.0
+            jb = int(jb * rate)
+            exp = int(exp * rate)
+        odds = self._pozhen_roll(sub.get('zubao_id'))
+        if odds is None:
+            return None
+        goods_id, count = odds
+        item_vo = [goods_id, count]
+        extra = []
+        if jb > 0:
+            try:
+                total = int(role.get('tongqian') or 0) + jb
+            except (TypeError, ValueError):
+                total = jb
+            try:
+                self.save_role_state(rid, tongqian=total)
+            except Exception:
+                pass
+        if exp > 0:
+            try:
+                _total, _level, _gained, exp_frames = \
+                    self._role_gain_exp(role, rid, exp)
+                extra.extend(exp_frames)
+            except Exception:
+                pass
+        if zhenqi > 0:
+            try:
+                total = int(role.get('zhenqi') or 0) + zhenqi
+            except (TypeError, ValueError):
+                total = zhenqi
+            try:
+                self.save_role_state(rid, zhenqi=total)
+            except Exception:
+                pass
+        try:
+            self._task_grant(rid, [{'goods_id': goods_id,
+                                    'count': count}])
+        except Exception:
+            pass
+        return [jb, exp, zhenqi, item_vo], extra
+
+    def _pozhen_roll(self, zubao_id):
+        """rollZubaoId: one componentRoll draw, or None when unconfigured."""
+        if self.config is None or not zubao_id:
+            return None
+        try:
+            from game import juqing as juqing_lib
+        except Exception:
+            return None
+        try:
+            table = self.config.zubao_table()
+        except Exception:
+            return None
+        try:
+            entry = juqing_lib.component_roll(table, str(zubao_id))
+        except Exception:
+            return None
+        if entry is None:
+            return None
+        return [entry[0], entry[1]]
+
+    def _pozhen_compute_n_awards(self, role, rid, row, times, loc):
+        """computeNTimesAward: grant `times` cells past the cursor.
+
+        The jar feeds the cumulative elapsed count with an advancing
+        cursor, so a second mid-sweep poll grants from the moved cursor
+        again; reproduced verbatim (pinned by tests). Returns
+        ([entries], level-up frames) or None when times is 0.
+        """
+        if not times:
+            return None
+        sd = row.get('sd_main_id') or 0
+        try:
+            start = int(loc.get(sd) or 0)
+        except (TypeError, ValueError):
+            start = 0
+        out, extra = [], []
+        idx = start + 1
+        while idx <= start + times:
+            sub = self.config.pozhen_sub(sd, idx)
+            if sub is None:
+                break
+            award = self._pozhen_win_and_add(role, rid, sub, row)
+            if award is None:
+                break
+            result, frames = award
+            extra.extend(frames)
+            self._pozhen_decr(row, rid, 1)
+            out.append([result[3], result[1], result[0], result[2], idx])
+            loc[sd] = idx
+            idx += 1
+        row['locations'] = self._pozhen_loc_str(loc)
+        if not out:
+            return None
+        return out, extra
+
+    def _pozhen_sao_dang_online(self, role, rid, row):
+        """saoDangOnline: advance an active sweep by elapsed time.
+
+        Returns {'times', 'awards', 'single', 'total'} or None. An
+        elapsed sweep settles offline (in_mopup cleared) but its awards
+        still grant here, exactly like the jar.
+        """
+        if not row.get('max_location'):
+            return None
+        try:
+            if int(row.get('in_mopup') or 0) != 1:
+                return None
+        except (TypeError, ValueError):
+            return None
+        try:
+            if int(row.get('can_use_count') or 0) <= 0:
+                row['in_mopup'] = 0
+                return None
+        except (TypeError, ValueError):
+            row['in_mopup'] = 0
+            return None
+        sd = row.get('sd_main_id') or 0
+        try:
+            sd = int(sd)
+        except (TypeError, ValueError):
+            sd = 0
+        loc = self._pozhen_loc_map(row.get('locations'))
+        cur = self._pozhen_split(row.get('max_location'))
+        cfg = self.config.pozhen_layer(sd)
+        if sd == cur[0]:
+            remaining = cur[1] - (loc.get(sd) or 0)
+        elif cfg is None:
+            remaining = 0
+        else:
+            remaining = cfg['max'] - (loc.get(sd) or 0)
+        try:
+            have = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        if remaining > have:
+            remaining = have
+        if remaining <= 0:
+            row['in_mopup'] = 0
+            return None
+        single = self._pozhen_sweep_ms(rid)
+        inner = {'times': remaining, 'awards': None, 'single': single,
+                 'total': 0}
+        if single > 0:
+            now = int(time.time() * 1000)
+            try:
+                mop = int(row.get('mopup_time') or 0)
+            except (TypeError, ValueError):
+                mop = 0
+            elapsed = now - mop
+            full = single * remaining
+            if elapsed > full:
+                row['in_mopup'] = 0
+            else:
+                done = elapsed // single
+                rest = elapsed % single
+                if rest > 0:
+                    total = (remaining - done - 1) * single + \
+                        (single - rest)
+                else:
+                    total = (remaining - done) * single
+                if single > total:
+                    inner['single'] = total
+                inner['total'] = total
+                remaining = done
+        computed = self._pozhen_compute_n_awards(
+            role, rid, row, remaining, loc)
+        if computed is not None:
+            awards, extra = computed
+            inner['awards'] = awards
+            inner['extra'] = extra
+        return inner
+
+    def _pozhen_two_times(self, row, rid):
+        """computeTwoTimes: [single, remaining total, sweepable count]."""
+        sd = row.get('sd_main_id') or 0
+        try:
+            sd = int(sd)
+        except (TypeError, ValueError):
+            sd = 0
+        loc = self._pozhen_loc_map(row.get('locations'))
+        single = self._pozhen_sweep_ms(rid)
+        cur = self._pozhen_split(row.get('max_location'))
+        cfg = self.config.pozhen_layer(sd)
+        stored = loc.get(sd)
+        count = 0
+        if stored is not None:
+            if sd == cur[0]:
+                if stored < cur[1]:
+                    count = cur[1] - stored
+            elif cfg is not None and stored < cfg['max']:
+                count = cfg['max'] - stored
+        try:
+            have = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        if count > have:
+            count = have
+        return [single, single * count, count]
+
+    @staticmethod
+    def _pozhen_remain_minutes(row, total):
+        """computeRemainMinutes: ceil down to whole minutes, plus one."""
+        now = int(time.time() * 1000)
+        try:
+            mop = int(row.get('mopup_time') or 0)
+        except (TypeError, ValueError):
+            mop = 0
+        elapsed = now - mop
+        minutes = 0
+        if elapsed < total:
+            minutes = (total - elapsed) // 60000
+            if minutes > 0:
+                minutes += 1
+        return int(minutes)
+
+    def _pozhen_check_can_saodang(self, row, main_id):
+        """checkCanSaoDang: error code or None when a sweep may start."""
+        if row is None:
+            return POZHEN_ERR_LEVEL_LESS
+        try:
+            if int(row.get('can_use_count') or 0) <= 0:
+                return POZHEN_ERR_DIANSHU_LESS
+        except (TypeError, ValueError):
+            return POZHEN_ERR_DIANSHU_LESS
+        cur = self._pozhen_split(row.get('max_location'))
+        if main_id > cur[0]:
+            return POZHEN_ERR_YUEJI
+        cfg = self.config.pozhen_layer(main_id)
+        if cfg is None:
+            return POZHEN_ERR_NOT_EXIST
+        loc = self._pozhen_loc_map(row.get('locations'))
+        if main_id not in loc:
+            return POZHEN_ERR_CANNT_SD
+        if main_id == cur[0]:
+            limit = cur[1]
+        else:
+            limit = cfg['max']
+        if loc[main_id] >= limit:
+            return POZHEN_ERR_TOP
+        try:
+            if int(row.get('in_mopup') or 0) == 1:
+                return POZHEN_ERR_SAODANGING
+        except (TypeError, ValueError):
+            pass
+        return None
+
+    def pozhen_info(self):
+        """Command 48001: formation panel (progress, bar, sweep state)."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            if self._task_role_level(role) < \
+                    self.config.pozhen_open_level():
+                return frame(amf3_encode(
+                    ['48001', [0, POZHEN_ERR_LEVEL_LESS]]))
+            row = self._pozhen_create(
+                rid, self._pozhen_vip_max(rid))
+        else:
+            row = dict(row)
+        inner = self._pozhen_sao_dang_online(role, rid, row)
+        self._pozhen_save(rid, row)
+        self._pozhen_online(row, rid, self._pozhen_vip_max(rid))
+        try:
+            can_use = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            can_use = 0
+        vip_max = self._pozhen_vip_max(rid)
+        countdown = 0
+        if can_use < vip_max:
+            try:
+                rec = int(row.get('recovery_time') or 0)
+            except (TypeError, ValueError):
+                rec = 0
+            countdown = self.config.pozhen_recovery_ms() - \
+                (int(time.time() * 1000) - rec)
+        cur = self._pozhen_cal_cur(row)
+        awards = inner.get('awards') if inner else None
+        times = None
+        if inner:
+            times = [inner['single'], inner['total']]
+        extra = (inner.get('extra') or []) if inner else []
+        reply = [1, [cur[0], cur[1],
+                      self._pozhen_loc_map(row.get('locations')), 0,
+                      can_use, row.get('buy_count'),
+                      row.get('refresh_count'), awards, times, vip_max,
+                      countdown]]
+        main = frame(amf3_encode(['48001', reply]))
+        if extra:
+            return (main, *extra)
+        return main
+
+    def pozhen_start(self, msg):
+        """Command 48002: challenge one formation cell for a point."""
+        if self.config is None:
+            return None
+        try:
+            data = msg[1] if isinstance(msg, list) and len(msg) > 1 \
+                else None
+            main_id, idx = int(data[0]), int(data[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if main_id < 0 or idx < 0:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        row = dict(row) if row else None
+        err = self._pozhen_check_can(row, main_id, idx)
+        if err is not None:
+            return frame(amf3_encode(['48002', [0, err]]))
+        cfg = self.config.pozhen_layer(main_id)
+        sub = self.config.pozhen_sub(main_id, idx)
+        self._pozhen_decr(row, rid, 1)
+        cur = self._pozhen_split(row.get('max_location'))
+        if main_id > cur[0] or (main_id == cur[0] and idx > cur[1]):
+            row['max_location'] = f'{main_id}-{idx}'
+        if main_id == cur[0] and idx == cfg['max'] and \
+                sub['num'] >= cfg['max']:
+            # S:PZATT: the stage side recalculates fight power from the
+            # cleared layer. Python recomputes 12010 live (see
+            # fighting_info), so no extra frame is emitted here.
+            pass
+        loc = self._pozhen_loc_map(row.get('locations'))
+        loc[main_id] = idx
+        row['locations'] = self._pozhen_loc_str(loc)
+        self._pozhen_save(rid, row)
+        return None
+
+    def pozhen_saodang(self, msg):
+        """Command 48003: open a timed sweep over a cleared layer."""
+        if self.config is None:
+            return None
+        try:
+            data = msg[1] if isinstance(msg, list) and len(msg) > 1 \
+                else None
+            main_id = int(data)
+        except (TypeError, ValueError):
+            return None
+        if data is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        row = dict(row) if row else None
+        err = self._pozhen_check_can_saodang(row, main_id)
+        if err is not None:
+            return frame(amf3_encode(['48003', [0, err]]))
+        now = int(time.time() * 1000)
+        row['in_mopup'] = 1
+        row['sd_main_id'] = main_id
+        row['mopup_time'] = now
+        self._pozhen_save(rid, row)
+        single, total, _count = self._pozhen_two_times(row, rid)
+        return frame(amf3_encode(['48003', [1, single, total]]))
+
+    def pozhen_move(self, msg):
+        """Command 48005: formation cursor view for one layer."""
+        if self.config is None:
+            return None
+        try:
+            data = msg[1] if isinstance(msg, list) and len(msg) > 1 \
+                else None
+            loc_arg = int(data)
+        except (TypeError, ValueError):
+            return None
+        if data is None or loc_arg <= 0:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(
+                ['48005', [0, POZHEN_ERR_LEVEL_LESS]]))
+        row = dict(row)
+        cur = self._pozhen_split(row.get('max_location'))
+        loc = self._pozhen_loc_map(row.get('locations'))
+        if loc_arg in loc:
+            idx = loc[loc_arg]
+        elif loc_arg == cur[0]:
+            idx = cur[1]
+        elif loc_arg < cur[0]:
+            cfg = self.config.pozhen_layer(loc_arg)
+            idx = cfg['max'] if cfg is not None else 0
+        else:
+            idx = 0
+        return frame(amf3_encode(
+            ['48005', [1, loc_arg, idx,
+                        self._pozhen_sweep_ms(rid)]]))
+
+    def pozhen_refresh(self):
+        """Command 48004: reset cleared cells for YB (charged twice)."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        row = dict(row) if row else None
+        try:
+            made = int((row or {}).get('refresh_count') or 0)
+        except (TypeError, ValueError):
+            made = 0
+        cfg = self.config.pozhen_shuaxin(made + 1)
+        err = self._pozhen_check_can_refresh(row, cfg, role)
+        if err is not None:
+            return frame(amf3_encode(['48004', [0, err]]))
+        made += 1
+        row['refresh_count'] = made
+        cur = self._pozhen_split(row.get('max_location'))
+        row['locations'] = self._pozhen_loc_str(
+            {layer: 0 for layer in range(1, cur[0] + 1)})
+        # The jar decr()s the refresh gold twice (once for the event
+        # payload, once for the charge); the double spend is reproduced
+        # here and pinned by tests.
+        self._bag_money_decr(rid, 'YB', cfg['refresh_gold'])
+        self._pozhen_save(rid, row)
+        self._bag_money_decr(rid, 'YB', cfg['refresh_gold'])
+        return frame(amf3_encode(['48004', [1, made]]))
+
+    def _pozhen_check_can_refresh(self, row, cfg, role):
+        """checkCanRefresh: error code or None for a refresh attempt."""
+        if row is None:
+            return POZHEN_ERR_LEVEL_LESS
+        if cfg is None:
+            return POZHEN_ERR_FULL_BUY
+        if not self._bag_money_check(role, 'YB', cfg['refresh_gold']):
+            return POZHEN_ERR_YB_SHORT
+        if self._task_role_level(role) < cfg['refresh_level']:
+            return POZHEN_ERR_LEVEL_GATE
+        return None
+
+    def pozhen_buy(self):
+        """Command 48006: buy one formation point for YB."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(
+                ['48006', [0, POZHEN_ERR_LEVEL_LESS]]))
+        row = dict(row)
+        try:
+            can_use = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            can_use = 0
+        vip_max = self._pozhen_vip_max(rid)
+        if can_use >= vip_max:
+            return frame(amf3_encode(
+                ['48006', [0, POZHEN_ERR_FULL_COUNT]]))
+        try:
+            bought = int(row.get('buy_count') or 0) + 1
+        except (TypeError, ValueError):
+            bought = 1
+        cfg = self.config.pozhen_shuaxin(bought)
+        if cfg is None:
+            return frame(amf3_encode(
+                ['48006', [0, POZHEN_ERR_FULL_BUY]]))
+        if self._task_role_level(role) < cfg['buy_level']:
+            return frame(amf3_encode(
+                ['48006', [0, POZHEN_ERR_LEVEL_GATE]]))
+        if not self._bag_money_check(role, 'YB', cfg['buy_gold']):
+            return frame(amf3_encode(['48006', [0, POZHEN_ERR_YB_SHORT]]))
+        self._bag_money_decr(rid, 'YB', cfg['buy_gold'])
+        can_use += 1
+        row['can_use_count'] = can_use
+        row['buy_count'] = bought
+        self._pozhen_save(rid, row)
+        return frame(amf3_encode(['48006', [1, can_use, bought, 0]]))
+
+    def pozhen_quickly(self):
+        """Command 48008: instantly finish a sweep for YB per minute."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        row = dict(row) if row else None
+        try:
+            sweeping = row is not None and \
+                int(row.get('in_mopup') or 0) == 1
+        except (TypeError, ValueError):
+            sweeping = False
+        if not sweeping:
+            err = POZHEN_ERR_LEVEL_LESS if row is None \
+                else POZHEN_ERR_NO_SAODANG
+            return frame(amf3_encode(['48008', [0, err]]))
+        single, total, count = self._pozhen_two_times(row, rid)
+        cost = 0
+        if total > 0:
+            minutes = self._pozhen_remain_minutes(row, total)
+            cost = minutes * self.config.pozhen_kill_cd_gold()
+            if not self._bag_money_check(role, 'YB', cost):
+                return frame(amf3_encode(
+                    ['48008', [0, POZHEN_ERR_JIASU_YB_LESS, cost]]))
+        if cost > 0:
+            self._bag_money_decr(rid, 'YB', cost)
+        cur = self._pozhen_split(row.get('max_location'))
+        loc = self._pozhen_loc_map(row.get('locations'))
+        computed = self._pozhen_compute_n_awards(
+            role, rid, row, count, loc)
+        awards = computed[0] if computed is not None else None
+        extra = computed[1] if computed is not None else []
+        row['in_mopup'] = 0
+        self._pozhen_save(rid, row)
+        reply = [1, awards, row.get('can_use_count'), 0]
+        main = frame(amf3_encode(['48008', reply]))
+        if extra:
+            return (main, *extra)
+        return main
+
+    def _pozhen_next_saodang(self, main_id, loc, cur):
+        """computeNextSaoDang: [main, stored + 1], or None at the top."""
+        if main_id == cur[0]:
+            limit = cur[1]
+        else:
+            cfg = self.config.pozhen_layer(main_id)
+            if cfg is None:
+                return None
+            limit = cfg['max']
+        stored = loc.get(main_id) or 0
+        if stored >= limit:
+            return None
+        return [main_id, stored + 1]
+
+    def pozhen_sdover(self):
+        """Command 48007: claim one sweep cell after its timer lapses."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        row = dict(row) if row else None
+        if row is None:
+            return frame(amf3_encode(
+                ['48007', [0, POZHEN_ERR_NO_SAODANG]]))
+        try:
+            sweeping = int(row.get('in_mopup') or 0) == 1
+        except (TypeError, ValueError):
+            sweeping = False
+        if not sweeping:
+            return frame(amf3_encode(
+                ['48007', [0, POZHEN_ERR_NO_SAODANG]]))
+        try:
+            if int(row.get('can_use_count') or 0) <= 0:
+                return frame(amf3_encode(
+                    ['48007', [0, POZHEN_ERR_DIANSHU_LESS]]))
+        except (TypeError, ValueError):
+            return frame(amf3_encode(
+                ['48007', [0, POZHEN_ERR_DIANSHU_LESS]]))
+        single = self._pozhen_sweep_ms(rid)
+        now = int(time.time() * 1000)
+        try:
+            mop = int(row.get('mopup_time') or 0)
+        except (TypeError, ValueError):
+            mop = 0
+        if now - mop < single:
+            row['in_mopup'] = 0
+            row['mopup_time'] = 0
+            self._pozhen_save(rid, row)
+            return frame(amf3_encode(
+                ['48007', [0, POZHEN_ERR_TIME_LESS]]))
+        sd = row.get('sd_main_id') or 0
+        try:
+            sd = int(sd)
+        except (TypeError, ValueError):
+            sd = 0
+        loc = self._pozhen_loc_map(row.get('locations'))
+        cur = self._pozhen_split(row.get('max_location'))
+        nxt = self._pozhen_next_saodang(sd, loc, cur)
+        if nxt is None:
+            return frame(amf3_encode(['48007', [0, POZHEN_ERR_TOP]]))
+        row['in_mopup'] = 0
+        self._pozhen_decr(row, rid, 1)
+        loc[nxt[0]] = nxt[1]
+        row['locations'] = self._pozhen_loc_str(loc)
+        self._pozhen_save(rid, row)
+        sub = self.config.pozhen_sub(nxt[0], nxt[1])
+        award = self._pozhen_win_and_add(role, rid, sub, row) \
+            if sub is not None else None
+        if award is None:
+            return None
+        result, extra = award
+        inner = [[result[3], result[1], result[0], result[2]],
+                 result[1], result[0], result[2],
+                 row.get('can_use_count'), 0, nxt]
+        main = frame(amf3_encode(['48007', [1, inner]]))
+        if extra:
+            return (main, *extra)
+        return main
+
+    def pozhen_recovery(self):
+        """Command 48009: reclaim one point once its timer lapses."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(
+                ['48009', [0, POZHEN_ERR_LEVEL_LESS]]))
+        row = dict(row)
+        vip_max = self._pozhen_vip_max(rid)
+        try:
+            can_use = int(row.get('can_use_count') or 0)
+        except (TypeError, ValueError):
+            can_use = 0
+        if can_use < vip_max:
+            now = int(time.time() * 1000)
+            try:
+                rec = int(row.get('recovery_time') or 0)
+            except (TypeError, ValueError):
+                rec = 0
+            if now - rec < self.config.pozhen_recovery_ms():
+                return frame(amf3_encode(
+                    ['48009', [0, POZHEN_ERR_TIME_LESS]]))
+            can_use += 1
+            row['can_use_count'] = can_use
+            if can_use >= vip_max:
+                row['recovery_time'] = 0
+            else:
+                row['recovery_time'] = now
+            self._pozhen_save(rid, row)
+        return frame(amf3_encode(['48009', [1, [can_use, 0]]]))
+
+    def pozhen_stop(self):
+        """Command 48010: abandon an active sweep, kept progress stays."""
+        if self.config is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return frame(amf3_encode(
+                ['48010', [0, POZHEN_ERR_LEVEL_LESS]]))
+        row = dict(row)
+        row['in_mopup'] = 0
+        row['mopup_time'] = 0
+        self._pozhen_save(rid, row)
+        return frame(amf3_encode(['48010', [1]]))
+
+    def pozhen_get_goods(self, msg):
+        """Command 48011: void grant of one cell award (both ids read
+
+        from data[0], like the jar action). The service result is
+        discarded, so success is silent; the grants still land.
+        """
+        if self.config is None:
+            return None
+        try:
+            data = msg[1] if isinstance(msg, list) and len(msg) > 1 \
+                else None
+            main_id = int(data[0])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if data is None:
+            return None
+        role, rid = self._pozhen_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        sub = self.config.pozhen_sub(main_id, main_id)
+        if sub is None:
+            return None
+        self._pozhen_win_and_add(role, rid, sub, row)
+        return None
+
+    def pozhen_use_award_prop(self, rid, minutes, rate):
+        """useAwardProp: extend the reward buff window (no inbound ID)."""
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        if row is None:
+            row = self._pozhen_create(rid, self._pozhen_vip_max(rid))
+        else:
+            row = dict(row)
+        now = int(time.time() * 1000)
+        try:
+            span = int(minutes or 0) * 60000
+        except (TypeError, ValueError):
+            span = 0
+        try:
+            live = row.get('expire_time') is not None and \
+                int(row.get('expire_time') or 0) > now
+        except (TypeError, ValueError):
+            live = False
+        if live:
+            row['expire_time'] = int(row.get('expire_time') or 0) + span
+        else:
+            row['expire_time'] = now + span
+        try:
+            row['award_rate'] = float(rate)
+        except (TypeError, ValueError):
+            row['award_rate'] = 1.0
+        self._pozhen_save(rid, row)
+        return None
+
+    def pozhen_prop_expire_time(self, rid):
+        """getPropExpireTime: live buff expiry millis, else 0."""
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            return 0
+        if row is None:
+            return 0
+        try:
+            exp = int(row.get('expire_time') or 0)
+        except (TypeError, ValueError):
+            return 0
+        if exp <= int(time.time() * 1000):
+            return 0
+        return exp
+
+    def pozhen_attribute_map(self, rid):
+        """calPozhenAttribute: the cleared layer's attribute bag."""
+        if self.config is None:
+            return None
+        try:
+            row = self.get_role_pozhen(rid)
+        except Exception:
+            row = None
+        cur = self._pozhen_cal_cur(dict(row) if row else {})
+        return self.config.pozhen_attribute_map(cur[0], cur[1])
 
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
     # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and

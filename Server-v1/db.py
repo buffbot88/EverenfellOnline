@@ -596,6 +596,26 @@ CREATE TABLE IF NOT EXISTS task_gonghui (
   create_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Battle-formation progress per role (legacy RolePozhen: one row per role;
+-- locations is the 'main-idx;...' megre map, max_location the 'main-idx'
+-- splitPZ cursor, *_time columns are epoch millis, award fields back the
+-- useAwardProp reward buff).
+CREATE TABLE IF NOT EXISTS role_pozhen (
+  role_id INTEGER PRIMARY KEY,
+  max_location TEXT,
+  locations TEXT,
+  can_use_count INTEGER DEFAULT 0,
+  buy_count INTEGER DEFAULT 0,
+  refresh_count INTEGER DEFAULT 0,
+  in_mopup INTEGER DEFAULT 0,
+  sd_main_id INTEGER DEFAULT 0,
+  mopup_time INTEGER DEFAULT 0,
+  recovery_time INTEGER DEFAULT 0,
+  refresh_time INTEGER DEFAULT 0,
+  award_rate REAL,
+  expire_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
 -- silences every gonghui handler; addRoleGongxian accumulates gongxian).
 CREATE TABLE IF NOT EXISTS guild_member (
@@ -2055,6 +2075,35 @@ class Store:
             self.db.execute(
                 'DELETE FROM task_richang WHERE role_id=?',
                 (str(role_id),))
+            self.db.commit()
+            return True
+
+    def get_role_pozhen(self, role_id):
+        """A role's formation row, or None (RolePozhen.daoLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT max_location, locations, can_use_count, buy_count,'
+                ' refresh_count, in_mopup, sd_main_id, mopup_time,'
+                ' recovery_time, refresh_time, award_rate, expire_time'
+                ' FROM role_pozhen WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_pozhen(self, role_id, **fields):
+        """Upsert a role's formation row (known columns only)."""
+        known = {'max_location', 'locations', 'can_use_count', 'buy_count',
+                 'refresh_count', 'in_mopup', 'sd_main_id', 'mopup_time',
+                 'recovery_time', 'refresh_time', 'award_rate', 'expire_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known role_pozhen columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_pozhen(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
             self.db.commit()
             return True
 

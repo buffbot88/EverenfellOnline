@@ -1158,6 +1158,9 @@ class GameConfig:
         self._gh_cond = None
         self._gh_rew = None
         self._gh_loop = None
+        self._pozhen = None
+        self._pozhen_xinxi = None
+        self._pozhen_shuaxin = None
         self._kaifu_zuoqi = None
         self._shenjiang = None
         self._jiangxingtu = None
@@ -2741,6 +2744,172 @@ class GameConfig:
     def gonghui_loop_buckets(self):
         """{min: max} level buckets for the guild-task loop lookup."""
         return dict(self._gonghui_loop_assembly()[2])
+
+    def _pozhen_rows(self, name):
+        """Raw row list from a PoZhen* table; [] when absent.
+
+        The server reads PoZhenBiao.dat; the shipped .dat decodes with the
+        same AMF payload as the .jat, so either suffix resolves here.
+        """
+        filenames = [name] if name.endswith(('.dat', '.jat')) \
+            else [name + '.dat', name + '.jat']
+        for filename in filenames:
+            path = os.path.join(self.config_dir, 'sys_config', filename)
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad %s table: %s', name, e)
+                return []
+            if isinstance(rows, list) and len(rows) == 1 \
+                    and isinstance(rows[0], list):
+                rows = rows[0]
+            if isinstance(rows, list) and rows:
+                return [r for r in rows]
+        return []
+
+    def _pozhen_assembly(self):
+        """{main_id: layer} from PoZhenBiao (PoZhenConfig beans).
+
+        Port of PoZhenConfigExportServiceImpl.configureDataResolve plus
+        PoZhenConfig's constructor (min/max start at 1) and addSub: subs
+        keyed by order (num), min/max tracked over orders, and the layer's
+        attributeMap is the last row with parsed attributes (only the
+        full-clear rows carry any: hitpoints/mana/physicdamage/
+        physicdefence/critical/volt).
+        """
+        if self._pozhen is None:
+            layers = {}
+            for row in self._pozhen_rows('PoZhenBiao.dat'):
+                if not isinstance(row, dict) or not row.get('mainid'):
+                    continue
+                main_id = config_int(row.get('mainid'))
+                layer = layers.get(main_id)
+                if layer is None:
+                    layer = {'main_id': main_id, 'min': 1, 'max': 1,
+                             'subs': {}, 'attribute_map': {}}
+                    layers[main_id] = layer
+                sub = self._parse_pozhen_sub(row)
+                num = sub['num']
+                if num < layer['min']:
+                    layer['min'] = num
+                if num > layer['max']:
+                    layer['max'] = num
+                layer['subs'][num] = sub
+                attrs = {name: config_float(row.get(name))
+                         for name in MEIREN_ATTRIBUTE_NAMES
+                         if config_float(row.get(name)) != 0.0}
+                if attrs:
+                    layer['attribute_map'] = attrs
+            self._pozhen = layers
+        return self._pozhen
+
+    @staticmethod
+    def _parse_pozhen_sub(row):
+        """Parsed PoZhenSubConfig for one PoZhenBiao row."""
+        point = str(row.get('initial') or '')
+        xy = [config_int(p) for p in point.split('_')] if point else [0, 0]
+        return {'number': config_int(row.get('number')),
+                'main_name': str(row.get('mainname') or ''),
+                'point': [(xy + [0, 0])[:2]],
+                'order': config_int(row.get('order')),
+                'num': config_int(row.get('order')),
+                'map': str(row.get('map') or ''),
+                'monster': str(row.get('monster') or ''),
+                'zubao_id': str(row.get('item') or ''),
+                'zubao_rate': config_float(row.get('zubaojilv')),
+                'exp': config_int(row.get('expfactor')),
+                'jb': config_int(row.get('moneyfactor')),
+                'zhenqi': config_int(row.get('zhenqifactor')),
+                'exp1': config_int(row.get('expfactor1')),
+                'jb1': config_int(row.get('moneyfactor1')),
+                'zhenqi1': config_int(row.get('zhenqifactor1')),
+                'shengwang': config_int(row.get('prestige')),
+                'expire_ms': config_int(row.get('guoqi')) * 60000}
+
+    def pozhen_layer(self, main_id):
+        """PoZhenConfig for a layer id, or None when unknown."""
+        try:
+            return self._pozhen_assembly().get(int(main_id))
+        except (TypeError, ValueError):
+            return None
+
+    def pozhen_sub(self, main_id, num):
+        """PoZhenSubConfig for (layer, order), or None when unknown."""
+        layer = self.pozhen_layer(main_id)
+        if layer is None:
+            return None
+        try:
+            return layer['subs'].get(int(num))
+        except (TypeError, ValueError):
+            return None
+
+    def pozhen_attribute_map(self, main_id, num):
+        """loadPoZhenAttributeMap: this layer's bag when cleared, else prior."""
+        layer = self.pozhen_layer(main_id)
+        if layer is None:
+            return None
+        try:
+            cleared = int(num or 0) >= layer['max']
+        except (TypeError, ValueError):
+            return None
+        if cleared:
+            return dict(layer['attribute_map'])
+        prev = self.pozhen_layer(int(main_id) - 1)
+        if prev is None:
+            return None
+        return dict(prev['attribute_map'])
+
+    def _pozhen_xinxi_row(self):
+        """Single PoZhenXinXi row (open level, recovery, sweep gold)."""
+        if self._pozhen_xinxi is None:
+            row = {}
+            for cand in self._pozhen_rows('PoZhenXinXi.jat'):
+                if isinstance(cand, dict):
+                    row = cand
+                    break
+            self._pozhen_xinxi = row
+        return self._pozhen_xinxi
+
+    def pozhen_open_level(self):
+        """IPoZhenConfigExportService.getOpenLevel (kaiqidengji)."""
+        return config_int(self._pozhen_xinxi_row().get('kaiqidengji'))
+
+    def pozhen_recovery_ms(self):
+        """getRecoveryTime: huifushijian minutes in millis."""
+        return config_int(self._pozhen_xinxi_row().get('huifushijian')) * 60000
+
+    def pozhen_kill_cd_gold(self):
+        """killCdGold: YB per sweep-minute of speedup (gold)."""
+        return config_int(self._pozhen_xinxi_row().get('gold'))
+
+    def pozhen_shuaxin(self, count):
+        """PoZhenShuaXinConfig for a buy/refresh ordinal, or None."""
+        if self._pozhen_shuaxin is None:
+            table = {}
+            for row in self._pozhen_rows('PoZhenShuaXin.jat'):
+                if not isinstance(row, dict) or not row.get('count'):
+                    continue
+                table[config_int(row.get('count'))] = row
+            self._pozhen_shuaxin = table
+        try:
+            row = self._pozhen_shuaxin.get(int(count))
+        except (TypeError, ValueError):
+            return None
+        if row is None:
+            return None
+        return {'count': config_int(row.get('count')),
+                'buy_level': config_int(row.get('cishudj1')),
+                'buy_gold': config_int(row.get('cishudaoju')),
+                'refresh_gold': config_int(row.get('shuaxindaoju')),
+                'refresh_level': config_int(row.get('sxdj2'))}
+
+    def vip_pozhen_count(self, vip_level):
+        """VipConfig.getPozhen daily point cap for a level."""
+        return self._vip_cell(vip_level, 'pozhen')
+
+    def vip_pozhen_saodang_ms(self, vip_level):
+        """VipConfig.getPoZhenSaoDangTime: pozhentime seconds in millis."""
+        return self._vip_cell(vip_level, 'pozhentime') * 1000
 
     def vip_tunshi_times(self, vip_level):
         """VipConfig.getTunshitimes bonus for a level; 0 when absent."""

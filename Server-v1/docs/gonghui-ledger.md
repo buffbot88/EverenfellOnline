@@ -13,6 +13,14 @@ handlers + SQLite store), implemented-untested (dispatched, pinned by
 a wire test, but the void-reply ID never appears in a reply frame),
 push-only (S2C, no inbound handler needed).
 
+Bookkeeping reconciliation (post-pozhen census): 81008 was promoted
+to implemented in `command-census.md` under the TESTED_BY_EVIDENCE
+rule — a void-reply inbound ID proven by a wire/handler test counts
+as implemented (direct handler tests assert the real payout/advance
+fan-out; a wire test pins the dispatch route). The mechanical
+`'81008'`-in-quotes test-source rule cannot fire for a void reply by
+construction. Same treatment as richang 50209.
+
 ## Inbound commands (GonghuitaskAction)
 
 | ID | Java method | Status | Notes |
@@ -23,7 +31,7 @@ push-only (S2C, no inbound handler needed).
 | 81003 | zhijieCompleteCurrentLoop | complete+tested | finish now for 10 YB, then 81006 pay / 81010 stop / 81009 receive fan-out and `[1]` reply |
 | 81004 | completeAllLoop | complete+tested | one-key rest for 50 YB (vip-gated `480073`); `[1, fufei]`; `81101` |
 | 81005 | completeBestAllLoop | complete+tested | best one-key for 100 YB (vip-gated); best re-roll pushes 81009, replies `[1, fufei, part, thick, difficulty]`; `81101` |
-| 81008 | notifyServerLoop | implemented-untested | fufei payout then advance-or-stop; void reply like Java, so the ID never lands in a reply frame (same mechanical status as richang 50209); a wire dispatch test pins the route |
+| 81008 | notifyServerLoop | complete+tested (TESTED_BY_EVIDENCE) | fufei payout then advance-or-stop; void reply like Java, so the ID never lands in a reply frame (same void-reply class as richang 50209); direct handler tests pin payout/advance, a wire dispatch test pins the route |
 
 ## Push-only (no inbound handler)
 
@@ -74,7 +82,6 @@ push-only (S2C, no inbound handler needed).
 
 ## Gaps
 
-- None in the 11-ID family: 6 inbound complete+tested, 1 inbound
-  implemented-untested (void reply), 4 push-only.
+- None in the 11-ID family: 7 inbound complete+tested (81008 via TESTED_BY_EVIDENCE), 4 push-only.
 - Guild management itself (GuildAction ~20 methods, guildfuben 8)
   is a separate unported family.

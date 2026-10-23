@@ -34,6 +34,16 @@ PUSH_ONLY = frozenset('''
 81006 81007 81009 81010
 '''.split())
 
+# Inbound IDs the literal heuristic ('48001' in tests) misses: void
+# replies are silent by port convention (Java sends a null-body frame
+# instead), so the ID never lands in a reply frame. Promoted only with
+# a wire or handler test pinning the route in the family ledger.
+TESTED_BY_EVIDENCE = {
+    # 81008: test_notify_loop_dispatches_81008_through_the_wire feeds a
+    # real 81008 frame and asserts the pay/advance outbox (gonghui-ledger).
+    '81008': 'test_gonghui.py wire dispatch',
+}
+
 
 def java_commands():
     rows = []
@@ -143,7 +153,8 @@ def main():
                     status = 'inline-untested'
             else:
                 status = classify(h, methods)
-                if status == 'implemented' and vid not in tested:
+                if status == 'implemented' and vid not in tested and \
+                        vid not in TESTED_BY_EVIDENCE:
                     status = 'implemented-untested'
         counts[status] += 1
         for mod in mods:
@@ -166,6 +177,11 @@ def main():
     lines.append('`implemented` = dispatched, handler not stub-marked, and '
                  'the ID string appears in the focused tests. '
                  '`implemented-untested` = same without a test reference.')
+    lines.append('')
+    lines.append('Void-reply inbound IDs proven by a wire/handler test '
+                 '(TESTED_BY_EVIDENCE) count as implemented:')
+    for vid in sorted(TESTED_BY_EVIDENCE, key=int):
+        lines.append(f'- {vid}: {TESTED_BY_EVIDENCE[vid]}')
     lines.append('')
     lines.append('## Counting methods (why 497 != ~600)')
     lines.append('')

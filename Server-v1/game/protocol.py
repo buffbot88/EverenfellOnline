@@ -454,6 +454,35 @@ RICHANG_COST_ONEKEY_BEST = 100
 RICHANG_COST_JIANGDI = 50000
 RICHANG_COST_TISHENG = 50000
 RICHANG_COST_DIRECT = 10
+# Gonghuitask inbound routes (GonghuitaskAction) and server pushes.
+CMD_GONGHUI_INFO = 81000
+CMD_GONGHUI_DECREASE = 81001
+CMD_GONGHUI_INCREASE = 81002
+CMD_GONGHUI_ZHIJIE = 81003
+CMD_GONGHUI_COMPLETE_ALL = 81004
+CMD_GONGHUI_COMPLETE_BEST = 81005
+CMD_GONGHUI_NOTIFY_LOOP = 81008
+# Server pushes with no inbound route (change/pay/receive/stop fan out
+# from the kill hook, zhijie/notify and the loop advance).
+CMD_GONGHUI_PAY = 81006
+CMD_GONGHUI_CHANGE = 81007
+CMD_GONGHUI_RECEIVE = 81009
+CMD_GONGHUI_STOP = 81010
+# GonghuitaskErrorCode (gonghuitask/output clinit) + GeneralErrorCode.
+TASK_ERR_GONGHUI_DONE = 81101
+TASK_ERR_GONGHUI_DIFF_MIN = 81102
+TASK_ERR_GONGHUI_THICK_MAX = 81103
+TASK_ERR_GONGHUI_YB_SHORT = 1003
+# GongHuiTaskConstants (jar clinit) + condition export impl costs.
+GONGHUI_MIN_LEVEL = 30
+GONGHUI_MAX_LOOP = 20
+GONGHUI_DIFFICULTY_MAX = 10
+GONGHUI_THICK_MAX = 10
+GONGHUI_COST_ONEKEY = 50
+GONGHUI_COST_ONEKEY_BEST = 100
+GONGHUI_COST_JIANGDI = 50000
+GONGHUI_COST_TISHENG = 50000
+GONGHUI_COST_DIRECT = 10
 # TaskErrorCode (task/output/TaskErrorCode clinit) + GeneralErrorCode.
 TASK_ERR_NOT_COMPLETE = 480000
 TASK_ERR_NOT_NOW_MAIN = 480005
@@ -933,6 +962,9 @@ class Session:
                  delete_task_taofa=None, get_task_taofa_state=None,
                  save_task_taofa_state=None, get_task_richang=None,
                  save_task_richang=None, delete_task_richang=None,
+                 get_task_gonghui=None, save_task_gonghui=None,
+                 delete_task_gonghui=None, get_guild_id=None,
+                 save_guild_member=None, add_guild_gongxian=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
         self.config = config
@@ -1136,6 +1168,14 @@ class Session:
         self.save_task_richang = save_task_richang or \
             (lambda *a, **k: False)
         self.delete_task_richang = delete_task_richang or (lambda r: False)
+        self.get_task_gonghui = get_task_gonghui or (lambda r: None)
+        self.save_task_gonghui = save_task_gonghui or \
+            (lambda *a, **k: False)
+        self.delete_task_gonghui = delete_task_gonghui or (lambda r: False)
+        self.get_guild_id = get_guild_id or (lambda r: None)
+        self.save_guild_member = save_guild_member or \
+            (lambda *a, **k: False)
+        self.add_guild_gongxian = add_guild_gongxian or (lambda r, d: None)
         self.buf = bytearray()
         self.frame_bucket = TokenBucket(FRAME_RATE_PER_S, FRAME_BURST)
         self.cipher = None
@@ -1492,6 +1532,20 @@ class Session:
             return self.richang_complete_best()
         if cmd_num == CMD_RICHANG_NOTIFY_LOOP:
             return self.richang_notify_loop()
+        if cmd_num == CMD_GONGHUI_INFO:
+            return self.gonghui_info()
+        if cmd_num == CMD_GONGHUI_DECREASE:
+            return self.gonghui_decrease()
+        if cmd_num == CMD_GONGHUI_INCREASE:
+            return self.gonghui_increase()
+        if cmd_num == CMD_GONGHUI_ZHIJIE:
+            return self.gonghui_zhijie()
+        if cmd_num == CMD_GONGHUI_COMPLETE_ALL:
+            return self.gonghui_complete_all()
+        if cmd_num == CMD_GONGHUI_COMPLETE_BEST:
+            return self.gonghui_complete_best()
+        if cmd_num == CMD_GONGHUI_NOTIFY_LOOP:
+            return self.gonghui_notify_loop()
         if cmd_num == CMD_ZUOQI_PANEL:
             return self.zuoqi_panel(msg)
         if cmd_num == CMD_ZUOQI_RIDE:
@@ -4379,6 +4433,8 @@ class Session:
         task_frames = task_frames + self.taofa_kill_progress(
             role, tpl.get('id'))
         task_frames = task_frames + self.richang_kill_progress(
+            role, tpl.get('id'))
+        task_frames = task_frames + self.gonghui_kill_progress(
             role, tpl.get('id'))
         lv_diff = max(int(role.get('level') or 0) - int(tpl.get('level') or 0), 0)
         revise = (self.config.exp_revise(100, solo=True)
@@ -12938,6 +12994,769 @@ class Session:
                     if nxt is not None:
                         frames.append(nxt)
         self._richang_save(rid, row)
+        return frames
+
+    # Guild-task quests (GonghuitaskAction/GonghuitaskServiceImpl). Evidence:
+    # action javap (7 inbound: 81000-81005 + 81008; pushes 81006/81007/81009/
+    # 81010), IGonghuitaskService + impl bytecode, GongHuiTaskConstants and
+    # GonghuitaskErrorCode clinit ints, RoleGonghuiTask fields, and the
+    # GongHuiRenWu(.JiangLi/EWaiJiangLi).jat tables (120 conditions with
+    # difficulties 1-12, 290 rewards, 72 loop rewards).
+    #
+    # The lifecycle mirrors richang exactly, with two deltas: every handler
+    # first requires guild membership (null GuildWrapper answers silence,
+    # like Java), and rewards credit banggong via addRoleGongxian. YB-short
+    # failures answer GeneralErrorCode.YB_NOT_ENOUGH (1003), not 430403.
+    def _gonghui_guild(self, rid):
+        """Guild id of a role, or None (the Java null-GuildWrapper branch)."""
+        try:
+            return self.get_guild_id(rid)
+        except Exception:
+            return None
+
+    def _gonghui_role(self):
+        """(role, rid, guild_id); guild_id None means silent like Java."""
+        role, rid = self._task_role()
+        if role is None or rid is None:
+            return None, None, None
+        guild = self._gonghui_guild(rid)
+        if guild is None:
+            return None, None, None
+        return role, rid, guild
+
+    def gonghui_info(self):
+        """Command 81000: [quest VO, cost data, loop reward VO]."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        if self._task_role_level(role) < GONGHUI_MIN_LEVEL:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        frames = []
+        if row is None:
+            row = self._gonghui_init(role, rid)
+            if row is None:
+                return None
+            # initRiChang queues its own 81000 before the reply is built.
+            frames.append(frame(amf3_encode(
+                [str(CMD_GONGHUI_INFO),
+                 self._gonghui_output_data(dict(row))])))
+        else:
+            row = dict(row)
+        row = self._gonghui_reset(rid, self._task_role_level(role), row)
+        reply = self._gonghui_output_data(row)
+        frames.append(frame(amf3_encode([str(CMD_GONGHUI_INFO), reply])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def _gonghui_init(self, role, rid):
+        """initRiChang: roll all three configs, insert, or None."""
+        level = self._task_role_level(role)
+        cond = self._gonghui_random_condition(level, None)
+        reward = self._gonghui_random_reward(level, None)
+        loop = self._gonghui_random_loop(level)
+        if cond is None or reward is None or loop is None:
+            return None
+        now = int(time.time() * 1000)
+        row = {'id': f'task{uuid.uuid4().hex[:16]}',
+               'condition_config_id': cond['id'],
+               'reward_config_id': reward['id'],
+               'reward_loop_config_id': loop['id'],
+               'task_condition': '', 'current_loop': 1, 'task_state': 0,
+               'fufei_state': 0, 'recevie_time': now, 'create_time': now}
+        try:
+            self.save_task_gonghui(rid, **row)
+        except Exception:
+            return None
+        return row
+
+    def _gonghui_reset(self, rid, level, row):
+        """resetTaskRichang: a stale recevie day re-rolls the quest."""
+        now = int(time.time() * 1000)
+        if self._same_day_ms(now, row.get('recevie_time')):
+            return row
+        cond = self._gonghui_random_condition(level, None)
+        reward = self._gonghui_random_reward(level, None)
+        loop = self._gonghui_random_loop(level)
+        if cond is None or reward is None or loop is None:
+            return row
+        row.update(condition_config_id=cond['id'],
+                   reward_config_id=reward['id'],
+                   reward_loop_config_id=loop['id'], task_state=0,
+                   fufei_state=0, task_condition='', current_loop=1,
+                   recevie_time=now)
+        self._gonghui_save(rid, row)
+        return row
+
+    def _gonghui_save(self, rid, row):
+        """Persist a guild-task row dict under its role id."""
+        fields = {key: row.get(key) for key in (
+            'id', 'condition_config_id', 'reward_config_id',
+            'reward_loop_config_id', 'task_condition', 'current_loop',
+            'task_state', 'fufei_state', 'recevie_time', 'create_time')}
+        try:
+            self.save_task_gonghui(rid, **fields)
+        except Exception:
+            pass
+
+    def _gonghui_out(self, row):
+        """getTaskRichangOutPut: the 11-field quest VO, or None."""
+        if row is None:
+            return None
+        cond = self.config.gonghui_condition(row.get('condition_config_id'))
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        if cond is None or reward is None:
+            return None
+        try:
+            recevied = float(row.get('recevie_time') or 0)
+        except (TypeError, ValueError):
+            recevied = 0.0
+        return [row.get('id'), recevied, row.get('task_state') or 0,
+                [self._gonghui_monster_part(row, cond.get('complete_items')),
+                 self._gonghui_monster_part(row, cond.get('kill_monsters'))],
+                self._gonghui_reward_part(
+                    reward.get('reward_items'), reward.get('jb') or 0,
+                    reward.get('exp') or 0, reward.get('bind_yb') or 0,
+                    reward.get('zhenqi') or 0,
+                    reward.get('prestige') or 0),
+                reward.get('thick') or 0, cond.get('difficulty') or 0,
+                row.get('current_loop') or 0, row.get('fufei_state') or 0,
+                3, GONGHUI_MAX_LOOP]
+
+    def _gonghui_monster_part(self, row, mmap):
+        """getMonsterOutPut: [id, need, done, auto, name]; last entry wins."""
+        if not mmap:
+            return None
+        try:
+            state = int(row.get('task_state') or 0)
+        except (TypeError, ValueError):
+            state = 0
+        kills = self._task_kills(row.get('task_condition')) or {}
+        part = None
+        for monster_id, vo in mmap.items():
+            if state in (1, 2):
+                done = vo['count']
+            else:
+                done = kills.get(monster_id, 0)
+            part = [monster_id, vo['count'], done, vo['auto_attack'],
+                    vo['show_name']]
+        return part
+
+    def _gonghui_reward_part(self, items, jb, exp, bind_yb, zhenqi,
+                             prestige):
+        """getRewardOutPut(items, jb, exp, bindYb, zhenqi, prestige)."""
+        pairs = self._taofa_show_pairs(items)
+        return [jb, exp, bind_yb, zhenqi, prestige, None, 0, pairs]
+
+    @staticmethod
+    def _gonghui_state_data():
+        """getTaskRiChangStateData: [jiangDi, tiSheng, direct, 1key, best]."""
+        return [GONGHUI_COST_JIANGDI, GONGHUI_COST_TISHENG,
+                GONGHUI_COST_DIRECT, GONGHUI_COST_ONEKEY,
+                GONGHUI_COST_ONEKEY_BEST]
+
+    def _gonghui_output_data(self, row):
+        """getTaskRiChangeOutputData: [quest VO, costs, loop reward VO]."""
+        loop = self.config.gonghui_loop_reward(
+            row.get('reward_loop_config_id'))
+        if loop is None:
+            loop = {'reward_items': None, 'jb': 0, 'exp': 0, 'bind_yb': 0,
+                    'zhenqi': 0, 'prestige': 0}
+        return [self._gonghui_out(row), self._gonghui_state_data(),
+                self._gonghui_reward_part(
+                    loop.get('reward_items'), loop.get('jb') or 0,
+                    loop.get('exp') or 0, loop.get('bind_yb') or 0,
+                    loop.get('zhenqi') or 0, loop.get('prestige') or 0)]
+
+    def _gonghui_random_condition(self, level, difficulty):
+        """randomCondition: Lottery.roll over the interval (or subinterval)."""
+        sub = richang_condition_interval(
+            self.config.gonghui_condition_buckets(), level)
+        if not sub:
+            return None
+        if difficulty is None:
+            pool = self.config.gonghui_condition_subinterval(sub)
+        else:
+            pool = self.config.gonghui_condition_interval(sub, difficulty)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    def _gonghui_random_reward(self, level, thick):
+        """randomReward: Lottery.roll over the interval (or subinterval)."""
+        sub = richang_reward_interval(
+            self.config.gonghui_reward_buckets(),
+            self.config.gonghui_condition_buckets(), level)
+        if not sub:
+            return None
+        if thick is None:
+            pool = self.config.gonghui_reward_subinterval(sub)
+        else:
+            pool = self.config.gonghui_reward_interval(sub, thick)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    def _gonghui_random_loop(self, level):
+        """randomRewardLoop: Lottery.roll over the loop interval."""
+        sub = richang_loop_interval(
+            self.config.gonghui_loop_buckets(),
+            self.config.gonghui_condition_buckets(), level)
+        if not sub:
+            return None
+        pool = self.config.gonghui_loop_interval(sub)
+        if not pool:
+            return None
+        return pool[random.randrange(len(pool))]
+
+    @staticmethod
+    def _gonghui_done_reply():
+        """GetGongHuiOutPut.getError(81101): the finished-loop guard."""
+        return [0, TASK_ERR_GONGHUI_DONE]
+
+    @staticmethod
+    def _gonghui_yb_short():
+        """GeneralErrorCode.YB_NOT_ENOUGH (1003), not the mall 430403."""
+        return [0, TASK_ERR_GONGHUI_YB_SHORT]
+
+    def gonghui_decrease(self):
+        """Command 81001: re-roll an easier condition for 50000 YXB."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        cond = self.config.gonghui_condition(
+            row.get('condition_config_id'))
+        if cond is None:
+            return None
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['81001', self._gonghui_done_reply()]))
+        if cond.get('difficulty') == 1:
+            return frame(amf3_encode(
+                ['81001', [0, TASK_ERR_GONGHUI_DIFF_MIN]]))
+        if not self._bag_money_check(role, 'YXB', GONGHUI_COST_JIANGDI):
+            return frame(amf3_encode(['81001', self._gonghui_yb_short()]))
+        easier = self._gonghui_random_condition(
+            self._task_role_level(role), 1)
+        if easier is None:
+            return None
+        self._bag_money_decr(rid, 'YXB', GONGHUI_COST_JIANGDI)
+        row.update(condition_config_id=easier['id'], task_condition='',
+                   task_state=0,
+                   recevie_time=int(time.time() * 1000))
+        self._gonghui_save(rid, row)
+        part = [self._gonghui_monster_part(row, easier.get('complete_items')),
+                self._gonghui_monster_part(row, easier.get('kill_monsters'))]
+        return frame(amf3_encode(['81001', [1, 1, part]]))
+
+    def gonghui_increase(self):
+        """Command 81002: re-roll a best reward for 50000 YXB."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['81002', self._gonghui_done_reply()]))
+        if reward.get('thick') == GONGHUI_THICK_MAX:
+            return frame(amf3_encode(
+                ['81002', [0, TASK_ERR_GONGHUI_THICK_MAX]]))
+        if not self._bag_money_check(role, 'YXB', GONGHUI_COST_TISHENG):
+            return frame(amf3_encode(['81002', self._gonghui_yb_short()]))
+        best = self._gonghui_random_reward(self._task_role_level(role),
+                                            GONGHUI_THICK_MAX)
+        if best is None:
+            return None
+        self._bag_money_decr(rid, 'YXB', GONGHUI_COST_TISHENG)
+        row.update(reward_config_id=best['id'], task_state=0,
+                   recevie_time=int(time.time() * 1000))
+        self._gonghui_save(rid, row)
+        return frame(amf3_encode(
+            ['81002', [1, GONGHUI_THICK_MAX,
+                       self._gonghui_reward_part(
+                           best.get('reward_items'),
+                           best.get('jb') or 0, best.get('exp') or 0,
+                           best.get('bind_yb') or 0,
+                           best.get('zhenqi') or 0,
+                           best.get('prestige') or 0)]]))
+
+    def gonghui_zhijie(self):
+        """Command 81003: finish the loop now for 10 YB, then advance."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['81003', self._gonghui_done_reply()]))
+        if not self._bag_money_check(role, 'YB', GONGHUI_COST_DIRECT):
+            return frame(amf3_encode(['81003', self._gonghui_yb_short()]))
+        self._bag_money_decr(rid, 'YB', GONGHUI_COST_DIRECT)
+        frames = []
+        paid = self._gonghui_pay(role, rid, False)
+        if paid is not None:
+            result, extra = paid
+            frames.append(frame(amf3_encode(
+                [str(CMD_GONGHUI_PAY), result])))
+            frames.extend(extra)
+            if self._gonghui_stop(rid, frames) is False:
+                nxt = self._gonghui_receive(role, rid, False)
+                if nxt is not None:
+                    frames.append(nxt)
+        # The finish event has no bus here; the reply is the wire half.
+        frames.append(frame(amf3_encode(['81003', [1]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def gonghui_complete_all(self):
+        """Command 81004: one-key the rest for 50 YB (vip-gated)."""
+        if self.config is None:
+            return None
+        _role, rid, _guild = self._gonghui_role()
+        if rid is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if not self.config.vip_onekeytask(self._taofa_vip_level(rid)):
+            return frame(amf3_encode(
+                ['81004', [0, TASK_ERR_NOT_RICHANG]]))
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['81004', self._gonghui_done_reply()]))
+        role = (_role or {})
+        if not self._bag_money_check(role, 'YB', GONGHUI_COST_ONEKEY):
+            return frame(amf3_encode(['81004', self._gonghui_yb_short()]))
+        self._bag_money_decr(rid, 'YB', GONGHUI_COST_ONEKEY)
+        row['fufei_state'] = 1
+        self._gonghui_save(rid, row)
+        # TaskRiChangCompleteEvent has no bus here.
+        return frame(amf3_encode(['81004', [1, row['fufei_state']]]))
+
+    def gonghui_complete_best(self):
+        """Command 81005: best one-key for 100 YB (vip-gated)."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if not self.config.vip_onekeytask(self._taofa_vip_level(rid)):
+            return frame(amf3_encode(
+                ['81005', [0, TASK_ERR_NOT_RICHANG]]))
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return frame(amf3_encode(
+                ['81005', [0, TASK_ERR_GONGHUI_DONE]]))
+        if not self._bag_money_check(role, 'YB', GONGHUI_COST_ONEKEY_BEST):
+            return frame(amf3_encode(['81005', self._gonghui_yb_short()]))
+        self._bag_money_decr(rid, 'YB', GONGHUI_COST_ONEKEY_BEST)
+        row['fufei_state'] = 2
+        self._gonghui_save(rid, row)
+        frames = []
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        if reward is not None and reward.get('thick') != GONGHUI_THICK_MAX:
+            best = self._gonghui_best_receive(rid, row)
+            if best is not None:
+                frames.append(best)
+            try:
+                row = dict(self.get_task_gonghui(rid) or row)
+            except Exception:
+                row = dict(row)
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        cond = self.config.gonghui_condition(
+            row.get('condition_config_id'))
+        part = self._gonghui_reward_part(
+            (reward or {}).get('reward_items'),
+            (reward or {}).get('jb') or 0, (reward or {}).get('exp') or 0,
+            (reward or {}).get('bind_yb') or 0,
+            (reward or {}).get('zhenqi') or 0,
+            (reward or {}).get('prestige') or 0)
+        # TaskRiChangCompleteBestEvent has no bus here.
+        frames.append(frame(amf3_encode(
+            ['81005', [1, row.get('fufei_state') or 0, part,
+                       (reward or {}).get('thick') or 0,
+                       (cond or {}).get('difficulty') or 0]])))
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def gonghui_notify_loop(self):
+        """Command 81008: pay out a fufei loop, then advance or stop."""
+        if self.config is None:
+            return None
+        role, rid, _guild = self._gonghui_role()
+        if role is None:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if (row.get('fufei_state') or 0) == 0:
+            return None
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return None
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        frames = []
+        best = (row.get('fufei_state') or 0) == 2
+        paid = self._gonghui_pay(role, rid, False)
+        if paid is not None:
+            result, extra = paid
+            frames.append(frame(amf3_encode(
+                [str(CMD_GONGHUI_PAY), result])))
+            frames.extend(extra)
+            if self._gonghui_stop(rid, frames) is False:
+                nxt = self._gonghui_receive(role, rid, best)
+                if nxt is not None:
+                    frames.append(nxt)
+        if not frames:
+            return None
+        return tuple(frames) if len(frames) > 1 else frames[0]
+
+    def _gonghui_receive(self, role, rid, is_best):
+        """receiveTaskRiChange: create or advance the quest, pushing 81009."""
+        if self._task_role_level(role) < GONGHUI_MIN_LEVEL:
+            return None
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is not None and \
+                (row.get('current_loop') or 0) >= GONGHUI_MAX_LOOP:
+            return None
+        level = self._task_role_level(role)
+        # Special loops re-roll at fixed thick: the finished final loop
+        # (state 2 at loop 19) and loop 14 draw difficulty 11/12 configs.
+        thick = None
+        if row is not None:
+            if (row.get('current_loop') or 0) == GONGHUI_MAX_LOOP - 1 and \
+                    row.get('task_state') == 2:
+                thick = 11
+            elif (row.get('current_loop') or 0) == 14 and \
+                    row.get('task_state') == 2:
+                thick = 12
+        if is_best:
+            thick = GONGHUI_THICK_MAX
+        cond = self._gonghui_random_condition(level, thick)
+        reward = self._gonghui_random_reward(level, thick)
+        if cond is None or reward is None:
+            return None
+        if row is None:
+            loop = self._gonghui_random_loop(level)
+            if loop is None:
+                return None
+            now = int(time.time() * 1000)
+            row = {'id': f'task{uuid.uuid4().hex[:16]}',
+                   'condition_config_id': cond['id'],
+                   'reward_config_id': reward['id'],
+                   'reward_loop_config_id': loop['id'],
+                   'task_condition': '', 'current_loop': 1, 'task_state': 0,
+                   'fufei_state': 0, 'recevie_time': now, 'create_time': now}
+        else:
+            row = dict(row)
+            row.update(condition_config_id=cond['id'],
+                       reward_config_id=reward['id'], task_state=0,
+                       task_condition='',
+                       current_loop=(row.get('current_loop') or 0) + 1,
+                       recevie_time=int(time.time() * 1000))
+        self._gonghui_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_GONGHUI_RECEIVE), self._gonghui_out(dict(row))]))
+
+    def _gonghui_best_receive(self, rid, row):
+        """bestReceiveTaskRichange: best re-roll in place, pushing 81009."""
+        if row is None:
+            # Java would NPE on the missing quest; staying silent instead.
+            return None
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            role = roles[0] if roles else None
+        except Exception:
+            role = None
+        if role is None:
+            return None
+        level = self._task_role_level(role)
+        cond = self._gonghui_random_condition(level, GONGHUI_THICK_MAX)
+        reward = self._gonghui_random_reward(level, GONGHUI_THICK_MAX)
+        if cond is None or reward is None:
+            return None
+        row = dict(row)
+        row.update(condition_config_id=cond['id'],
+                   reward_config_id=reward['id'], task_state=0,
+                   task_condition='',
+                   recevie_time=int(time.time() * 1000))
+        self._gonghui_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_GONGHUI_RECEIVE), self._gonghui_out(dict(row))]))
+
+    def _gonghui_pay(self, role, rid, is_best):
+        """payTaskRichange: settle a finished loop; None unless payable."""
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return None
+        row = dict(row)
+        if is_best and row.get('task_state') != 1:
+            return None
+        # payTaskRichange: a finished final loop pays once (state 1 ->
+        # loop reward, fufei cleared); an already-settled row pays nothing.
+        if row.get('current_loop') == GONGHUI_MAX_LOOP and \
+                row.get('task_state') == 2:
+            return None
+        reward = self.config.gonghui_reward(row.get('reward_config_id'))
+        if reward is None:
+            return None
+        loop = None
+        if row.get('current_loop') == GONGHUI_MAX_LOOP:
+            loop = self.config.gonghui_loop_reward(
+                row.get('reward_loop_config_id'))
+            row['fufei_state'] = 0
+        row['task_state'] = 2
+        self._gonghui_save(rid, row)
+        return self._gonghui_grant(role, rid, row.get('id'), reward, loop)
+
+    def _gonghui_grant(self, role, rid, task_uid, reward, loop):
+        """reward(): currencies, exp, zhenqi, banggong, goods; the 81006 array."""
+        try:
+            bind_yb = int(reward.get('bind_yb') or 0)
+        except (TypeError, ValueError):
+            bind_yb = 0
+        try:
+            jb = int(reward.get('jb') or 0)
+        except (TypeError, ValueError):
+            jb = 0
+        try:
+            exp = int(reward.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        try:
+            zhenqi = int(reward.get('zhenqi') or 0)
+        except (TypeError, ValueError):
+            zhenqi = 0
+        try:
+            banggong = int(reward.get('banggong') or 0)
+        except (TypeError, ValueError):
+            banggong = 0
+        loop_items = None
+        if loop is not None:
+            try:
+                bind_yb += int(loop.get('bind_yb') or 0)
+                jb += int(loop.get('jb') or 0)
+                exp += int(loop.get('exp') or 0)
+                zhenqi += int(loop.get('zhenqi') or 0)
+                banggong += int(loop.get('banggong') or 0)
+            except (TypeError, ValueError):
+                pass
+            loop_items = loop.get('reward_items')
+        if exp > 0:
+            try:
+                _total, _level, _gained, exp_frames = \
+                    self._role_gain_exp(role, rid, exp)
+                extra_frames = list(exp_frames[1:])
+            except Exception:
+                extra_frames = []
+        else:
+            extra_frames = []
+        if bind_yb > 0:
+            try:
+                total = int(role.get('bind_lingshi') or 0) + bind_yb
+            except (TypeError, ValueError):
+                total = bind_yb
+            try:
+                self.save_role_state(rid, bind_lingshi=total)
+            except Exception:
+                pass
+        if jb > 0:
+            try:
+                total = int(role.get('tongqian') or 0) + jb
+            except (TypeError, ValueError):
+                total = jb
+            try:
+                self.save_role_state(rid, tongqian=total)
+            except Exception:
+                pass
+        if zhenqi > 0:
+            try:
+                total = int(role.get('zhenqi') or 0) + zhenqi
+            except (TypeError, ValueError):
+                total = zhenqi
+            try:
+                self.save_role_state(rid, zhenqi=total)
+            except Exception:
+                pass
+        if banggong > 0:
+            # addRoleGongxian: contribution lands on the member row.
+            try:
+                self.add_guild_gongxian(rid, banggong)
+            except Exception:
+                pass
+        merged = list(reward.get('reward_items') or [])
+        if loop_items:
+            merged.extend(loop_items)
+        if merged:
+            self._task_grant(rid, merged)
+        if reward.get('reward_items'):
+            pairs = [[item['goods_id'], item['count']] for item in merged]
+        else:
+            # Loop-only drops grant but never show, like the jar.
+            pairs = []
+        return ([task_uid, pairs, int(reward.get('exp') or 0),
+                 int(reward.get('jb') or 0), int(reward.get('bind_yb') or 0),
+                 0, int(reward.get('zhenqi') or 0)], extra_frames)
+
+    def _gonghui_stop(self, rid, frames):
+        """stopRefreshRichang: 81010 + True on the finished final loop."""
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return False
+        row = dict(row)
+        if row.get('current_loop') != GONGHUI_MAX_LOOP or \
+                row.get('task_state') != 2:
+            return False
+        loop = self.config.gonghui_loop_reward(
+            row.get('reward_loop_config_id'))
+        if loop is None:
+            loop = {'reward_items': None, 'jb': 0, 'exp': 0, 'bind_yb': 0,
+                    'zhenqi': 0, 'prestige': 0}
+        frames.append(frame(amf3_encode(
+            [str(CMD_GONGHUI_STOP),
+             [self._gonghui_out(row),
+              self._gonghui_reward_part(
+                  loop.get('reward_items'), loop.get('jb') or 0,
+                  loop.get('exp') or 0, loop.get('bind_yb') or 0,
+                  loop.get('zhenqi') or 0,
+                  loop.get('prestige') or 0)]])))
+        return True
+
+    def gonghui_kill_progress(self, role, monster_id):
+        """Kill hook: 81007 progress, 81006 pay, 81009/81010 advance."""
+        if self.config is None or role is None:
+            return []
+        rid = role.get('id')
+        if self._gonghui_guild(rid) is None:
+            # The monster-dead handler only fires for guild members in
+            # Java (the quest row cannot exist without membership).
+            return []
+        try:
+            row = self.get_task_gonghui(rid)
+        except Exception:
+            return []
+        if row is None:
+            return []
+        row = dict(row)
+        if row.get('task_state') in (1, 2):
+            return []
+        if (row.get('fufei_state') or 0) != 0:
+            return []
+        cond = self.config.gonghui_condition(
+            row.get('condition_config_id'))
+        if cond is None:
+            return []
+        killmap = cond.get('kill_monsters')
+        if not killmap or monster_id not in killmap:
+            return []
+        try:
+            need = int(killmap[monster_id]['count'] or 0)
+        except (TypeError, ValueError):
+            need = 0
+        kills = self._task_kills(row.get('task_condition'))
+        if kills is None:
+            return []
+        if not row.get('task_condition'):
+            done = 1
+            kills[monster_id] = 1
+        else:
+            current = kills.get(monster_id, 0)
+            done = 0
+            if need > current:
+                done = (kills.get(monster_id) or 0) + 1
+                kills[monster_id] = done
+        row['task_condition'] = self._task_kills_str(kills)
+        frames = [frame(amf3_encode(
+            [str(CMD_GONGHUI_CHANGE), [row['id'], monster_id, done]]))]
+        complete = True
+        for entry_id in killmap:
+            progress = kills.get(entry_id)
+            # The jar compares every entry against the killed monster's
+            # need, which matches single-monster conditions exactly.
+            if progress is None or need > progress:
+                complete = False
+                break
+        if complete:
+            row['task_state'] = 1
+            # The jar mutates the shared cached entity, so payTaskRichange
+            # observes state 1; persisting first reproduces that visibility.
+            self._gonghui_save(rid, row)
+            paid = self._gonghui_pay(role, rid, True)
+            if paid is not None:
+                result, extra = paid
+                frames.append(frame(amf3_encode(
+                    [str(CMD_GONGHUI_PAY), result])))
+                frames.extend(extra)
+                if self._gonghui_stop(rid, frames) is False:
+                    nxt = self._gonghui_receive(role, rid, False)
+                    if nxt is not None:
+                        frames.append(nxt)
+            try:
+                row = dict(self.get_task_gonghui(rid) or row)
+            except Exception:
+                pass
+        self._gonghui_save(rid, row)
         return frames
 
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:

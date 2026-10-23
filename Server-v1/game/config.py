@@ -1155,6 +1155,9 @@ class GameConfig:
         self._rc_cond = None
         self._rc_rew = None
         self._rc_loop = None
+        self._gh_cond = None
+        self._gh_rew = None
+        self._gh_loop = None
         self._kaifu_zuoqi = None
         self._shenjiang = None
         self._jiangxingtu = None
@@ -2585,6 +2588,159 @@ class GameConfig:
     def richang_loop_buckets(self):
         """{min: max} level buckets for the loop interval lookup."""
         return dict(self._richang_loop_assembly()[2])
+
+    def _gonghui_rows(self, name):
+        """Raw row list from a GongHuiRenWu* table; [] when absent."""
+        path = os.path.join(self.config_dir, 'sys_config', f'{name}.jat')
+        try:
+            rows = _load(path) if os.path.isfile(path) else []
+        except ValueError as e:
+            log.error('bad %s table: %s', name, e)
+            return []
+        if isinstance(rows, list) and len(rows) == 1 \
+                and isinstance(rows[0], list):
+            rows = rows[0]
+        return [r for r in rows] if isinstance(rows, list) else []
+
+    def _gonghui_condition_assembly(self):
+        """(conditions by id, full min_max_diff lists, sub min_max lists, buckets)."""
+        if self._gh_cond is None:
+            table, full, sub, buckets = {}, {}, {}, {}
+            for row in self._gonghui_rows('GongHuiRenWu'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_gonghui_condition(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                sub.setdefault(cfg['query_sub'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._gh_cond = (table, full, sub, buckets)
+        return self._gh_cond
+
+    @staticmethod
+    def _parse_gonghui_condition(row):
+        """Parsed GongHuiTaskRCConditionConfig: same shape as richang."""
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        diff = config_int(row.get('difficultyLv'))
+        return {'id': str(row.get('id')),
+                'difficulty': diff, 'min': low, 'max': high,
+                'query_sub': f'{low}_{high}',
+                'query_id': f'{low}_{high}_{diff}',
+                'kill_monsters': parse_task_monsters(
+                    str(row.get('completeMonster') or '')),
+                'complete_items': parse_task_monsters(
+                    str(row.get('completeItem') or ''))}
+
+    def gonghui_condition(self, cond_id):
+        """Parsed guild-task condition config for an id, or None."""
+        return self._gonghui_condition_assembly()[0].get(str(cond_id))
+
+    def gonghui_condition_interval(self, sub_key, difficulty):
+        """Guild-task condition configs for 'min_max' + difficulty."""
+        return list(self._gonghui_condition_assembly()[1].get(
+            f'{sub_key}_{difficulty}', []))
+
+    def gonghui_condition_subinterval(self, sub_key):
+        """Guild-task condition configs for one 'min_max' bucket."""
+        return list(self._gonghui_condition_assembly()[2].get(sub_key, []))
+
+    def gonghui_condition_buckets(self):
+        """{min: max} level buckets for the guild-task lookup."""
+        return dict(self._gonghui_condition_assembly()[3])
+
+    def _gonghui_reward_assembly(self):
+        """(rewards by id, full min_max_thick lists, sub min_max lists, buckets)."""
+        if self._gh_rew is None:
+            table, full, sub, buckets = {}, {}, {}, {}
+            for row in self._gonghui_rows('GongHuiRenWuJiangLi'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_gonghui_reward(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                sub.setdefault(cfg['query_sub'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._gh_rew = (table, full, sub, buckets)
+        return self._gh_rew
+
+    @staticmethod
+    def _parse_gonghui_reward(row):
+        """Parsed GongHuiTaskRCRewardConfig; adds banggong to richang's shape."""
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        thick = config_int(row.get('thickLv'))
+        items = parse_task_item_order(str(row.get('itemOrder') or ''))
+        return {'id': str(row.get('id')),
+                'min': low, 'max': high, 'thick': thick,
+                'query_sub': f'{low}_{high}',
+                'query_id': f'{low}_{high}_{thick}',
+                'exp': config_int(row.get('exp')),
+                'jb': config_int(row.get('gold')),
+                'bind_yb': config_int(row.get('boundOb')),
+                'zhenqi': config_int(row.get('zhenqi')),
+                'prestige': config_int(row.get('prestige')),
+                'banggong': config_int(row.get('banggong')),
+                'reward_items': items,
+                'reward_bind': config_int(row.get('bound'))}
+
+    def gonghui_reward(self, reward_id):
+        """Parsed guild-task reward config for an id, or None."""
+        return self._gonghui_reward_assembly()[0].get(str(reward_id))
+
+    def gonghui_reward_interval(self, sub_key, thick):
+        """Guild-task reward configs for 'min_max' + thick level."""
+        return list(self._gonghui_reward_assembly()[1].get(
+            f'{sub_key}_{thick}', []))
+
+    def gonghui_reward_subinterval(self, sub_key):
+        """Guild-task reward configs for one 'min_max' bucket."""
+        return list(self._gonghui_reward_assembly()[2].get(sub_key, []))
+
+    def gonghui_reward_buckets(self):
+        """{min: max} level buckets for the guild-task reward lookup."""
+        return dict(self._gonghui_reward_assembly()[3])
+
+    def _gonghui_loop_assembly(self):
+        """(loop rewards by id, min_max lists, buckets) from EWaiJiangLi."""
+        if self._gh_loop is None:
+            table, full, buckets = {}, {}, {}
+            for row in self._gonghui_rows('GongHuiRenWuEWaiJiangLi'):
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                cfg = self._parse_gonghui_loop(row)
+                table[cfg['id']] = cfg
+                full.setdefault(cfg['query_id'], []).append(cfg)
+                buckets[cfg['min']] = cfg['max']
+            self._gh_loop = (table, full, buckets)
+        return self._gh_loop
+
+    @staticmethod
+    def _parse_gonghui_loop(row):
+        """Parsed GongHuiTaskRCLoopRewardConfig; jb reads thickLv (absent -> 0)."""
+        low, high = config_int(row.get('min')), config_int(row.get('max'))
+        items = parse_task_item_order(str(row.get('itemOrder') or ''))
+        return {'id': str(row.get('id')),
+                'min': low, 'max': high,
+                'query_id': f'{low}_{high}',
+                'exp': config_int(row.get('exp')),
+                'jb': config_int(row.get('thickLv')),
+                'bind_yb': config_int(row.get('boundOb')),
+                'zhenqi': config_int(row.get('zhenqi')),
+                'prestige': config_int(row.get('prestige')),
+                'banggong': config_int(row.get('banggong')),
+                'reward_items': items,
+                'reward_bind': config_int(row.get('bound'))}
+
+    def gonghui_loop_reward(self, reward_id):
+        """Parsed guild-task loop reward config for an id, or None."""
+        return self._gonghui_loop_assembly()[0].get(str(reward_id))
+
+    def gonghui_loop_interval(self, sub_key):
+        """Guild-task loop reward configs for one 'min_max' bucket."""
+        return list(self._gonghui_loop_assembly()[1].get(sub_key, []))
+
+    def gonghui_loop_buckets(self):
+        """{min: max} level buckets for the guild-task loop lookup."""
+        return dict(self._gonghui_loop_assembly()[2])
 
     def vip_tunshi_times(self, vip_level):
         """VipConfig.getTunshitimes bonus for a level; 0 when absent."""

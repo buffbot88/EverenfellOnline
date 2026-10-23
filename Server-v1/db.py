@@ -579,6 +579,31 @@ CREATE TABLE IF NOT EXISTS task_richang (
   create_time INTEGER,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Guild-task quest per role (legacy RoleGonghuiTask: same one-quest-per-role
+-- shape as task_richang; the guild gate lives in guild_member, since the
+-- full GuildAction family is unported).
+CREATE TABLE IF NOT EXISTS task_gonghui (
+  role_id INTEGER PRIMARY KEY,
+  id TEXT,
+  condition_config_id TEXT,
+  reward_config_id TEXT,
+  reward_loop_config_id TEXT,
+  task_condition TEXT,
+  current_loop INTEGER DEFAULT 1,
+  task_state INTEGER DEFAULT 0,
+  fufei_state INTEGER DEFAULT 0,
+  recevie_time INTEGER,
+  create_time INTEGER,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
+-- silences every gonghui handler; addRoleGongxian accumulates gongxian).
+CREATE TABLE IF NOT EXISTS guild_member (
+  role_id INTEGER PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  gongxian INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
 -- lists back to the client; the id is the legacy row guid).
 CREATE TABLE IF NOT EXISTS role_bag_dummy (
@@ -2032,6 +2057,81 @@ class Store:
                 (str(role_id),))
             self.db.commit()
             return True
+
+    def get_task_gonghui(self, role_id):
+        """A role's guild-task quest, or None (RoleGonghuiTask.daoLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, condition_config_id, reward_config_id,'
+                ' reward_loop_config_id, task_condition, current_loop,'
+                ' task_state, fufei_state, recevie_time, create_time'
+                ' FROM task_gonghui WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_task_gonghui(self, role_id, **fields):
+        """Upsert a role's guild-task quest (known columns only)."""
+        known = {'id', 'condition_config_id', 'reward_config_id',
+                 'reward_loop_config_id', 'task_condition', 'current_loop',
+                 'task_state', 'fufei_state', 'recevie_time', 'create_time'}
+        if not fields or set(fields) - known:
+            raise ValueError('fields must contain known task_gonghui columns')
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO task_gonghui(role_id,{names}) VALUES(?,{placeholders}) '
+                f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def delete_task_gonghui(self, role_id):
+        """Delete a role's guild-task quest."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM task_gonghui WHERE role_id=?',
+                (str(role_id),))
+            self.db.commit()
+            return True
+
+    def get_guild_id(self, role_id):
+        """A role's guild id, or None (getGuildInfoByRoleId null branch)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT guild_id FROM guild_member WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return row['guild_id'] if row else None
+
+    def save_guild_member(self, role_id, guild_id):
+        """Record guild membership (test/dev hook; GuildAction unported)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO guild_member(role_id, guild_id, gongxian)'
+                ' VALUES(?,?,0)'
+                ' ON CONFLICT(role_id) DO UPDATE'
+                ' SET guild_id=excluded.guild_id',
+                (str(role_id), str(guild_id)))
+            self.db.commit()
+            return True
+
+    def add_guild_gongxian(self, role_id, delta):
+        """Accumulate contribution (addRoleGongxian); returns the new total."""
+        with self.atomic() as db:
+            row = db.execute(
+                'SELECT gongxian FROM guild_member WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            if row is None:
+                return None
+            try:
+                total = int(row['gongxian'] or 0) + int(delta or 0)
+            except (TypeError, ValueError):
+                total = int(delta or 0)
+            db.execute(
+                'UPDATE guild_member SET gongxian=? WHERE role_id=?',
+                (total, str(role_id)))
+            return total
 
     def get_role_skillbook_slots(self, role_id, min_slot=10001,
                                  max_slot=10056):

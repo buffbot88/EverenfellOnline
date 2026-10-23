@@ -185,6 +185,12 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_task_richang=self.server.get_task_richang,
             save_task_richang=self.server.save_task_richang,
             delete_task_richang=self.server.delete_task_richang,
+            get_task_gonghui=self.server.get_task_gonghui,
+            save_task_gonghui=self.server.save_task_gonghui,
+            delete_task_gonghui=self.server.delete_task_gonghui,
+            get_guild_id=self.server.get_guild_id,
+            save_guild_member=self.server.save_guild_member,
+            add_guild_gongxian=self.server.add_guild_gongxian,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
             config=self.server.game_config,
@@ -427,6 +433,12 @@ def main():
     tcpd.get_task_richang = store.get_task_richang
     tcpd.save_task_richang = store.save_task_richang
     tcpd.delete_task_richang = store.delete_task_richang
+    tcpd.get_task_gonghui = store.get_task_gonghui
+    tcpd.save_task_gonghui = store.save_task_gonghui
+    tcpd.delete_task_gonghui = store.delete_task_gonghui
+    tcpd.get_guild_id = store.get_guild_id
+    tcpd.save_guild_member = store.save_guild_member
+    tcpd.add_guild_gongxian = store.add_guild_gongxian
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id

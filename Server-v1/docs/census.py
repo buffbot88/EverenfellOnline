@@ -23,6 +23,17 @@ STUB_MARKERS = ('stub', 'deferred', 'no handler', 'not ported',
                 'placeholder', 'unported', 'fire-and-forget', 'no-op',
                 'noop', 'logged only', 'silent null', 'not implemented')
 
+# Confirmed Java server-to-client pushes: no inbound handler exists by
+# design, so the port asserts them in peer outboxes instead of
+# dispatching them. Classified only from action/ledger evidence as each
+# family lands; never inferred from a missing dispatch alone.
+PUSH_ONLY = frozenset('''
+35108
+50004 50006 50007 50012 50102 50104 50105 50207 50208 50210 50211
+51010 51012 51013 51014 51016 51017
+81006 81007 81009 81010
+'''.split())
+
 
 def java_commands():
     rows = []
@@ -119,7 +130,9 @@ def main():
     mod_missing = defaultdict(list)
     for vid in sorted(by_id, key=int):
         mods = sorted(set(m for m, _, _ in by_id[vid]))
-        if vid not in handlers:
+        if vid in PUSH_ONLY:
+            status = 'push-only'
+        elif vid not in handlers:
             status = ('known-unhandled' if vid in observed else 'missing')
         else:
             h = handlers[vid]
@@ -143,7 +156,8 @@ def main():
     lines.append(f'- total Java numeric command IDs: {total}')
     order = ('implemented', 'implemented-untested', 'partial',
              'dispatched-no-direct-handler', 'inline',
-             'inline-untested', 'stub', 'known-unhandled', 'missing')
+             'inline-untested', 'stub', 'push-only', 'known-unhandled',
+             'missing')
     for key in order:
         lines.append(f'- {key}: {counts.get(key, 0)}')
     lines.append(f'- accounted: {sum(counts.values())} of {total} '
@@ -167,10 +181,11 @@ def main():
                  'ledger uses distinct numeric IDs.')
     lines.append('')
     lines.append('## Per-module status (implemented+untested / stub / '
-                 'missing+known / total)')
+                 'push-only / missing+known / total)')
     lines.append('')
-    lines.append('| module | done | untested | stub | missing | total |')
-    lines.append('| --- | --- | --- | --- | --- | --- |')
+    lines.append('| module | done | untested | stub | push | missing |'
+                 ' total |')
+    lines.append('| --- | --- | --- | --- | --- | --- | --- |')
     for mod in sorted(mod_rows,
                       key=lambda m: -(mod_rows[m]['missing'] +
                                       mod_rows[m]['known-unhandled'])):
@@ -180,9 +195,15 @@ def main():
             r['dispatched-no-direct-handler'] + r['inline'] + \
             r['inline-untested']
         stub = r['stub']
+        push = r['push-only']
         missing = r['missing'] + r['known-unhandled']
         lines.append(f'| {mod} | {done} | {untested} | {stub} | '
-                     f'{missing} | {done + untested + stub + missing} |')
+                     f'{push} | {missing} | '
+                     f'{done + untested + stub + push + missing} |')
+    lines.append('')
+    lines.append('`push-only` IDs are confirmed Java S2C notifies with no'
+                 ' inbound handler; the port asserts them in peer outboxes'
+                 ' instead of dispatching them.')
     lines.append('')
     lines.append('## Missing IDs by module (id: const / python handler)')
     lines.append('')

@@ -1788,7 +1788,13 @@ class Session:
                 self._zuwu_on_enter(_wire_id(role))
             except Exception:
                 pass
-            return (*bootstrap, frame(amf3_encode(['10003', result])))
+            task_frames = []
+            try:
+                task_frames = self._task_on_enter(_wire_id(role)) or []
+            except Exception:
+                pass
+            return (*bootstrap, *task_frames,
+                    frame(amf3_encode(['10003', result])))
 
     def apply_stage(self, msg):
         role_id = str(self.safe(self.safe(msg, 1, []), 0, '') or '')
@@ -9526,11 +9532,73 @@ class Session:
             ['50006', [row['task_id'], monster_id, done]]))]
         if done >= need:
             row['state'] = 1
-            frames.append(frame(amf3_encode(['50007', row['task_id']])))
+            frames.append(frame(amf3_encode(
+                ['50007', row['task_id']])))
             if cfg.get('pay_type') == '1':
                 frames.extend(self._task_submit_chain(role, rid, cfg))
         self.save_task_main(rid, **row)
         return frames
+
+    def _task_on_enter(self, rid):
+        """role_login dataCheck: repair, advance paid chains, flip finished states.
+
+        TaskRoleOnlineHandler.handle runs dataCheck: a quest whose config
+        vanished resets to the first quest; a paid (state 2) quest receives
+        its next quest (the inner-bus cascade, NPC-less tails paying
+        inline); a running quest whose kills/bag now cover its objectives
+        flips to state 1. Returns the queued push frames.
+        """
+        if self.config is None:
+            return []
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return []
+        role = _find_role(roles or [], rid)
+        if role is None:
+            return []
+        try:
+            row = self.get_task_main(rid)
+        except Exception:
+            return []
+        if row is None:
+            return []
+        row = dict(row)
+        cfg = self.config.task_main(row.get('task_id'))
+        if cfg is None:
+            first = self.config.task_main_first_id()
+            cfg = self.config.task_main(first) if first else None
+            if cfg is None:
+                return []
+            now = int(time.time() * 1000)
+            row.update(task_id=cfg['id'], condition='',
+                       recevie_time=now, state=0)
+            try:
+                self.save_task_main(rid, **row)
+            except Exception:
+                pass
+        try:
+            state = int(row.get('state') or 0)
+        except (TypeError, ValueError):
+            state = 0
+        if state == 2:
+            nxt = cfg.get('next_task_id') or ''
+            ok, pushes, tail = self._task_receive(role, rid, nxt)
+            frames = list(pushes)
+            if ok and tail:
+                tail_cfg = self.config.task_main(tail)
+                if tail_cfg is not None:
+                    frames.extend(
+                        self._task_submit_chain(role, rid, tail_cfg))
+            return frames
+        if state == 0 and self._task_is_finished(row, cfg, rid):
+            row['state'] = 1
+            try:
+                self.save_task_main(rid, **row)
+            except Exception:
+                pass
+        return []
 
     @staticmethod
     def _same_day_ms(first_ms, second_ms):

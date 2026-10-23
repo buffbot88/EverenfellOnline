@@ -268,5 +268,131 @@ class TaskDispatchTest(MainTaskFrameTest):
         self.assertEqual(plain, ['50008', [0, 'x', None]])
 
 
+@unittest.skipUnless(HAVE_REAL, 'legacy config tree not present')
+class LoginRecoveryTest(unittest.TestCase):
+    """role_login dataCheck: TaskRoleOnlineHandler -> dataCheck.
+
+    Evidence: TaskRoleOnlineHandler.handle queues dataCheck on
+    role_login; TaskMainServiceImpl.dataCheck/changeTaskIdIfTaskIsDisappear
+    plus recevieMainTask/taskMainIsFinished. The Python port runs this as
+    Session._task_on_enter inside 10003.
+    """
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.store = Store(os.path.join(self.tmp.name, 't.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', hash_password('pw'))
+        self.role_id = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=56)
+        self.cfg = GameConfig(str(REAL_CONFIG))
+        self.sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: [dict(r) for r in
+                                    self.store.list_roles(u, s)],
+            server_start_ms=0,
+            get_task_main=self.store.get_task_main,
+            save_task_main=self.store.save_task_main,
+            get_role_bag_slots=self.store.get_role_bag_slots,
+            get_role_bag_state=self.store.get_role_bag_state,
+            get_role_bag_slot=self.store.get_role_bag_slot,
+            update_role_bag_slot=self.store.update_role_bag_slot,
+            insert_role_bag_slot=self.store.insert_role_bag_slot,
+            save_role_bag_state=self.store.save_role_bag_state,
+            save_role_state=self.store.update_character_state,
+            config=self.cfg)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        self.store.save_role_bag_state(self.role_id, bag_capacity=144,
+                                       storage_capacity=30)
+
+    def role(self):
+        return dict(self.store.list_roles('hero', 'fu1304')[0])
+
+    def rid(self):
+        return str(self.role()['id'])
+
+    def save(self, task_id, state, condition=''):
+        self.store.save_task_main(
+            self.role_id, task_uid='t1', task_id=task_id, state=state,
+            condition=condition, recevie_time=1, create_time=1)
+
+    def test_no_row_is_noop(self):
+        self.assertEqual(self.sess._task_on_enter(self.rid()), [])
+
+    def test_disappeared_quest_resets_to_first(self):
+        # dataCheck.changeTaskIdIfTaskIsDisappear: unknown ids reset to
+        # c001001; c001001 has no objectives, so it is finished at once.
+        self.save('nope', 0)
+        self.assertEqual(self.sess._task_on_enter(self.rid()), [])
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual(row['task_id'], 'c001001')
+        self.assertEqual(row['state'], 1)
+
+    def test_paid_receives_next_on_relogin(self):
+        # Paid c001001 (state 2): the next quest c001002 is talk-only, so
+        # it is received finished (state 1) with a 50004 push.
+        self.save('c001001', 2)
+        got = [decode(f[4:]) for f in self.sess._task_on_enter(self.rid())]
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][0], '50004')
+        self.assertEqual(got[0][1][0], 'c001002')
+        self.assertEqual(got[0][1][3], 1)
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual(row['task_id'], 'c001002')
+        self.assertEqual(row['state'], 1)
+
+    def test_kill_quest_received_unfinished(self):
+        # Paid c001003: next c001010 needs one D010006 kill, so the
+        # receive lands at state 0 with an empty condition.
+        self.save('c001003', 2)
+        got = [decode(f[4:]) for f in self.sess._task_on_enter(self.rid())]
+        self.assertEqual([f[0] for f in got], ['50004'])
+        self.assertEqual(got[0][1][0], 'c001010')
+        self.assertEqual(got[0][1][3], 0)
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual((row['task_id'], row['state']),
+                         ('c001010', 0))
+
+    def test_cross_chapter_receive_pushes_subchapter(self):
+        # Paid c003022 (sub a000001): next c004001 lives in a000002, so
+        # the receive also pushes the 50002 subchapter panel.
+        self.save('c003022', 2)
+        got = [decode(f[4:]) for f in self.sess._task_on_enter(self.rid())]
+        self.assertEqual([f[0] for f in got], ['50004', '50002'])
+        self.assertEqual(got[1][1][0][0], 'a000002')
+        self.assertEqual(self.store.get_task_main(self.role_id)['task_id'],
+                         'c004001')
+
+    def test_level_gated_next_queues_refresh(self):
+        # A level-1 role cannot receive c001002 (recevie_level 2): the
+        # login queues the 50000 refresh and the paid row is untouched.
+        self.store.update_character_state(self.role_id, level=1)
+        self.save('c001001', 2)
+        got = [decode(f[4:]) for f in self.sess._task_on_enter(self.rid())]
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][0], '50000')
+        self.assertEqual(got[0][1][3], 4)
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual((row['task_id'], row['state']), ('c001001', 2))
+
+    def test_finished_kills_flip_on_relogin(self):
+        # Kills banked but state never flipped (e.g. crash between 50006
+        # and 50007): the relog flips state 0 -> 1 with no pushes.
+        self.save('c001004', 0, condition='D010006;1')
+        self.assertEqual(self.sess._task_on_enter(self.rid()), [])
+        row = self.store.get_task_main(self.role_id)
+        self.assertEqual(row['state'], 1)
+
+    def test_10003_carries_task_pushes(self):
+        # Full enter_world: 13000, 32010, the task 50004, then 10003.
+        self.save('c001001', 2)
+        out = self.sess.enter_world([10003, self.rid()])
+        self.assertIsNotNone(out)
+        got = [decode(bytes(f)[4:]) for f in out]
+        self.assertEqual([f[0] for f in got],
+                         ['13000', '32010', '50004', '10003'])
+        self.assertEqual(got[2][1][0], 'c001002')
+
+
 if __name__ == '__main__':
     unittest.main()

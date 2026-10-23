@@ -50,7 +50,7 @@ genuine-Java-no-op, not-an-inbound-command.
 | changeMainTaskMonsterCondition | complete+tested | state-0 gate, per-monster cap, 50006, state 1 + 50007, pay_type-1 auto-finish |
 | canChangeMonster/isPayTask | complete+tested | state 0 / state 2 predicates |
 | dataCheck | complete+tested | NEW this batch: `_task_on_enter` on 10003 (disappeared-quest reset, paid-to-receive cascade, finished flip) |
-| shengJiRecevieMainTask | deferred | no ShengJi publisher exists in the port (levels are static); dataCheck covers the login half; port when a level-up path lands |
+| shengJiRecevieMainTask | complete+tested | `_task_on_level` on every level-up (`_role_gain_exp` fan-out): paid quest with a satisfied next receives via `_task_receive_next`; see `docs/level-ledger.md` |
 | gmTaskUpgrade | deferred | GM/debug path; no GM commands exist in the port |
 | getTaskMainFinishedChapterId/getChapterFinish/taskMainIsFiniState/getTaskMainState/isTaskfinsh/getTaskMainId/getTaskLineId | deferred | export helpers for unported consumers; no ported caller |
 

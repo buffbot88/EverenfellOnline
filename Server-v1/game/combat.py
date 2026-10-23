@@ -271,6 +271,44 @@ def exp_notice(new_total, level):
     return ['12001', [float(new_total), int(level)]]
 
 
+def apply_exp_gain(level, exp, gain, need_exp, max_level):
+    """UserRoleServiceImpl.calUpgradeAndExp: (level, exp, levels_gained).
+
+    need_exp(level) is the ZhuJueShuXingBiao needexp cell; max_level is
+    loadMaxLevel (95). At cap the gain banks onto exp with no level-up;
+    otherwise each rung with total >= needexp(level) spends it for +1
+    level and a zeroed bar, recursing on the remainder.
+    """
+    try:
+        level = int(level or 0)
+    except (TypeError, ValueError):
+        level = 0
+    try:
+        total = int(exp or 0) + int(gain or 0)
+    except (TypeError, ValueError):
+        total = int(gain or 0)
+    try:
+        cap = int(max_level)
+    except (TypeError, ValueError):
+        cap = 0
+    if level >= cap:
+        return level, total, 0
+    gained = 0
+    while True:
+        try:
+            need = int(need_exp(level))
+        except (TypeError, ValueError):
+            break
+        if need <= 0 or total < need:
+            break
+        total -= need
+        level += 1
+        gained += 1
+        if level >= cap:
+            break
+    return level, total, gained
+
+
 def exp_drop_frame(dead_id, template_id, exp_granted):
     """AiServiceImpl.monsterExpDrop 12030 [deadId, templateId, exp(Long)]."""
     return ['12030', [dead_id, template_id, float(exp_granted)]]

@@ -2416,11 +2416,10 @@ class Session:
         base = combat_lib.base_kill_exp(tpl.get('basicexp') or 0,
                                         xiuZheng=revise, levelXishu=decay)
         granted = combat_lib.fight_exp_with_bonuses(base)
-        total = int(role.get('exp') or 0) + granted
-        self.save_role_state(owner['id'], exp=total)
-        return [frame(amf3_encode(combat_lib.exp_notice(total, role.get('level') or 0))),
-                frame(amf3_encode(combat_lib.exp_drop_frame(
-                    dead_fighter['id'], tpl.get('id'), granted)))] + task_frames
+        _total, _level, _gained, exp_frames = self._role_gain_exp(
+            role, owner['id'], granted)
+        return exp_frames + [frame(amf3_encode(combat_lib.exp_drop_frame(
+            dead_fighter['id'], tpl.get('id'), granted)))] + task_frames
 
     def _resolve_fire(self, actor, action, index, target_ids, arg4, arg5):
         """SkillProcessHelper.fight + changeOutput burst for one swing.
@@ -3451,13 +3450,18 @@ class Session:
         if gain is None:
             return None
         exp_gain, zhenqi_gain = gain
+        level_frames = []
         if exp_gain > 0:
-            self.save_role_state(role_id, exp=int(role.get('exp') or 0) + exp_gain)
+            _total, _level, _gained, exp_frames = self._role_gain_exp(
+                role, role_id, exp_gain)
+            level_frames = exp_frames[1:]
         if zhenqi_gain > 0:
             self.save_role_state(role_id,
                                  zhenqi=int(role.get('zhenqi') or 0) + zhenqi_gain)
         self._dazuo_timer(role_id)
-        return frame(amf3_encode(['44004', [exp_gain, zhenqi_gain]]))
+        out = [frame(amf3_encode(['44004', [exp_gain, zhenqi_gain]]))]
+        out.extend(level_frames)
+        return tuple(out) if len(out) > 1 else out[0]
 
     def tick(self, now_ms=None):
         """One server-loop second under the state lock: timers, then ai_tick."""
@@ -5392,12 +5396,9 @@ class Session:
                                     jianding_exp=stored + add)
         except Exception:
             pass
-        try:
-            total = int(role.get('exp') or 0) + add
-        except (TypeError, ValueError):
-            total = add
-        self.save_role_state(rid, exp=total)
-        return (frame(amf3_encode(combat_lib.exp_notice(total, role_lv))),
+        _total, _level, _gained, exp_frames = self._role_gain_exp(
+            role, rid, add)
+        return (*exp_frames,
                 frame(amf3_encode(
                     [str(CMD_EQUIP_JIANDING),
                      [1, str(equip_id), slot, 0, 0, 0, add]])))
@@ -7797,10 +7798,9 @@ class Session:
             amount = int(grow.get('addexp') or 0)
         except (TypeError, ValueError):
             amount = 0
-        total = int(role.get('exp') or 0) + amount
-        self.save_role_state(rid, exp=total)
-        return [frame(amf3_encode(
-            combat_lib.exp_notice(total, role.get('level') or 0)))]
+        _total, _level, _gained, exp_frames = self._role_gain_exp(
+            role, rid, amount)
+        return exp_frames
 
     def _prop_zhenqi(self, role, rid, grow):
         """ZhenQiType: incrZhenqi(addZhenqi) persists; no direct push."""
@@ -8765,10 +8765,9 @@ class Session:
         log.info('conn %d: %s unlock (open-change event skipped)',
                  self.conn_id, cmd)
         if add_exp > 0:
-            total = int(role.get('exp') or 0) + add_exp
-            self.save_role_state(rid, exp=total)
-            frames.append(frame(amf3_encode(
-                combat_lib.exp_notice(total, role.get('level') or 0))))
+            _total, _level, _gained, exp_frames = self._role_gain_exp(
+                role, rid, add_exp)
+            frames.extend(exp_frames)
         frames.append(frame(amf3_encode(
             [cmd, self._bag_activate_reply(kind, capacity + count,
                                            max_slot)])))
@@ -8819,10 +8818,9 @@ class Session:
                  self.conn_id, cmd)
         frames = []
         if cfg['add_exp'] > 0:
-            total = int(role.get('exp') or 0) + cfg['add_exp']
-            self.save_role_state(rid, exp=total)
-            frames.append(frame(amf3_encode(
-                combat_lib.exp_notice(total, role.get('level') or 0))))
+            _total, _level, _gained, exp_frames = self._role_gain_exp(
+                role, rid, cfg['add_exp'])
+            frames.extend(exp_frames)
         frames.append(frame(amf3_encode(
             [cmd, self._bag_activate_reply(kind, capacity + 1, max_slot)])))
         return tuple(frames)
@@ -9166,18 +9164,22 @@ class Session:
                             self.conn_id, item.get('goods_id'), left)
 
     def _task_reward(self, role, rid, cfg):
-        """reward(): currencies, exp, zhenqi, goods, shenjiang, event."""
+        """reward(): currencies, exp, zhenqi, goods, shenjiang, event.
+
+        Returns the level-up extra frames (12001 rides no extra push on
+        this path today, so only the 12000/12004/12002/learn/unlock tail
+        is returned for the submit chain to flush).
+        """
+        extra = []
         try:
             exp = int(cfg.get('exp') or 0)
         except (TypeError, ValueError):
             exp = 0
         if exp > 0:
             try:
-                total = int(role.get('exp') or 0) + exp
-            except (TypeError, ValueError):
-                total = exp
-            try:
-                self.save_role_state(rid, exp=total)
+                _total, _level, _gained, exp_frames = \
+                    self._role_gain_exp(role, rid, exp)
+                extra.extend(exp_frames[1:])
             except Exception:
                 pass
         for key, column in (('bound_ob', 'bind_lingshi'), ('jb', 'tongqian'),
@@ -9216,6 +9218,7 @@ class Session:
                      self.conn_id, cfg.get('id'), cfg.get('shenjiang'))
         # TaskMainFinishEvent has no bus here; the state changes above are
         # the portable half.
+        return extra
 
     def _task_reward_result(self, cfg):
         """CreateTaskOutputWrapper.getRewardResultOutPut for the 50005 push."""
@@ -9339,7 +9342,7 @@ class Session:
             if not ok:
                 break
             frames.extend(pushes)
-            self._task_reward(role, rid, current)
+            frames.extend(self._task_reward(role, rid, current) or [])
             if not nxt:
                 break
             ok, received, tail = self._task_receive(role, rid, nxt)
@@ -9489,6 +9492,190 @@ class Session:
         converted = self.config.task_attr_index_convert(reward)
         return frame(amf3_encode(['50008', [kind, sub_id, converted]]))
 
+    def _role_gain_exp(self, role, rid, amount):
+        """RoleExportService.incrExp + calUpgradeAndExp + per-level fan-out.
+
+        Persists level/exp/max_hp/max_mp and refreshes the role dict in
+        place; returns (total, level, gained, frames) where frames holds
+        the 12001 notice plus, per level gained, the 12000/12004/12002
+        refreshes, skill auto-learns and quest level-unlocks. The 12001
+        frame always leads, like the bus push after every incrExp.
+        """
+        try:
+            old_level = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            old_level = 0
+        try:
+            old_exp = int(role.get('exp') or 0)
+        except (TypeError, ValueError):
+            old_exp = 0
+        try:
+            amount = int(amount or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if self.config is not None:
+            need = self.config.role_need_exp
+            cap = self.config.role_max_level()
+        else:
+            need, cap = (lambda lv: None), 0
+        level, total, gained = combat_lib.apply_exp_gain(
+            old_level, old_exp, amount, need, cap)
+        fields = {'exp': total}
+        if gained:
+            row = self.config.role_attribute_row(level) \
+                if self.config is not None else None
+            if row is not None:
+                fields['level'] = level
+                try:
+                    fields['max_hp'] = int(row.get('hitpoints') or 0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    fields['max_mp'] = int(row.get('mana') or 0)
+                except (TypeError, ValueError):
+                    pass
+        self.save_role_state(rid, **fields)
+        try:
+            role.update(exp=total)
+            if gained and 'level' in fields:
+                role.update(level=level, max_hp=fields.get('max_hp'),
+                            max_mp=fields.get('max_mp'))
+        except Exception:
+            pass
+        frames = [frame(amf3_encode(
+            combat_lib.exp_notice(total, fields.get('level', old_level))))]
+        if gained:
+            frames.extend(self._role_level_frames(role, rid, old_level))
+        return total, fields.get('level', old_level), gained, frames
+
+    def _role_level_frames(self, role, rid, old_level=0):
+        """Per-gain fan-out: 12000/12004/12002, skill learns, quest unlock."""
+        frames = []
+        try:
+            attrs = self.role_attribute_map(role)
+        except Exception:
+            attrs = None
+        if attrs is not None:
+            frames.append(frame(amf3_encode(['12000', Obj(attrs)])))
+        try:
+            wire = _wire_id(role)
+            hp = role.get('hp')
+            max_hp = role.get('max_hp')
+            mp = role.get('mp')
+            max_mp = role.get('max_mp')
+            if max_hp is not None and max_mp is not None:
+                frames.append(frame(amf3_encode(
+                    ['12004', [wire, hp, max_hp, mp, max_mp]])))
+        except Exception:
+            pass
+        try:
+            frames.append(frame(amf3_encode(
+                ['12002', [wire, role.get('name'), role.get('level')]])))
+        except Exception:
+            pass
+        try:
+            level = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        try:
+            old_level = int(old_level or 0)
+        except (TypeError, ValueError):
+            old_level = level
+        # One RoleLevelUpgradeEvent per gained level in Java, so each
+        # intermediate level's learnskill tokens get their turn.
+        for lv in range(old_level + 1, level + 1):
+            frames.extend(self._skill_level_learn(rid, lv))
+        frames.extend(self._task_on_level(role, rid))
+        return frames
+
+    def _skill_level_learn(self, rid, level):
+        """roleLevelUpgradeSkill: learnskill tokens at the new level.
+
+        Each unknown category saves level 1 and pushes the 42004 study
+        notice, like the prop-study success shape (AddSkillEvent has no
+        ported subscribers and is skipped like every other publish).
+        """
+        if self.config is None:
+            return []
+        row = self.config.role_attribute_row(level)
+        tokens = str((row or {}).get('learnskill') or '')
+        try:
+            owned = {str(s.get('category'))
+                     for s in (self.get_role_skills(rid) or [])}
+        except Exception:
+            owned = set()
+        frames = []
+        for token in tokens.split(';'):
+            token = token.strip()
+            if not token or token in owned:
+                continue
+            info = self.config.skill_info(token, 1)
+            if info is None:
+                log.info('conn %d: level %d skill %r has no row (skipped)',
+                         self.conn_id, level, token)
+                continue
+            try:
+                self.save_role_skill(rid, token, 1)
+            except Exception:
+                continue
+            owned.add(token)
+            frames.append(frame(amf3_encode(
+                [str(CMD_STUDY_SKILL), [info.get('skilltype'), 1]])))
+        return frames
+
+    def _task_on_level(self, role, rid):
+        """ShengJiEventHandler.handle: paid quest with a satisfied next.
+
+        shengJiRecevieMainTask: when the running quest is paid (state 2)
+        and its next quest exists with recevie_level at or below the new
+        level, receive it (the inner-bus cascade, NPC-less tails paying
+        inline). Returns the queued push frames.
+        """
+        if self.config is None or role is None:
+            return []
+        try:
+            row = self.get_task_main(rid)
+        except Exception:
+            return []
+        if row is None:
+            return []
+        row = dict(row)
+        try:
+            paid = int(row.get('state') or 0) == 2
+        except (TypeError, ValueError):
+            paid = False
+        if not paid:
+            return []
+        cfg = self.config.task_main(row.get('task_id'))
+        if cfg is None:
+            return []
+        try:
+            level = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            return []
+        nxt = cfg.get('next_task_id') or ''
+        nxt_cfg = self.config.task_main(nxt) if nxt else None
+        if nxt_cfg is None:
+            return []
+        try:
+            gate = int(nxt_cfg.get('recevie_level') or 0)
+        except (TypeError, ValueError):
+            gate = 0
+        if gate > level:
+            return []
+        return self._task_receive_next(role, rid, row, cfg)
+
+    def _task_receive_next(self, role, rid, row, cfg):
+        """Paid tail shared by dataCheck and shengJi: receive + cascade."""
+        nxt = cfg.get('next_task_id') or ''
+        ok, pushes, tail = self._task_receive(role, rid, nxt)
+        frames = list(pushes)
+        if ok and tail:
+            tail_cfg = self.config.task_main(tail)
+            if tail_cfg is not None:
+                frames.extend(self._task_submit_chain(role, rid, tail_cfg))
+        return frames
+
     def task_kill_progress(self, role, monster_id):
         """Kill hook: 50006 progress, 50007 on completion, auto-finish for pay-1 quests."""
         if self.config is None or role is None:
@@ -9583,15 +9770,7 @@ class Session:
         except (TypeError, ValueError):
             state = 0
         if state == 2:
-            nxt = cfg.get('next_task_id') or ''
-            ok, pushes, tail = self._task_receive(role, rid, nxt)
-            frames = list(pushes)
-            if ok and tail:
-                tail_cfg = self.config.task_main(tail)
-                if tail_cfg is not None:
-                    frames.extend(
-                        self._task_submit_chain(role, rid, tail_cfg))
-            return frames
+            return self._task_receive_next(role, rid, row, cfg)
         if state == 0 and self._task_is_finished(row, cfg, rid):
             row['state'] = 1
             try:
@@ -9920,10 +10099,12 @@ class Session:
             except Exception:
                 pass
             row.update(master_count=need, task_state=1)
-            result = self._taofa_pay(role, rid, row)
-            if result is not None:
+            paid = self._taofa_pay(role, rid, row)
+            if paid is not None:
+                result, extra = paid
                 frames.append(frame(amf3_encode(
                     [str(CMD_TAOFA_PAY), result])))
+                frames.extend(extra)
         return frames
 
     def _taofa_pay(self, role, rid, row):
@@ -9979,13 +10160,12 @@ class Session:
                 except (TypeError, ValueError):
                     pass
             totals[base] = amount
+        extra = []
         if totals['exp'] > 0:
             try:
-                total = int(role.get('exp') or 0) + totals['exp']
-            except (TypeError, ValueError):
-                total = totals['exp']
-            try:
-                self.save_role_state(rid, exp=total)
+                _total, _level, _gained, exp_frames = \
+                    self._role_gain_exp(role, rid, totals['exp'])
+                extra.extend(exp_frames[1:])
             except Exception:
                 pass
         for key, column in (('bind_yb', 'bind_lingshi'),
@@ -10019,11 +10199,11 @@ class Session:
             prestige = int(cfg.get('prestige') or 0)
         except (TypeError, ValueError):
             prestige = 0
-        return [cfg['id'],
-                self._taofa_show_pairs(cfg.get('show_items')),
-                int(cfg.get('exp') or 0), int(cfg.get('jb') or 0),
-                int(cfg.get('bind_yb') or 0), prestige,
-                int(cfg.get('zhenqi') or 0)]
+        return ([cfg['id'],
+                 self._taofa_show_pairs(cfg.get('show_items')),
+                 int(cfg.get('exp') or 0), int(cfg.get('jb') or 0),
+                 int(cfg.get('bind_yb') or 0), prestige,
+                 int(cfg.get('zhenqi') or 0)], extra)
 
     @staticmethod
     def _task_kills_str(kills):
@@ -10334,10 +10514,12 @@ class Session:
                 ['50204', self._richang_yb_short()]))
         self._bag_money_decr(rid, 'YB', RICHANG_COST_DIRECT)
         frames = []
-        result = self._richang_pay(role, rid, False)
-        if result is not None:
+        paid = self._richang_pay(role, rid, False)
+        if paid is not None:
+            result, extra = paid
             frames.append(frame(amf3_encode(
                 [str(CMD_RICHANG_PAY), result])))
+            frames.extend(extra)
             if self._richang_stop(rid, frames) is False:
                 nxt = self._richang_receive(role, rid, False)
                 if nxt is not None:
@@ -10454,10 +10636,12 @@ class Session:
             return None
         frames = []
         best = (row.get('fufei_state') or 0) == 2
-        result = self._richang_pay(role, rid, False)
-        if result is not None:
+        paid = self._richang_pay(role, rid, False)
+        if paid is not None:
+            result, extra = paid
             frames.append(frame(amf3_encode(
                 [str(CMD_RICHANG_PAY), result])))
+            frames.extend(extra)
             if self._richang_stop(rid, frames) is False:
                 nxt = self._richang_receive(role, rid, best)
                 if nxt is not None:
@@ -10579,6 +10763,7 @@ class Session:
         except (TypeError, ValueError):
             zhenqi = 0
         loop_items = None
+        extra = []
         if loop is not None:
             try:
                 bind_yb += int(loop.get('bind_yb') or 0)
@@ -10590,11 +10775,9 @@ class Session:
             loop_items = loop.get('reward_items')
         if exp > 0:
             try:
-                total = int(role.get('exp') or 0) + exp
-            except (TypeError, ValueError):
-                total = exp
-            try:
-                self.save_role_state(rid, exp=total)
+                _total, _level, _gained, exp_frames = \
+                    self._role_gain_exp(role, rid, exp)
+                extra.extend(exp_frames[1:])
             except Exception:
                 pass
         if bind_yb > 0:
@@ -10634,9 +10817,9 @@ class Session:
         else:
             # Loop-only drops grant but never show, like the jar.
             pairs = []
-        return [task_uid, pairs, int(reward.get('exp') or 0),
-                int(reward.get('jb') or 0), int(reward.get('bind_yb') or 0),
-                0, int(reward.get('zhenqi') or 0)]
+        return ([task_uid, pairs, int(reward.get('exp') or 0),
+                 int(reward.get('jb') or 0), int(reward.get('bind_yb') or 0),
+                 0, int(reward.get('zhenqi') or 0)], extra)
 
     def _richang_stop(self, rid, frames):
         """stopRefreshRichang: 50211 + True on the finished final loop."""
@@ -10716,10 +10899,12 @@ class Session:
                 break
         if complete:
             row['task_state'] = 1
-            result = self._richang_pay(role, rid, True)
-            if result is not None:
+            paid = self._richang_pay(role, rid, True)
+            if paid is not None:
+                result, extra = paid
                 frames.append(frame(amf3_encode(
                     [str(CMD_RICHANG_PAY), result])))
+                frames.extend(extra)
                 if self._richang_stop(rid, frames) is False:
                     nxt = self._richang_receive(role, rid, False)
                     if nxt is not None:
@@ -12372,9 +12557,9 @@ class Session:
     def _zuoqi_upgrade_fail(self, role, rid, row, lvl, role_level):
         """upgradeFailOperate: pity up, fail exp, or [0, -1] at the cap.
 
-        Returns ([type, exp], granted): the baoji roll pays role exp through
-        the shared exp persist (level-up thresholds stay unported, as in
-        combat), and lucky caps at upgradeZhufu.
+        Returns ([type, exp], granted, extra): the baoji roll pays role
+        exp through the shared level-up path (12001 notice plus any
+        level-up refreshes in extra), and lucky caps at upgradeZhufu.
         """
         try:
             fails = int(row.get('fail_count') or 0)
@@ -12386,7 +12571,7 @@ class Session:
         add = self._zuoqi_random_int(lvl['min_zhufu'], lvl['max_zhufu'])
         row['lucky_value'] = min(lucky + add, lvl['upgrade_zhufu'])
         if total >= self.config.zhujue_zq_fail_max_exp(role_level):
-            return [0, -1], False
+            return [0, -1], False, []
         rates = self.config.zuoqi_fail_rates(
             row.get('zuoqi_rank'), lvl['level'])
         roll = random.random() * sum(r for _, r, _ in rates) \
@@ -12399,14 +12584,11 @@ class Session:
                 break
         row['total_exp'] = total + exp
         try:
-            exp_total = int((role or {}).get('exp') or 0) + exp
-        except (TypeError, ValueError):
-            exp_total = exp
-        try:
-            self.save_role_state(rid, exp=exp_total)
+            _total, _level, _gained, exp_frames = \
+                self._role_gain_exp(role, rid, exp)
         except Exception:
-            pass
-        return [pick, exp], True
+            return [pick, exp], True, []
+        return [pick, exp], True, exp_frames
 
     def zuoqi_jinjie(self, msg):
         """Command 33003: bless/advance the mount (upgradeRank).
@@ -12478,7 +12660,7 @@ class Session:
             success = True
             ret = None
         else:
-            ret, granted = self._zuoqi_upgrade_fail(
+            ret, granted, exp_frames = self._zuoqi_upgrade_fail(
                 role, rid, row, lvl, level)
             try:
                 lucky_now = int(row.get('lucky_value') or 0)
@@ -12524,14 +12706,7 @@ class Session:
             [str(CMD_ZUOQI_JINJIE),
              [-1, lucky_now, ret[0], ret[1], cost]]))
         if granted:
-            try:
-                exp_total = int((self.get_roles(
-                    self.authed_user or '', self.server_id or '')[0] or {})
-                    .get('exp') or 0)
-            except (TypeError, ValueError, IndexError):
-                exp_total = 0
-            return (frame(amf3_encode(combat_lib.exp_notice(
-                exp_total, level))), reply)
+            return (*exp_frames, reply)
         return reply
 
     def _bag_money_check(self, role, money, amount):
@@ -15798,31 +15973,30 @@ class Session:
         return self._lottery_success(odds)
 
     def _shenjiang_grant_exp(self, rid, amount):
-        """incrExp, returning the granted amount (roles carry exp)."""
+        """incrExp, returning (granted amount, level-up extras)."""
         try:
             amount = int(amount or 0)
         except (TypeError, ValueError):
-            amount = 0
+            return 0, []
         if amount <= 0:
-            return 0
+            return 0, []
         role = self._equip_role()
+        if role is None:
+            return 0, []
         try:
-            exp = int((role or {}).get('exp') or 0)
-        except (TypeError, ValueError):
-            exp = 0
-        try:
-            self.save_role_state(rid, exp=exp + amount)
+            _total, _level, _gained, exp_frames = self._role_gain_exp(
+                role, rid, amount)
         except Exception:
-            pass
-        return amount
+            return amount, []
+        return amount, exp_frames[1:]
 
     def _shenjiang_jihuo_fail(self, rid, sj_id, row, cfg, dwid, fail_count):
         """Failed lighting: fail count +1, failAddExp, [0, exp] reply."""
         try:
-            granted = self._shenjiang_grant_exp(
+            granted, extra = self._shenjiang_grant_exp(
                 rid, int(cfg.get('failaddexp') or 0))
         except (TypeError, ValueError):
-            granted = 0
+            granted, extra = 0, []
         try:
             self.save_role_shenjiang(rid, sj_id,
                                      cur_jiangxing_id='',
@@ -15831,15 +16005,18 @@ class Session:
             pass
         log.info('conn %d: JihuoJiangxingtuFailEvent skipped (no bus)',
                  self.conn_id)
-        return frame(amf3_encode([str(CMD_SHENJIANG_JIHUO), [0, granted]]))
+        out = [frame(amf3_encode(
+            [str(CMD_SHENJIANG_JIHUO), [0, granted]]))]
+        out.extend(extra)
+        return tuple(out) if len(out) > 1 else out[0]
 
     def _shenjiang_jihuo_success(self, role, rid, sj_id, row, cfg, dwid):
         """Successful lighting: chart id set, skill learned, full reply."""
         try:
-            granted = self._shenjiang_grant_exp(
+            granted, extra = self._shenjiang_grant_exp(
                 rid, int(cfg.get('successaddexp') or 0))
         except (TypeError, ValueError):
-            granted = 0
+            granted, extra = 0, []
         skill_ids = [s for s in (str(cfg.get('successskillid') or ''),
                                  str(cfg.get('prizeskillid') or ''))
                      if s]
@@ -15861,10 +16038,12 @@ class Session:
                      'volt', 'attackrate', 'velocity', 'critical'):
             if cfg.get(name) not in ('', None):
                 attrs[name] = cfg.get(name)
-        return frame(amf3_encode(
+        out = [frame(amf3_encode(
             [str(CMD_SHENJIANG_JIHUO),
              [1, dwid, convert_index_attribute(attrs, TASK_ATTRIBUTE_INDEX),
-              skill_ids, granted]]))
+              skill_ids, granted]]))]
+        out.extend(extra)
+        return tuple(out) if len(out) > 1 else out[0]
 
     def shenjiang_jinjie(self, msg):
         """Command 41021: breakthrough the star-chart rank (jiangxingtuJinjie).
@@ -16975,19 +17154,36 @@ class Session:
                 'candidates': candidates}
 
     def _juqing_grant_currencies(self, role, exp, yxb, zhenqi):
-        """incrExp/incr(YXB)/incrZhenqi; answers the granted amounts.
+        """incrExp/incr(YXB)/incrZhenqi; answers (exp, yxb, zq, extra).
 
-        The Java incr calls report the real (cap-clipped) increments;
-        no cap table is ported, so the full computed amounts persist,
-        like every other Python currency grant.
+        Exp flows through the shared level-up path (12001 notice plus
+        any level-up refreshes in extra). The Java incr calls report the
+        real (cap-clipped) increments; no cap table is ported, so the
+        full computed amounts persist, like every other Python grant.
         """
         rid = role.get('id')
-        total_exp = int(role.get('exp') or 0) + int(exp or 0)
+        try:
+            exp_i = int(exp or 0)
+        except (TypeError, ValueError):
+            exp_i = 0
+        extra = []
+        if exp_i:
+            _total, _level, _gained, exp_frames = \
+                self._role_gain_exp(role, rid, exp_i)
+            extra.extend(exp_frames[1:])
+        else:
+            try:
+                role.update(exp=int(role.get('exp') or 0))
+            except (TypeError, ValueError):
+                pass
         total_zq = int(role.get('zhenqi') or 0) + int(zhenqi or 0)
         total_yxb = int(role.get('tongqian') or 0) + int(yxb or 0)
-        self.save_role_state(rid, exp=total_exp, zhenqi=total_zq,
-                             tongqian=total_yxb)
-        return int(exp or 0), int(yxb or 0), int(zhenqi or 0)
+        self.save_role_state(rid, zhenqi=total_zq, tongqian=total_yxb)
+        try:
+            role.update(zhenqi=total_zq, tongqian=total_yxb)
+        except Exception:
+            pass
+        return int(exp or 0), int(yxb or 0), int(zhenqi or 0), extra
 
     def _juqing_grant_goods(self, role, rid, fixed, models):
         """putInBagOrEmail1: stack into the bag, mail the overflow.
@@ -17150,17 +17346,19 @@ class Session:
         # award instead of duplicating it, and a second claim finds
         # nothing (NO_AWARD).
         self._juqing_pending_save(rid, row, None)
-        got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
-            role, staged.get('exp'), staged.get('yxb'),
-            staged.get('zhenqi'))
+        got_exp, got_yxb, got_zq, extra = \
+            self._juqing_grant_currencies(
+                role, staged.get('exp'), staged.get('yxb'),
+                staged.get('zhenqi'))
         self._juqing_grant_goods(role, rid, fixed, [])
         cfg = self._juqing_cfg(chapter) or {}
         models = self._juqing_claim_models(pending, cfg)
         roll_formarts = self._juqing_grant_goods(role, rid, [], models)
         pairs = [[g[0], int(g[1])] for g in fixed]
-        return frame(amf3_encode(['64012', [
+        reply = frame(amf3_encode(['64012', [
             1, got_exp, got_yxb, got_zq, pairs,
             roll_formarts[0] if roll_formarts else None]]))
+        return (reply, *extra) if extra else reply
 
     def juqing_onekey(self, msg):
         """Command 64013: claim every pending sweep award.
@@ -17183,20 +17381,20 @@ class Session:
         total_exp = total_yxb = total_zq = 0
         fixed_all = []
         models_all = []
+        level_extra = []
         for _idx, cid, pingjia, _ms in entries:
             # Java skips award rows whose chapter config is gone.
             if self._juqing_cfg(cid) is None:
                 continue
             computed = self._juqing_pass_awards(role, cid, pingjia)
-            got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
-                role, computed['exp'], computed['yxb'],
-                computed['zhenqi'])
+            got_exp, got_yxb, got_zq, extra = \
+                self._juqing_grant_currencies(
+                    role, computed['exp'], computed['yxb'],
+                    computed['zhenqi'])
             total_exp += got_exp
             total_yxb += got_yxb
             total_zq += got_zq
-            role = dict(role, exp=int(role.get('exp') or 0) + got_exp,
-                        zhenqi=int(role.get('zhenqi') or 0) + got_zq,
-                        tongqian=int(role.get('tongqian') or 0) + got_yxb)
+            level_extra.extend(extra)
             fixed_all.extend(computed['fixed'])
             # One fresh Lottery draw per award entry, like oneKey's
             # per-entry passAwards + getRandomKey2 (not all candidates).
@@ -17207,8 +17405,9 @@ class Session:
                                             models_all)
         row['award_info'] = ''
         self._juqing_save(rid, row)
-        return frame(amf3_encode(
+        reply = frame(amf3_encode(
             ['64013', [total_exp, total_yxb, total_zq, formarts]]))
+        return (reply, *level_extra) if level_extra else reply
 
     def _juqing_on_enter(self, rid):
         """handleLogin: a running sweep restarts its clock at login."""

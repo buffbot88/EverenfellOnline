@@ -1325,6 +1325,21 @@ class GameConfig:
             return None
         return self._zhujue.get(int(level))
 
+    def role_max_level(self):
+        """ZhujueAttributeExportServiceImpl.loadMaxLevel (95 shipped)."""
+        self.role_attribute_row(1)
+        return max(self._zhujue) if self._zhujue else 0
+
+    def role_need_exp(self, level):
+        """ZhuJueShuXingBiao needexp for a level, or None when unknown."""
+        row = self.role_attribute_row(level)
+        if row is None:
+            return None
+        try:
+            return int(row.get('needexp'))
+        except (TypeError, ValueError):
+            return None
+
     def cd_time(self, cd_id):
         """PublicCdConfig.cdTime for a cooldown id, or None when unknown.
 

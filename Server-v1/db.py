@@ -303,6 +303,7 @@ CREATE TABLE IF NOT EXISTS role_juqingfuben (
   refresh_time INTEGER,
   award_info TEXT,
   tiaozhan_jindu TEXT,
+  pending_award TEXT,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Kapai reward states (per-entry [got, canClaim] markers backing 121001;
@@ -677,6 +678,12 @@ class Store:
                     self.db.execute(
                         f'ALTER TABLE role_email ADD COLUMN {column}'
                         ' INTEGER DEFAULT 0')
+            juqing_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_juqingfuben)')}
+            if 'pending_award' not in juqing_cols:
+                self.db.execute(
+                    'ALTER TABLE role_juqingfuben'
+                    ' ADD COLUMN pending_award TEXT')
             zuoqi_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_zuoqi)')}
             if 'lucky_value' not in zuoqi_cols:
@@ -1008,7 +1015,8 @@ class Store:
         with self.lock:
             row = self.db.execute(
                 'SELECT passed_highest_id, passed_ids_daily, auto_pass_info,'
-                ' best_passed_info, refresh_time, award_info, tiaozhan_jindu'
+                ' best_passed_info, refresh_time, award_info, tiaozhan_jindu,'
+                ' pending_award'
                 ' FROM role_juqingfuben WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
@@ -1017,7 +1025,7 @@ class Store:
         """Upsert a role's story-dungeon row; only known columns."""
         allowed = {'passed_highest_id', 'passed_ids_daily', 'auto_pass_info',
                    'best_passed_info', 'refresh_time', 'award_info',
-                   'tiaozhan_jindu'}
+                   'tiaozhan_jindu', 'pending_award'}
         if not fields or set(fields) - allowed:
             raise ValueError(
                 f'unknown juqing fields: {sorted(set(fields) - allowed)}')

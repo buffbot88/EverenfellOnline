@@ -1746,6 +1746,10 @@ class Session:
                 frame(amf3_encode(['13000', setting_values])),
                 self.money_info(role),
             )
+        try:
+            self._juqing_on_enter(_wire_id(role))
+        except Exception:
+            pass
         return (*bootstrap, frame(amf3_encode(['10003', result])))
 
     def apply_stage(self, msg):
@@ -2431,6 +2435,12 @@ class Session:
                     self._schedule_leave(target)
                     frames.extend(self._record_drop_result(target, actor)
                                   or [])
+                    frames.extend(self._juqing_kill_frames(actor, target))
+                if target['kind'] == 'role':
+                    try:
+                        self._juqing_death_progress(target.get('role'))
+                    except Exception:
+                        pass
                 if actor['kind'] == 'pet':
                     frames.append(frame(amf3_encode(combat_lib.dead_notice(
                         target['id'], actor['id'], actor.get('name'), action,
@@ -16402,14 +16412,74 @@ class Session:
             return {'passed_highest_id': None, 'passed_ids_daily': None,
                     'auto_pass_info': None, 'best_passed_info': None,
                     'refresh_time': None, 'award_info': None,
-                    'tiaozhan_jindu': None}
-        return dict(row)
+                    'tiaozhan_jindu': None, 'pending_award': None}
+        row = dict(row)
+        row.setdefault('pending_award', None)
+        return row
 
     def _juqing_save(self, rid, row):
         """Persist the story-dungeon entity (skips None columns)."""
         fields = {k: v for k, v in row.items() if v is not None}
         if fields:
             self.save_role_juqing(rid, **fields)
+
+    def _juqing_ensure(self, rid):
+        """Load-or-create the entity (checkRoleJuQingFuBenInfo).
+
+        Java inserts a row with only userRoleId + refreshTime on first
+        access; every access then runs the daily refresh.
+        """
+        row = self._juqing_row(rid)
+        if self.get_role_juqing(rid) is None:
+            row['refresh_time'] = int(self._world_now_ms())
+            self._juqing_save(rid, row)
+        self._juqing_refresh_daily(rid, row)
+        return row
+
+    @staticmethod
+    def _day_is_today(stamp_ms, now_ms=None):
+        """ObjectUtil.dayIsToday: the stamp falls on the local day."""
+        import datetime as _dt
+        try:
+            stamp = _dt.datetime.fromtimestamp(int(stamp_ms) / 1000).date()
+        except (TypeError, ValueError, OverflowError, OSError):
+            return False
+        base = now_ms / 1000 if now_ms is not None else None
+        try:
+            today = _dt.datetime.fromtimestamp(
+                base if base is not None else _dt.datetime.now().timestamp()
+            ).date()
+        except (TypeError, ValueError, OverflowError, OSError):
+            return False
+        return stamp == today
+
+    def _juqing_refresh_daily(self, rid, row):
+        """checkPassedIdDailyRefresh: new day clears daily counts."""
+        now = int(self._world_now_ms())
+        if not self._day_is_today(row.get('refresh_time'), now):
+            row['passed_ids_daily'] = ''
+            row['refresh_time'] = now
+            self._juqing_save(rid, row)
+
+    def _juqing_pending_load(self, row):
+        """Staged victory PassAwards, or None (DataContainer replacement).
+
+        Java stages the victory awards in the in-memory DataContainer
+        keyed by role; the Python port persists them in role_juqing so a
+        claim survives reconnects, which the wire protocol allows.
+        """
+        import json as _json
+        try:
+            pending = _json.loads(row.get('pending_award') or '')
+        except (TypeError, ValueError):
+            return None
+        return pending if isinstance(pending, dict) else None
+
+    def _juqing_pending_save(self, rid, row, pending):
+        """Stage (or, with None, clear) the victory award."""
+        import json as _json
+        row['pending_award'] = _json.dumps(pending) if pending else ''
+        self._juqing_save(rid, row)
 
     def _juqing_cfg(self, chapter_id):
         """Chapter config row, or None when unconfigured."""
@@ -16418,8 +16488,38 @@ class Session:
         return self.config.juqing_row(chapter_id)
 
     def _juqing_active(self, row):
-        """Active attempt (chapter, startMs, kills) from tiaozhan_jindu."""
-        raw = str(row.get('tiaozhan_jindu') or '')
+        """Active attempt (chapter, startMs, kills, deaths) or None.
+
+        JSON {chapter, start, kills:{}, deaths} written at challenge
+        entry; the one pre-JSON 'cid:start|mid=n,...' draft is still
+        accepted so half-written rows keep working.
+        """
+        import json as _json
+        raw = row.get('tiaozhan_jindu')
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            return None
+        if isinstance(raw, dict):
+            data = raw
+        else:
+            try:
+                data = _json.loads(str(raw))
+            except (TypeError, ValueError):
+                data = None
+            if not isinstance(data, dict) or 'chapter' not in data:
+                return self._juqing_active_legacy(str(raw))
+        try:
+            kills = {str(k): int(v)
+                     for k, v in dict(data.get('kills') or {}).items()}
+            return {'chapter': str(data['chapter']),
+                    'start': int(data.get('start') or 0),
+                    'kills': kills,
+                    'deaths': int(data.get('deaths') or 0)}
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _juqing_active_legacy(raw):
+        """Pre-JSON 'cid:start|mid=n,...' attempt marker, or None."""
         if '|' not in raw:
             return None
         head, _, tail = raw.partition('|')
@@ -16430,53 +16530,91 @@ class Session:
                 if '=' in part:
                     mid, _, num = part.partition('=')
                     kills[mid.strip()] = int(num.strip())
-            return {'chapter': str(cid), 'start': int(start), 'kills': kills}
+            return {'chapter': str(cid), 'start': int(start),
+                    'kills': kills, 'deaths': 0}
         except (TypeError, ValueError):
             return None
 
-    def _juqing_idle(self, rid, row):
-        """Clear the active attempt marker and persist."""
-        row['tiaozhan_jindu'] = None
+    def _juqing_attempt_save(self, rid, row, chapter, start_ms,
+                             kills=None, deaths=0):
+        """Write the attempt marker and persist."""
+        import json as _json
+        row['tiaozhan_jindu'] = _json.dumps(
+            {'chapter': str(chapter), 'start': int(start_ms),
+             'kills': {str(k): int(v) for k, v in (kills or {}).items()},
+             'deaths': int(deaths)})
         self._juqing_save(rid, row)
 
-    def _juqing_settle_sweep(self, rid, row, now_ms=None):
-        """Settle an elapsed sweep into award_info (finishAutoPass)."""
+    def _juqing_idle(self, rid, row):
+        """Clear the active attempt marker and persist."""
+        row['tiaozhan_jindu'] = ''
+        self._juqing_save(rid, row)
+
+    def _juqing_offline_sweep(self, rid, row, now_ms=None):
+        """offlineAutoFightHandle: negative-useTime guard + settle.
+
+        Returns the [oneKey, curId, useTime] offline entry when the sweep
+        is still running, else None (settled sweeps append one award,
+        stamp the daily count and clear the sweep, like finishAutoPass).
+        """
         from . import juqing as juqing_lib
         now = int(now_ms if now_ms is not None else self._world_now_ms())
         auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
         if auto is None:
             return None
+        if int(auto.get('usetime') or 0) < 0:
+            auto['usetime'] = 0
+            row['auto_pass_info'] = juqing_lib.encode_auto(
+                auto['onekey'], auto['curid'], auto['start'], 0)
+            self._juqing_save(rid, row)
         best = juqing_lib.decode_best(row.get('best_passed_info'),
                                       auto['curid'])
-        if best is None:
-            return None
-        if now - auto['start'] + auto.get('usetime', 0) * 1000 < \
-                best['fast']:
-            return None
+        if best is None or best.get('fast') is None:
+            return [1 if auto['onekey'] else 0, auto['curid'],
+                    auto['usetime']]
+        if juqing_lib.sweep_remain_ms(auto, best['fast'], now) > 0:
+            return [1 if auto['onekey'] else 0, auto['curid'],
+                    auto['usetime']]
+        self._juqing_commit_sweep(rid, row, auto, best, now)
+        return None
+
+    def _juqing_commit_sweep(self, rid, row, auto, best, now):
+        """Shared sweep-settle write (finishAutoPass + offline handle)."""
+        from . import juqing as juqing_lib
         row['auto_pass_info'] = ''
         row['award_info'] = juqing_lib.award_incr(
             row.get('award_info'), auto['curid'], best['pingjia'], now)
-        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
+        row['passed_ids_daily'] = juqing_lib.set_count(
             row.get('passed_ids_daily'), auto['curid'], 2)
         self._juqing_save(rid, row)
-        return auto
+
+    def _juqing_sweep_remaining(self, row, auto, now_ms=None):
+        """Millis left on a running sweep, or None without a best time."""
+        from . import juqing as juqing_lib
+        now = int(now_ms if now_ms is not None else self._world_now_ms())
+        best = juqing_lib.decode_best(row.get('best_passed_info'),
+                                      auto['curid'])
+        if best is None or best.get('fast') is None:
+            return None
+        return juqing_lib.sweep_remain_ms(auto, best['fast'], now)
 
     def juqing_info(self):
-        """Command 64001: [1, [highest, daily, best, offline]]."""
+        """Command 64001: [1, [highest, daily, best, offline]].
+
+        getInfo: entity auto-created, daily refreshed, then
+        offlineAutoFightHandle settles an elapsed sweep (or reports the
+        running [oneKey, curId, useTime]). Null cells stay null.
+        """
         from . import juqing as juqing_lib
         role = self._juqing_actor(['64001', None])
         if role is None:
             return None
         rid = _wire_id(role)
-        row = self._juqing_row(rid)
-        settled = self._juqing_settle_sweep(rid, row)
-        if settled is not None:
+        row = self._juqing_ensure(rid)
+        offline = self._juqing_offline_sweep(rid, row)
+        if offline is None:
             row = self._juqing_row(rid)
         highest = row.get('passed_highest_id')
-        offline = ([[settled['curid'],
-                     (juqing_lib.decode_best(row.get('best_passed_info'),
-                                            settled['curid']) or {})
-                     .get('pingjia', 0)]] if settled else None)
         return frame(amf3_encode(['64001', [1, [
             int(highest) if highest is not None else 0,
             juqing_lib.daily_info_rows(row.get('passed_ids_daily')) or None,
@@ -16489,12 +16627,11 @@ class Session:
         role = self._juqing_actor(['64010', None])
         if role is None:
             return None
-        rows = juqing_lib.award_entries(
-            self._juqing_row(_wire_id(role)).get('award_info'))
+        row = self._juqing_ensure(_wire_id(role))
+        rows = juqing_lib.award_info_shapes(row.get('award_info'))
         if not rows:
             return frame(amf3_encode(['64010', None]))
-        return frame(amf3_encode(
-            ['64010', [[r[1], r[2]] for r in rows]]))
+        return frame(amf3_encode(['64010', rows]))
 
     def juqing_challenge(self, msg):
         """Command 64002 [chapterId]: gates, dungeon entry, [1, id]/[0, code]."""
@@ -16513,7 +16650,7 @@ class Session:
         if cfg is None:
             return frame(amf3_encode(
                 ['64002', [0, juqing_lib.ERR_NOT_EXIST]]))
-        row = self._juqing_row(rid)
+        row = self._juqing_ensure(rid)
         active = self._juqing_active(row)
         err = juqing_lib.check_can_challenge(
             cfg, role.get('level'), row.get('passed_highest_id'),
@@ -16525,15 +16662,57 @@ class Session:
             rid, str(cfg.get('map') or role.get('map_id')),
             int(pos[0]) if len(pos) > 0 else int(role.get('map_x') or 0),
             int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0)))
-        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
+        now = int(self._world_now_ms())
+        row['passed_ids_daily'] = juqing_lib.set_count(
             row.get('passed_ids_daily'), cid, 1)
-        row['refresh_time'] = int(self._world_now_ms())
-        row['tiaozhan_jindu'] = \
-            f'{cid}:{row["refresh_time"]}|' + ','.join(
-                f'{mid}=0' for mid, _n in cfg.get('complete') or [])
-        self._juqing_save(rid, row)
+        row['refresh_time'] = now
+        self._juqing_attempt_save(rid, row, cid, now)
+        try:
+            self.stage_scheduler.cancel(f'juqing_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        self.schedule_stage(f'juqing_expire:{rid}', '64008',
+                            lambda: self._juqing_expire(rid),
+                            delay=max(int(cfg.get('expire_min') or 0) * 60,
+                                      1),
+                            unit='SECONDS')
+        rest = max(int(cfg.get('expire_ms') or 0), 0)
+        frames.append(frame(amf3_encode(
+            ['64009', [rest, str(cfg.get('map') or ''), int(cid), []]])))
         frames.append(frame(amf3_encode(['64002', [1, cid]])))
         return tuple(frames)
+
+    def _juqing_expire(self, rid):
+        """Forced-leave timer: an unfinished attempt expires (COPY_EXPIRE3).
+
+        Ports StageJuQingCopyServiceImpl.expireCheck: the copy ends with
+        COPY_EXPIRE3, challengeResult answers [1, chapter, 3] for the
+        64003 push, and the role is sent home with 64008 [1]. Home-map
+        routing lives in stagecontroll (unported), so the role keeps its
+        current map while the attempt state clears.
+        """
+        from . import juqing as juqing_lib
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return None
+        role = roles[0] if roles else None
+        if role is None or str(_wire_id(role)) != str(rid):
+            return None
+        row = self._juqing_row(rid)
+        active = self._juqing_active(row)
+        if active is None:
+            return None
+        self._juqing_idle(rid, row)
+        try:
+            self.stage_scheduler.cancel(f'juqing_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        return (frame(amf3_encode(
+            ['64003', [1, int(active['chapter']),
+                       juqing_lib.COPY_EXPIRE3]])),
+            frame(amf3_encode(['64008', [1]])))
 
     def juqing_saodang(self, msg):
         """Command 64004 [chapterId, oneKey]: start a sweep, [1, id, key, ms]."""
@@ -16551,10 +16730,13 @@ class Session:
             return None
         rid = _wire_id(role)
         cfg = self._juqing_cfg(cid)
-        row = self._juqing_row(rid)
+        row = self._juqing_ensure(rid)
         auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
         best = juqing_lib.decode_best(row.get('best_passed_info'), cid)
-        vip = self.get_role_vip(role.get('id')) or {}
+        try:
+            vip = self.get_role_vip(role.get('id')) or {}
+        except Exception:
+            vip = {}
         err = juqing_lib.check_can_saodang(
             cfg, auto, best, row.get('passed_ids_daily'), onekey,
             vip.get('vip_level'))
@@ -16563,12 +16745,8 @@ class Session:
         now = int(self._world_now_ms())
         row['auto_pass_info'] = juqing_lib.encode_auto(onekey, cid, now)
         self._juqing_save(rid, row)
-        self.schedule_stage(f'juqing_sweep:{rid}', '64006',
-                            lambda: self._juqing_settle_sweep(rid, self._juqing_row(rid)),
-                            delay=max(best['fast'] // 1000, 1),
-                            unit='SECONDS')
         return frame(amf3_encode(
-            ['64004', [1, cid, onekey, best['fast']]]))
+            ['64004', [1, cid, bool(onekey), best['fast']]]))
 
     def juqing_finish(self, msg):
         """Command 64006: collect a finished sweep, else [-1, id, remain]."""
@@ -16577,19 +16755,25 @@ class Session:
         if role is None:
             return None
         rid = _wire_id(role)
-        row = self._juqing_row(rid)
+        row = self._juqing_ensure(rid)
         auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
-        if auto is None:
+        if auto is None or auto.get('curid') is None:
             return frame(amf3_encode(
                 ['64006', [0, juqing_lib.ERR_NO_AUTOPASS]]))
-        if self._juqing_settle_sweep(rid, row) is None:
-            best = juqing_lib.decode_best(row.get('best_passed_info'),
-                                          auto['curid']) or {}
-            remain = max(int(best.get('fast', 0)) - (
-                int(self._world_now_ms()) - auto['start']) - auto.get('usetime', 0) * 1000, 0)
-            return frame(amf3_encode(['64006', [-1, auto['curid'], remain]]))
-        return frame(amf3_encode(['64006', [1, auto['curid'],
-                                           auto['onekey']]]))
+        best = juqing_lib.decode_best(row.get('best_passed_info'),
+                                      auto['curid'])
+        if best is None or best.get('fast') is None:
+            return frame(amf3_encode(
+                ['64006', [0, juqing_lib.ERR_NO_AUTOPASS]]))
+        remain = juqing_lib.sweep_remain_ms(
+            auto, best['fast'], int(self._world_now_ms()))
+        if remain > 0:
+            return frame(amf3_encode(
+                ['64006', [-1, auto['curid'], remain]]))
+        now = int(self._world_now_ms())
+        self._juqing_commit_sweep(rid, row, auto, best, now)
+        return frame(amf3_encode(
+            ['64006', [1, auto['curid'], bool(auto['onekey'])]], ))
 
     def juqing_accelerate(self, msg):
         """Command 64007: spend YB to finish a sweep now, [1, id]."""
@@ -16598,126 +16782,452 @@ class Session:
         if role is None:
             return None
         rid = _wire_id(role)
-        row = self._juqing_row(rid)
+        row = self._juqing_ensure(rid)
         auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
-        if auto is None:
+        if auto is None or auto.get('curid') is None:
             return frame(amf3_encode(
                 ['64007', [0, juqing_lib.ERR_NO_AUTOPASS]]))
         cfg = self._juqing_cfg(auto['curid'])
-        cost = int((cfg or {}).get('accel_yb') or 0)
-        yb = int(role.get('lingshi') or 0)
-        if yb < cost:
-            return frame(amf3_encode(['64007', [0, juqing_lib.ERR_YB_LESS]]))
-        self.save_role_state(role.get('id'), lingshi=yb - cost)
-        row['auto_pass_info'] = ''
+        if cfg is None:
+            return frame(amf3_encode(
+                ['64007', [0, juqing_lib.ERR_NOT_EXIST]]))
+        cost = int(cfg.get('accel_yb') or 0)
+        if not self._juqing_spend_yb(role, cost):
+            return frame(amf3_encode(
+                ['64007', [0, juqing_lib.ERR_YB_LESS]]))
+        now = int(self._world_now_ms())
         best = juqing_lib.decode_best(row.get('best_passed_info'),
                                       auto['curid']) or {}
-        row['award_info'] = juqing_lib.award_incr(
-            row.get('award_info'), auto['curid'],
-            int(best.get('pingjia') or 1))
-        row['passed_ids_daily'] = juqing_lib.add_or_update_counts(
-            row.get('passed_ids_daily'), auto['curid'], 2)
-        self._juqing_save(rid, row)
-        try:
-            self.stage_scheduler.cancel(f'juqing_sweep:{rid}')
-        except (AttributeError, KeyError, ValueError):
-            pass
+        self._juqing_commit_sweep(
+            rid, row, auto,
+            {'pingjia': int(best.get('pingjia') or 4)},
+            now)
         return frame(amf3_encode(['64007', [1, auto['curid']]]))
 
-    def _juqing_grant(self, role, awards, fixed, rolls):
-        """Apply exp/zhenqi/tongqian plus bag goods; returns granted totals."""
-        rid = role.get('id')
-        exp = int(role.get('exp') or 0) + int(awards.get('exp') or 0)
-        zhenqi = int(role.get('zhenqi') or 0) + int(awards.get('zhenqi') or 0)
-        tongqian = int(role.get('tongqian') or 0) + int(awards.get('yxb') or 0)
-        self.save_role_state(rid, exp=exp, zhenqi=zhenqi, tongqian=tongqian)
-        granted = []
-        for gid, count, bind in fixed + rolls:
-            if not gid or int(count or 0) <= 0:
-                continue
-            self.insert_role_bag_slot(rid, {
-                'slot_num': 0, 'goods_id': str(gid),
-                'count': int(count), 'bind': int(bind or 0),
-                'expire_time': 0, 'rare_level': 0, 'item_level': 0,
-                'attributes': None})
-            granted.append([str(gid), int(count)])
-        return granted
+    def _juqing_spend_yb(self, role, cost):
+        """accelerateAutoChallenge decrCheck/decr on YB (lingqu path).
 
-    def _juqing_roll(self, cfg):
-        """Weighted roll over the chapter DropVo list (zubao odds)."""
-        import random
-        drops = [d for d in (cfg.get('drops') or []) if d and d[0]]
-        if not drops:
-            return []
-        total = sum(float(d[1]) for d in drops)
-        if total <= 0:
-            return []
-        pick = random.random() * total
-        for gid, odds in drops:
-            pick -= float(odds)
-            if pick <= 0:
-                return [[str(gid), 1, int(cfg.get('roll_bind') or 0)]]
-        return [[str(drops[-1][0]), 1, int(cfg.get('roll_bind') or 0)]]
+        Ports the account decrCheck(YB) gate: short balance answers
+        YB_LESS(1002) without touching the sweep; success deducts.
+        """
+        try:
+            balance = int(role.get('lingshi') or 0)
+        except (TypeError, ValueError):
+            return False
+        if balance < int(cost or 0):
+            return False
+        self.save_role_state(role.get('id'), lingshi=balance - int(cost or 0))
+        return True
+
+    def _juqing_goods_table(self):
+        """Goods rows for ItemModel conversion, or {} when unavailable."""
+        try:
+            table = self.config._goods_table() \
+                if self.config is not None else {}
+        except Exception:
+            return {}
+        return dict(table or {})
+
+    def _juqing_zubao_table(self):
+        """ZuBao drop-group rows, or {} when unavailable."""
+        try:
+            table = self.config.zubao_table() \
+                if self.config is not None else {}
+        except Exception:
+            return {}
+        return dict(table or {})
+
+    def _juqing_pass_awards(self, role, chapter_id, pingjia):
+        """passAwards: currency math + fixed-goods params + drop roll.
+
+        Returns {'exp','yxb','zhenqi','fixed':[[gid,count]],
+        'models':[ItemModel dicts]}; rolled models carry the chapter
+        rollBind (ItemModel.setId follows table order like Java).
+        """
+        from . import juqing as juqing_lib
+        cfg = self._juqing_cfg(chapter_id) or {}
+        factor = float((cfg.get('award_odds') or {}).get(int(pingjia), 1.0))
+        awards = juqing_lib.pass_awards(cfg, role.get('level'), factor)
+        fixed = [[g[0], int(g[1])] for g in cfg.get('fixed_goods') or []]
+        models = juqing_lib.roll_models(
+            self._juqing_goods_table(), self._juqing_zubao_table(),
+            cfg.get('drop_id'), cfg.get('equip_fujia') or {},
+            int(cfg.get('roll_bind') or 0))
+        return {'exp': awards['exp'], 'yxb': awards['yxb'],
+                'zhenqi': awards['zhenqi'], 'fixed': fixed,
+                'models': models}
+
+    def _juqing_grant_currencies(self, role, exp, yxb, zhenqi):
+        """incrExp/incr(YXB)/incrZhenqi; answers the granted amounts.
+
+        The Java incr calls report the real (cap-clipped) increments;
+        no cap table is ported, so the full computed amounts persist,
+        like every other Python currency grant.
+        """
+        rid = role.get('id')
+        total_exp = int(role.get('exp') or 0) + int(exp or 0)
+        total_zq = int(role.get('zhenqi') or 0) + int(zhenqi or 0)
+        total_yxb = int(role.get('tongqian') or 0) + int(yxb or 0)
+        self.save_role_state(rid, exp=total_exp, zhenqi=total_zq,
+                             tongqian=total_yxb)
+        return int(exp or 0), int(yxb or 0), int(zhenqi or 0)
+
+    def _juqing_grant_goods(self, role, rid, fixed, models):
+        """putInBagOrEmail1: stack into the bag, mail the overflow.
+
+        Fixed params convert through the goods table (unknown goods are
+        skipped like Java's null convert2ItemModel). Overflow goes to
+        mail with the juqing subject instead of dropping. Returns the
+        formart maps in grant order.
+        """
+        from . import juqing as juqing_lib
+        goods_table = self._juqing_goods_table()
+        items = []
+        for gid, count in fixed:
+            items.extend(juqing_lib.convert_item(
+                goods_table.get(str(gid)), gid, count))
+        items.extend(models or [])
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            slots = []
+        by_slot = {s.get('slot_num'): dict(s) for s in slots}
+        try:
+            state = self._bag_state_or_init(rid) or {}
+            capacity = int(state.get('bag_capacity') or 0)
+        except (TypeError, ValueError):
+            capacity = 0
+        formarts = []
+        for item in items:
+            left = int(item.get('count') or 0)
+            if left <= 0 or not item.get('goods_id'):
+                continue
+            try:
+                stack = int(self.config.goods_max_stack(
+                    item['goods_id']) or 0) if self.config is not None else 0
+            except (TypeError, ValueError):
+                stack = 0
+            if stack <= 0:
+                stack = 1
+            placed_rows = []
+            for slot in sorted(by_slot.values(),
+                               key=lambda s: s.get('slot_num') or 0):
+                if left <= 0:
+                    break
+                if not self._bag_same_kind(slot, item):
+                    continue
+                try:
+                    have = int(slot.get('count') or 0)
+                except (TypeError, ValueError):
+                    have = 0
+                room = stack - have
+                if room <= 0:
+                    continue
+                take = min(room, left)
+                try:
+                    self.update_role_bag_slot(rid, slot.get('slot_num'),
+                                            count=have + take)
+                except Exception:
+                    continue
+                slot['count'] = have + take
+                left -= take
+                placed_rows.append(slot)
+            num = 1
+            while left > 0 and num <= capacity:
+                if num not in by_slot:
+                    take = min(stack, left)
+                    row = {'slot_num': num,
+                           'goods_id': str(item['goods_id']),
+                           'count': take,
+                           'bind': int(item.get('bind') or 0),
+                           'expire_time': int(item.get('expire_time') or 0)
+                           or None,
+                           'rare_level': int(item.get('rare_level') or 0),
+                           'item_level': int(item.get('item_level') or 0),
+                           'attributes': None}
+                    try:
+                        bag_id = self.insert_role_bag_slot(rid, dict(row))
+                    except Exception:
+                        break
+                    if not bag_id:
+                        break
+                    row = dict(row, bag_id=bag_id)
+                    by_slot[num] = row
+                    left -= take
+                    placed_rows.append(row)
+                num += 1
+            for prow in placed_rows:
+                try:
+                    formarts.append(self.bag_goods_map(role, prow))
+                except Exception:
+                    pass
+            if left > 0:
+                try:
+                    self.save_role_email(
+                        str(rid), title=juqing_lib.JUQING_SUBJECT,
+                        content=juqing_lib.JUQING_SUBJECT,
+                        attachment=f"{item.get('goods_id')}:{left}:"
+                                   f"{int(item.get('bind') or 0)}")
+                except Exception:
+                    log.warning('conn %d: juqing reward %r x%d '
+                                'overflows (unmailable)',
+                                self.conn_id, item.get('goods_id'), left)
+        return formarts
 
     def juqing_lingqu(self, msg):
-        """Command 64012: claim the staged manual-victory award."""
-        from . import juqing as juqing_lib
-        role = self._juqing_actor(msg)
-        if role is None:
-            return None
-        pending = getattr(self, '_juqing_pending', {}).get(
-            str(_wire_id(role)))
-        if pending is None:
-            return frame(amf3_encode(
-                ['64012', [0, juqing_lib.ERR_NO_AWARD]]))
-        cfg = self._juqing_cfg(pending['chapter']) or {}
-        factor = float((cfg.get('award_odds') or {}).get(
-            int(pending.get('pingjia') or 1), 1.0))
-        pending['awards'] = juqing_lib.pass_awards(
-            cfg, role.get('level'), factor)
-        fixed = [[g[0], g[1], g[2]] for g in pending.get('fixed') or []]
-        rolls = self._juqing_roll(cfg)
-        self._juqing_grant(role, pending['awards'], fixed, rolls)
-        granted = {str(g[0]): {'count': int(g[1]), 'bind': int(g[2])}
-                   for g in fixed + rolls}
-        getattr(self, '_juqing_pending', {}).pop(
-            str(_wire_id(role)), None)
-        return frame(amf3_encode(['64012', [
-            1, int(pending['awards'].get('exp') or 0),
-            int(pending['awards'].get('yxb') or 0),
-            int(pending['awards'].get('zhenqi') or 0), fixed, granted]]))
+        """Command 64012: claim the staged manual-victory award.
 
-    def juqing_onekey(self, msg):
-        """Command 64013: claim every pending sweep award."""
+        lingquAward: the DataContainer-staged PassAwards (persisted here
+        in role_juqing) grant currencies plus fixed goods and one fresh
+        Zubao roll; the reply is lingJiangSuccessResult [1, exp, yxb,
+        zhenqi, fixedPairs, rollFormart].
+        """
         from . import juqing as juqing_lib
         role = self._juqing_actor(msg)
         if role is None:
             return None
         rid = _wire_id(role)
-        row = self._juqing_row(rid)
+        row = self._juqing_ensure(rid)
+        pending = self._juqing_pending_load(row)
+        if pending is None:
+            return frame(amf3_encode(
+                ['64012', [0, juqing_lib.ERR_NO_AWARD]]))
+        try:
+            chapter = int(pending['chapter'])
+            pingjia = int(pending.get('pingjia') or 4)
+        except (TypeError, ValueError):
+            return frame(amf3_encode(
+                ['64012', [0, juqing_lib.ERR_NO_AWARD]]))
+        staged = pending.get('awards') or {}
+        got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
+            role, staged.get('exp'), staged.get('yxb'),
+            staged.get('zhenqi'))
+        cfg = self._juqing_cfg(chapter) or {}
+        fixed = [[g[0], int(g[1])]
+                 for g in pending.get('fixed') or []]
+        self._juqing_grant_goods(role, rid, fixed, [])
+        models = juqing_lib.roll_models(
+            self._juqing_goods_table(), self._juqing_zubao_table(),
+            cfg.get('drop_id'), cfg.get('equip_fujia') or {},
+            int(cfg.get('roll_bind') or 0))
+        roll_formarts = self._juqing_grant_goods(role, rid, [], models)
+        self._juqing_pending_save(rid, row, None)
+        return frame(amf3_encode(['64012', [
+            1, got_exp, got_yxb, got_zq, fixed,
+            roll_formarts[0] if roll_formarts else None]]))
+
+    def juqing_onekey(self, msg):
+        """Command 64013: claim every pending sweep award.
+
+        oneKeyLingquAward: per award-entry passAwards grants currencies
+        immediately while fixed goods and one fresh roll per entry join a
+        single putInBagOrEmail1; the reply is [exp, yxb, zhenqi,
+        [formart...]] with no leading 1.
+        """
+        from . import juqing as juqing_lib
+        role = self._juqing_actor(msg)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        row = self._juqing_ensure(rid)
         entries = juqing_lib.award_entries(row.get('award_info'))
         if not entries:
             return frame(amf3_encode(
                 ['64013', [0, juqing_lib.ERR_NO_AWARD]]))
-        total = {'exp': 0, 'yxb': 0, 'zhenqi': 0}
+        total_exp = total_yxb = total_zq = 0
+        fixed_all = []
+        models_all = []
         for _idx, cid, pingjia, _ms in entries:
-            cfg = self._juqing_cfg(cid) or {}
-            factor = float((cfg.get('award_odds') or {}).get(
-                int(pingjia), 1.0))
-            awards = juqing_lib.pass_awards(cfg, role.get('level'), factor)
-            self._juqing_grant(role, awards,
-                               [[g[0], g[1], g[2]]
-                                for g in cfg.get('fixed_goods') or []],
-                               self._juqing_roll(cfg))
-            for key in total:
-                total[key] += int(awards.get(key) or 0)
-            role = dict(role, exp=int(role.get('exp') or 0) + int(
-                awards.get('exp') or 0))
+            computed = self._juqing_pass_awards(role, cid, pingjia)
+            got_exp, got_yxb, got_zq = self._juqing_grant_currencies(
+                role, computed['exp'], computed['yxb'],
+                computed['zhenqi'])
+            total_exp += got_exp
+            total_yxb += got_yxb
+            total_zq += got_zq
+            role = dict(role, exp=int(role.get('exp') or 0) + got_exp,
+                        zhenqi=int(role.get('zhenqi') or 0) + got_zq,
+                        tongqian=int(role.get('tongqian') or 0) + got_yxb)
+            fixed_all.extend(computed['fixed'])
+            models_all.extend(computed['models'])
+        formarts = self._juqing_grant_goods(role, rid, fixed_all,
+                                            models_all)
         row['award_info'] = ''
         self._juqing_save(rid, row)
-        return frame(amf3_encode(['64013', [1, total['exp'],
-                                           total['yxb'],
-                                           total['zhenqi']]]))
+        return frame(amf3_encode(
+            ['64013', [total_exp, total_yxb, total_zq, formarts]]))
+
+    def _juqing_on_enter(self, rid):
+        """handleLogin: a running sweep restarts its clock at login."""
+        from . import juqing as juqing_lib
+        row = self._juqing_row(rid)
+        if row is None:
+            return
+        auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+        if auto is None or auto.get('curid') is None:
+            return
+        row['auto_pass_info'] = juqing_lib.encode_auto(
+            auto['onekey'], auto['curid'], int(self._world_now_ms()),
+            auto.get('usetime') or 0)
+        self._juqing_save(rid, row)
+
+    def _juqing_on_disconnect(self):
+        """handleLogout: freeze a running sweep clock at logout.
+
+        useTime accumulates the session's elapsed millis so offline
+        time never counts toward the sweep.
+        """
+        from . import juqing as juqing_lib
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return
+        now = int(self._world_now_ms())
+        for role in roles or []:
+            try:
+                rid = _wire_id(role)
+            except Exception:
+                continue
+            row = self._juqing_row(rid)
+            if row is None:
+                continue
+            auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
+            if auto is None or auto.get('curid') is None:
+                continue
+            try:
+                use = int(auto.get('usetime') or 0) + \
+                    max(now - int(auto.get('start') or 0), 0)
+            except (TypeError, ValueError):
+                continue
+            row['auto_pass_info'] = juqing_lib.encode_auto(
+                auto['onekey'], auto['curid'], now, use)
+            self._juqing_save(rid, row)
+
+    def _juqing_kill_frames(self, actor, dead_monster):
+        """Juqing kill fan-out for one dead monster (role/pet killers)."""
+        killer_role = None
+        try:
+            if actor.get('kind') == 'role':
+                killer_role = actor.get('role')
+            elif actor.get('kind') == 'pet':
+                roles = self.get_roles(self.authed_user or '',
+                                       self.server_id or '')
+                killer_role = _find_role(roles, actor.get('owner'))
+        except Exception:
+            killer_role = None
+        if killer_role is None:
+            return []
+        tpl = dead_monster.get('template') or {}
+        try:
+            return self._juqing_kill_progress(killer_role, tpl.get('id'))
+        except Exception:
+            return []
+
+    def _juqing_kill_progress(self, owner_role, monster_tpl_id):
+        """JuqingStageCopy.killMonster for shared-world dungeon kills.
+
+        When the killer's role has an active attempt and the template is
+        wanted, the killMap count bumps (64009 push); completing every
+        wanted entry ends the copy: challengeResult(ROLE_WIN) persists
+        highest/daily/best, stages the PassAwards for 64012 and pushes
+        the 64003 challengeSuccessResult.
+        """
+        from . import juqing as juqing_lib
+        try:
+            rid = _wire_id(owner_role)
+        except Exception:
+            return []
+        row = self._juqing_row(rid)
+        if row is None:
+            return []
+        active = self._juqing_active(row)
+        if active is None:
+            return []
+        cfg = self._juqing_cfg(active['chapter'])
+        if cfg is None:
+            return []
+        wanted = {str(mid): int(n) for mid, n in cfg.get('complete') or []}
+        mid = str(monster_tpl_id)
+        if mid not in wanted:
+            return []
+        kills = dict(active['kills'])
+        kills[mid] = int(kills.get(mid, 0)) + 1
+        self._juqing_attempt_save(rid, row, active['chapter'],
+                                  active['start'], kills, active['deaths'])
+        frames = [frame(amf3_encode(
+            ['64009', [max(int(cfg.get('expire_ms') or 0) - (
+                int(self._world_now_ms()) - active['start']), 0),
+                str(cfg.get('map') or ''), int(active['chapter']),
+                [[m, kills.get(m, 0)] for m in sorted(kills)]]]))]
+        if all(kills.get(m, 0) >= wanted[m] for m in wanted):
+            frames.extend(self._juqing_victory(
+                owner_role, rid, row, active, cfg))
+        return frames
+
+    def _juqing_victory(self, role, rid, row, active, cfg):
+        """challengeResult(roleId, chapter, ROLE_WIN, costMs, deadTimes).
+
+        Highest/daily/best persist, the PassAwards stage into pending
+        for 64012, and the client gets the 64003 challengeSuccessResult
+        [1, chapter, roleId, exp, yxb, zhenqi, fixedPairs, rollFormarts,
+        useTimeMs, deadTimes]. JuQingFuBenFinishEvent/huoYuedu have no
+        ported subscribers and are skipped like other event publishes.
+        """
+        from . import juqing as juqing_lib
+        now = int(self._world_now_ms())
+        use_ms = max(now - active['start'], 0)
+        pingjia = juqing_lib.victory_pingjia(
+            use_ms, cfg.get('pingjia') or [], active['deaths'])
+        highest = row.get('passed_highest_id')
+        if highest is None or int(highest) < int(active['chapter']):
+            row['passed_highest_id'] = int(active['chapter'])
+        row['passed_ids_daily'] = juqing_lib.set_count(
+            row.get('passed_ids_daily'), active['chapter'], 2)
+        row['best_passed_info'] = juqing_lib.merge_best(
+            row.get('best_passed_info'), active['chapter'], use_ms,
+            pingjia)
+        computed = self._juqing_pass_awards(
+            role, active['chapter'], pingjia)
+        self._juqing_pending_save(rid, row, {
+            'chapter': int(active['chapter']), 'pingjia': pingjia,
+            'use_time': use_ms, 'dead': active['deaths'],
+            'awards': {'exp': computed['exp'], 'yxb': computed['yxb'],
+                       'zhenqi': computed['zhenqi']},
+            'fixed': computed['fixed']})
+        self._juqing_idle(rid, row)
+        try:
+            self.stage_scheduler.cancel(f'juqing_expire:{rid}')
+        except (AttributeError, KeyError, ValueError):
+            pass
+        roll_formarts = []
+        try:
+            for model in computed['models']:
+                roll_formarts.append(self.bag_goods_map(
+                    role, dict(model, slot_num=0, bag_id=model.get('id'))))
+        except Exception:
+            roll_formarts = []
+        return [frame(amf3_encode(
+            ['64003', [1, int(active['chapter']), str(rid),
+                       computed['exp'], computed['yxb'],
+                       computed['zhenqi'], computed['fixed'],
+                       roll_formarts, use_ms, active['deaths']]]))]
+
+    def _juqing_death_progress(self, owner_role):
+        """JuqingStageCopy.incrDeadTimes: a death during an attempt counts."""
+        try:
+            rid = _wire_id(owner_role)
+        except Exception:
+            return
+        row = self._juqing_row(rid)
+        if row is None:
+            return
+        active = self._juqing_active(row)
+        if active is None:
+            return
+        self._juqing_attempt_save(rid, row, active['chapter'],
+                                  active['start'], active['kills'],
+                                  active['deaths'] + 1)
 
     def zuwufuben_info(self):
         """Command 108001: [1, [passMax, everyday[], saodangOrNull]].

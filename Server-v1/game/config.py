@@ -3456,15 +3456,37 @@ class GameConfig:
                 continue
         return out
 
+    def zubao_table(self):
+        """ZuBaoDiaoLuoBiao.jat keyed by dropNumber (the @group id)."""
+        if getattr(self, '_zubao', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ZuBaoDiaoLuoBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad zubao table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('dropNumber'):
+                    table[str(row['dropNumber'])] = row
+            self._zubao = table
+        return self._zubao
+
     def juqing_row(self, chapter_id):
         """Normalized story-dungeon chapter, or None when unconfigured.
 
         Key mapping from JuQingFuBenConfigExportServiceImpl bytecode:
         map->mapId, initial(x_y)->rolePosition, openrenwu->openLevel,
-        time->expireDelay, gold->accelerateYb, interval->autoFightInterval,
-        complete(mon:count)->wantedList+monsterIds, exp/money/zhenqi
-        factor1/2, pingjiatime(a;b;c)->rating cutoffs, jiangli->fixed
-        goods, zubao+jilv->drop lottery, bound->rollBind.
+        time(min)->expireDelay ms, gold->accelerateYb,
+        interval->autoFightInterval (raw), complete(mon:count)->wanted
+        list, expfactor1/2->exp slope/base, moneyfactor1/2->yxb slope/
+        base, zhenqi1/2->zhenqi slope/base, pingjiatime(a;b;c)->rating
+        cutoffs (raw, compared against millisecond costs),
+        jiangli(a;b;c;d)->award odds {1..4}, gditem (+item1/shousha/
+        encourage)->fixed goods gid|count|bind, zubaoitem->dropId,
+        zubao1/2+jilv1/2->dropList, bound->rollBind, prestige->shenwang,
+        and the row cells named by ConfigGoodsParser.tiquEquipFujia.
         """
         row = self.juqing_table().get(str(chapter_id))
         if row is None:
@@ -3479,14 +3501,17 @@ class GameConfig:
         except (TypeError, ValueError):
             cutoffs = []
         fixed = []
-        for part in str(row.get('gditem') or '').split(';'):
-            cells = part.split('|')
-            if len(cells) >= 2:
-                try:
-                    fixed.append([cells[0], int(cells[1]),
-                                 int(cells[2]) if len(cells) > 2 else 0])
-                except (TypeError, ValueError):
-                    continue
+        for column in ('gditem', 'item1', 'shousha', 'encourage'):
+            for part in str(row.get(column) or '').split(';'):
+                cells = part.split('|')
+                if len(cells) >= 2 and str(cells[0]).strip():
+                    try:
+                        fixed.append([str(cells[0]).strip(),
+                                    int(cells[1]),
+                                    int(cells[2]) if len(cells) > 2
+                                    else 0])
+                    except (TypeError, ValueError):
+                        continue
         odds = {}
         for idx, part in enumerate(
                 str(row.get('jiangli') or '').split(';'), 1):
@@ -3498,14 +3523,24 @@ class GameConfig:
         for key in ('zubao1', 'zubao2'):
             gid = str(row.get(key) or '').strip()
             if gid:
-                drops.append([gid, config_float(
-                    row.get('jilv1' if key == 'zubao1' else 'jilv2'))])
+                try:
+                    rate = float(row.get(
+                        'jilv1' if key == 'zubao1' else 'jilv2') or 0)
+                except (TypeError, ValueError):
+                    rate = 0.0
+                drops.append([gid, rate])
+        fujia = {}
+        for key in ('strengthenlv', 'intensify', 'addition', 'fj',
+                    'fjid', 'rarelevel'):
+            if row.get(key) not in (None, ''):
+                fujia[key] = row.get(key)
         return {
             'id': str(row.get('mainid')),
             'map': str(row.get('map') or ''),
             'pos': pos[:2] if len(pos) >= 2 else [],
             'open_level': config_int(row.get('openrenwu')),
-            'expire': config_int(row.get('time')),
+            'expire_ms': config_int(row.get('time')) * 60000,
+            'expire_min': config_int(row.get('time')),
             'sweep_interval': config_int(row.get('interval')),
             'accel_yb': config_int(row.get('gold')),
             'exp_factor': config_float(row.get('expfactor1')),
@@ -3520,9 +3555,12 @@ class GameConfig:
             'max_monsters': config_int(row.get('amount')),
             'fixed_goods': fixed,
             'award_odds': odds,
-            'drops': drops,
+            'drop_id': str(row.get('zubaoitem') or '').strip() or None,
+            'drop_list': drops,
+            'equip_fujia': fujia,
             'shenwang': config_int(row.get('prestige')),
             'roll_bind': config_int(row.get('bound')),
+            'cishu': str(row.get('cishu') or ''),
         }
 
     def chat_level(self):

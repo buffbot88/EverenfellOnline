@@ -191,6 +191,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
         except (ConnectionResetError, BrokenPipeError, ValueError) as e:
             log.info('game conn closed: %s', e)
         finally:
+            try:
+                sess._juqing_on_disconnect()
+            except Exception:
+                pass
             with self.server.sessions_lock:
                 self.server.sessions.pop(sess, None)
             self.server.stage_registry.unregister_session(sess)

@@ -14,7 +14,8 @@ the jar: no sender, no handler, not in InCmd).
 
 ## Full 38-ID classification
 
-Zonghe group (19 inbound, all `missing`): 70000/70001 (first recharge),
+Zonghe group (19 inbound: 70000/70001 `complete+tested`, rest
+`missing`): 70000/70001 (first recharge, batch 2),
 70500/70501/70502/70505/70506/70507/70508/70509/70530/70580
 (panel/accumulate/limited-mall/exchange/ranks), 70550/70551 (mall
 buy/generic claim), 70552/70553/70554 (consumption rank/rebate).
@@ -24,8 +25,10 @@ ConfigureParser`); the authentic `fu0` snapshot ships in the CLIENT
 tree (`MKO_Client/.../gameanalyze/compositiveactivity/fu0`, md5-pinned)
 — see `docs/zonghe-finding.md` for the verified schema, routing
 tables, and the families still absent from that snapshot. Pushes 70520
-(`[configId, 1]`) progress and 71002 (`[configId, yb, 1]`
-first-recharge) are `push-only` pending the service port.
+(`[configId, 1]`) progress stays `push-only` pending the service port;
+71002 (`[activityId, yb, 1]` first-recharge, batch 2) is `push-only`.
+The old `[categoryId, ...]` ledger shape was wrong: the jar sends the
+activity config id (corrected, with tests pinning it).
 
 Rank-1 group (94002-94005, `missing`): classpath config
 (`kaifuhuodong.jat` shape matches `RankHuodongConfig` fields) but the
@@ -82,33 +85,77 @@ getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
   across sessions because logout banks it; a dropped connection without
   the close hook would lose the session (hence the server.py hook).
 
-## Batch 2: zonghe loader + first-recharge core (no inbound wire yet)
+## Batch 2: zonghe loader + first-recharge core (70000/70001 wired)
 
 `GameConfig.zonghe(server_id, kaifu_ms)` reads the fu0 snapshot in
 place (13-byte Java-serialization header check, then JSON): unknown
-clienttypes dropped with a log (ct 36), categories without `activitys`
-skipped, explicit starttime/endtime windows pass through, the rest
-resolve kaifu-relative `[kaifu + startday, + kaifudays]` days, `con1`
-stays a string, and failed reloads keep the previous table (first load
-with no snapshot is `{}`). `zonghe_live` is the `timeIsExpiry` read
-API. `Session.zonghe_recharge` latches `charged` and pushes 71002
-`[categoryId, yb, 1]` when a ct-21 category is live;
-`zonghe_first_claim` grants the snapshot items, persists the activity
-id under `zonghe_first.claimed`, and answers None when uncharged,
+clienttypes dropped with a log (ct 36, proven: convert() has no 36
+arm), categories without `activitys` skipped, explicit
+starttime/endtime windows pass through, the rest resolve
+kaifu-relative `[kaifu + startday, + kaifudays]` days, `con1` stays a
+string, and failed reloads keep the previous table (first load with
+no snapshot is `{}`). Category `title` mirrors HuodongInit (first
+activity's `datatitle`); activities keep the first-recharge display
+fields (`name/mm/mmeffect/anniu/jiemian/chufa`), award currencies,
+and the full award rows parsed per convertAwardsGoodsesStr
+(lasttime hours, `strengthenlv` A|B, rare, fjid). `zonghe_live` is
+the `timeIsExpiry` read API. `Session.zonghe_recharge` latches
+`charged` and pushes 71002 `[activityId, yb, 1]` when a ct-21
+category is live; the 70001 claim grants the job-filtered
+(GoodsJobFilter) snapshot items, raises the mount to rank 3 with its
+33004 push when below it, persists the activity id under
+`zonghe_first.claimed`, and answers [0, code] when uncharged,
 claimed, out-of-window, or bag-full (no state change then). Every fu0
-first-recharge award carries zero currencies, so the items-only grant
-is complete. 70000/70001 stay `missing`: their reply shapes are still
-unrecovered and are not guessed at.
+first-recharge award carries zero currencies and an empty mm, so the
+items-only grant is complete for fu0.
+
+Bytecode-grounded routing (dntg_start.jar javap): 70000
+`HuodongAction.getRechargeInfo -> IHuodongService.getFirstRechargeInfo
+-> send2One("70000", result)` where result is null (no live
+category), `[0, 792005]` (role below need_level or below need_pay_yb),
+or `RoleHuodongOutputWrapper.firstrecharge(state, category, config,
+claimedCount, job)` — a 13-array `[configId, title, state, [mmId,
+mmEffect], startMs, endMs, needPayYb, claimedCount, [jb, lijin,
+zhenqi, shengwang, exp, items], jiemian, anniu, chufa, categoryTitle]`
+with 7-slot items `[goodsId, count, bind, hours, [qinghua,
+qianghua], rare, fjid]`; state is 2 claimed, 1 charged, 0 otherwise
+(the trailing job argument is never read). 70001
+`HuodongAction.lingquRechargeReward ->
+lingquFirstRechargeReward` answers `[1, configId]` or `[0, code]`
+(792005 no row, 792002 already claimed, 792001 never recharged,
+430212 bag full; the 70001 frame is only sent when non-null) with
+`changeZuoqiRank(roleId, 3)` + currency/meiren/item side effects.
+71002 is `recharge()`'s FIRST_RECHARGE branch sending
+`[activityConfigId, rechargeYb, 1]` via send2One (the constant lives
+under `h70002`); no fu0 activity can take that branch (it needs a
+non-first-recharge category row with functiontype 94, and the fu0
+census has none), so the push is proven-absent for fu0 and the port
+sends it from the recharge latch instead. Census: 70000/70001
+implemented, 71002 push-only.
+
+Verified-against-bytecode deltas the port keeps (documented, not
+fixed): the kaifu window is `TimeConfigVo.calTime` (start =
+midnight(serverStart + (startday+1) days) when startday > 0, end =
+23:59:59(serverStart + kaifudays days) when kaifudays > 0, then
+`real = max(hefu, kaifu, explicit)` on both ends with a
+forward-minute shift) while the port uses explicit-wins else
+`[kaifu + startday, + kaifudays]`; the claim gates on the `charged`
+latch instead of lifetime `getChargeTotal`/`getShouchongInTime`
+windows (exact for fu0: need_pay_yb is 0 everywhere); currency
+(`incrExp/incr(BIND_YB/YXB)/incrZhenqi`) and `addMeiRen` grants only
+run for non-zero/non-empty configs (none in fu0); the 33004 mount
+frame reuses the port's 33004 shape.
 
 ## Genuine remaining gaps
 
-- Zonghe service port for 70000/70001/70500-70502/70505-70509/
+- Zonghe service port for 70500-70502/70505-70509/
   70530/70550/70551/70552-70554/70580/70520 (wire shapes unrecovered)
   and the families absent from `fu0` (ct 3/4/6/7/8/11-17/19/20/23/35).
-  Loader + first-recharge core are in (batch 2, above). No seeded
-  stand-in.
+  Loader + first-recharge core + 70000/70001 are in (batch 2, above).
+  No seeded stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/
   handleKillBossRankData + quartz settlement); paihang itself is unported.
-- `changeZuoqiRank`/`addMeiRen`/event-bus fan-outs touched by sibling
-  families stay unported.
+- `addMeiRen`/event-bus fan-outs touched by sibling families stay
+  unported (`changeZuoqiRank(roleId, 3)` is ported as the
+  first-recharge claim side effect with its 33004 push).

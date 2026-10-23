@@ -64,8 +64,11 @@ from game.protocol import DEFAULT_MAP_TYPE, Session, frame
 
 # Live-captured first frame from the original client (bridge LOG_PACKETS=1).
 CAPTURED_INITKEY = bytes.fromhex('00000009060f494e49544b4559')
-# Login signs are only valid within SIGN_WINDOW_S of now, so tests use a fresh stamp.
-NOW_TS = str(int(time.time()))
+# Login signs are only valid within SIGN_WINDOW_S of now, so each test takes
+# a fresh stamp at call time: a module-level NOW_TS goes stale (>300s) when
+# the full suite runs long, failing every login test that uses it.
+def now_ts():
+    return str(int(time.time()))
 
 
 def temp_store(cleanups):
@@ -301,7 +304,7 @@ class TestLogin(unittest.TestCase):
     def test_login_success_empty_roles(self):
         s = make_session()
         s.feed(CAPTURED_INITKEY)
-        ts, user = NOW_TS, 'hero'
+        ts, user = now_ts(), 'hero'
         out = s.feed(self.login_frame(s, user, ts, generate_sign(user, ts)))
         self.assertEqual(len(out), 1)
         ln = struct.unpack('>I', out[0][:4])[0]
@@ -316,7 +319,7 @@ class TestLogin(unittest.TestCase):
     def test_login_bad_sign(self):
         s = make_session()
         s.feed(CAPTURED_INITKEY)
-        out = s.feed(self.login_frame(s, 'hero', NOW_TS, 'wrong'))
+        out = s.feed(self.login_frame(s, 'hero', now_ts(), 'wrong'))
         env = amf3.decode(out[0][4:])
         self.assertEqual(env[1], [0, '16002'])  # InOutput.signError shape
 
@@ -335,8 +338,9 @@ class TestLogin(unittest.TestCase):
             lingshi=9986377, bind_lingshi=360, recive_yb=0)
         s = make_session(store)
         s.feed(CAPTURED_INITKEY)
-        out = s.feed(self.login_frame(s, 'hero', NOW_TS,
-                                      generate_sign('hero', NOW_TS)))
+        ts = now_ts()
+        out = s.feed(self.login_frame(s, 'hero', ts,
+                                      generate_sign('hero', ts)))
         self.assertEqual(len(out), 1)
         self.assertEqual(amf3.decode(out[0][4:])[0], '10001')
         self.assertEqual(s.authed_user, 'hero')
@@ -370,7 +374,7 @@ class TestLogin(unittest.TestCase):
         # and the Flash client aborts socketData with "Invalid object".
         s = make_session()
         s.feed(CAPTURED_INITKEY)
-        ts, user = NOW_TS, 'hero'
+        ts, user = now_ts(), 'hero'
         out = s.feed(self.login_frame(s, user, ts, generate_sign(user, ts)))
         ln = struct.unpack('>I', out[0][:4])[0]
         payload = out[0][4:4 + ln]
@@ -416,7 +420,7 @@ class TestCharacters(unittest.TestCase):
         # ...and they show up in the 10001 login reply, one Array per role.
         sess = make_session(st)
         sess.feed(CAPTURED_INITKEY)
-        ts, user = NOW_TS, 'hero'
+        ts, user = now_ts(), 'hero'
         data = [user, float(ts), 'fu1304', False,
                 generate_sign(user, ts), 0, 1]
         out = sess.feed(frame(sess.cipher.encode(amf3.encode([10001, data]))))
@@ -1964,7 +1968,13 @@ class TestLoadingStubs(unittest.TestCase):
         self.assertEqual(self.decode(95000), ['95000', [None]])
         self.assertEqual(self.decode(113000), ['113000', [None]])
         self.assertEqual(self.decode(124001), ['124001', [None]])
-        self.assertEqual(self.decode(70000), ['70000', [None]])
+        # 70000 left the stub table: with no config the handler sends
+        # the jar's null result straight through (chengjiu convention).
+        first = self.sess()
+        first.authed_user, first.server_id = 'hero', 'fu1304'
+        self.assertEqual(
+            amf3.decode(first.huodong_first_info([70000, None])[4:]),
+            ['70000', None])
 
     def test_buff_query_quiet_session_is_null_null(self):
         # BuffStatistics serializes empty lists as null, never [].

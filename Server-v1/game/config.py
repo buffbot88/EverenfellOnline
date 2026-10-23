@@ -4501,6 +4501,55 @@ class GameConfig:
         return base, base + config_int((cat or {}).get('kaifudays')) * day
 
     @staticmethod
+    def _zonghe_award_items(entries):
+        """firstrechargearwardarray rows to client item dicts, per
+        convertAwardsGoodsesStr (lasttime as hours, strengthenlv
+        'A|B' as [qinghua, qianghua], rare, fjid)."""
+        out = []
+        for e in entries or []:
+            if not isinstance(e, dict):
+                continue
+            gid = e.get('itemid')
+            if not gid:
+                continue
+            try:
+                count = int(str(e.get('itemcount') or 0))
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                continue
+            try:
+                bind = int(str(e.get('bind') or 0))
+            except (TypeError, ValueError):
+                bind = 0
+            try:
+                hours = float(int(str(e.get('itemlasttime') or 0)))
+            except (TypeError, ValueError):
+                hours = 0.0
+            if hours < 0:
+                hours = 0.0
+            qinghua = qianghua = 0
+            raw_lv = e.get('itemstrengthenlv')
+            if raw_lv not in (None, '', '0'):
+                try:
+                    parts = str(raw_lv).split('|')
+                    qinghua = int(parts[0])
+                    qianghua = int(parts[1])
+                except (TypeError, ValueError, IndexError):
+                    qinghua = qianghua = 0
+            try:
+                rare = int(str(e.get('itemrarelevel') or 0))
+            except (TypeError, ValueError):
+                rare = 0
+            fjid = e.get('itemfjid')
+            out.append({'goods_id': str(gid), 'count': count,
+                        'bind': bind, 'hours': hours,
+                        'qinghua': qinghua, 'qianghua': qianghua,
+                        'rare': rare,
+                        'fjid': '' if fjid is None else str(fjid)})
+        return out
+
+    @staticmethod
     def _zonghe_activity(raw):
         """Normalized activity, or None when the entry is unusable."""
         if isinstance(raw, str):
@@ -4523,10 +4572,20 @@ class GameConfig:
             awards = {}
         items = GameConfig._zonghe_parcels(awards.get('items'))
         config = data.get('config')
+        cfg_title = cfg_mm = cfg_mmeffect = ''
+        cfg_anniu = cfg_jiemian = cfg_chufa = ''
+        award_items = []
         if isinstance(config, dict):
-            items = items + GameConfig._zonghe_parcels(
-                config.get('firstrechargearwardarray'))
+            award_rows = config.get('firstrechargearwardarray')
+            items = items + GameConfig._zonghe_parcels(award_rows)
             goods = config.get('config')
+            cfg_title = str(config.get('name') or '')
+            cfg_mm = str(config.get('mm') or '')
+            cfg_mmeffect = str(config.get('mmeffect') or '')
+            cfg_anniu = str(config.get('anniu') or '')
+            cfg_jiemian = str(config.get('jiemian') or '')
+            cfg_chufa = str(config.get('chufa') or '')
+            award_items = GameConfig._zonghe_award_items(award_rows)
         elif isinstance(config, list):
             goods = config
         else:
@@ -4553,6 +4612,20 @@ class GameConfig:
             'itemtj': str(data.get('itemtj') or ''),
             'parcels': items,
             'goods': goods,
+            'currencies': {
+                'jb': config_int(awards.get('jb')),
+                'lijin': config_int(awards.get('lijin')),
+                'zhenqi': config_int(awards.get('zhenqi')),
+                'shengwang': config_int(awards.get('shengwang')),
+                'exp': config_int(awards.get('exp')),
+            },
+            'cfg_title': cfg_title,
+            'cfg_mm': cfg_mm,
+            'cfg_mmeffect': cfg_mmeffect,
+            'cfg_anniu': cfg_anniu,
+            'cfg_jiemian': cfg_jiemian,
+            'cfg_chufa': cfg_chufa,
+            'award_items': award_items,
         }
 
     def zonghe(self, server_id='fu0', kaifu_ms=0):
@@ -4604,6 +4677,7 @@ class GameConfig:
                 'zuoqitu': str(cat.get('zuoqitu') or ''),
                 'start_ms': start_ms,
                 'end_ms': end_ms,
+                'title': '',
                 'activities': [],
             }
             bucket = table.setdefault(
@@ -4614,6 +4688,11 @@ class GameConfig:
                     continue
                 entry['activities'].append(act)
                 bucket['by_activity'][act['id']] = (entry, act)
+            if entry['activities']:
+                # HuodongInit reads the category title from the first
+                # activity's data map (datatitle).
+                entry['title'] = \
+                    entry['activities'][0].get('title') or ''
             bucket['categories'].append(entry)
         self._zonghe = (key, table)
         return table

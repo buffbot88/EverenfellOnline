@@ -5,17 +5,16 @@ MKO_Client/.../compositiveactivity/fu0, Java TC_LONGSTRING + JSON),
 hdzh.txt (configureDataResolve null/empty silent keep-old, missing
 activitys skips the category, convert failure drops unknown
 clienttypes, HuodongInit after load), the CompositiveActivityClientType
-int values (hdct.txt) and checkHuodongIsValid/timeIsExpiry semantics.
-
-The loader reads the shipped snapshot in place (like the reference/
-config tree) and preserves JSON types (con1 stays a string, thresholds
-are per-family). The claim core covers the full lifecycle through the
-real handlers + SQLite store: recharge latch + 71002 push (ledger shape),
-live-window eligibility, snapshot-item grant, duplicate protection,
-bag-full with no state change, and expiry. 70000/70001 have no inbound
-wire yet: their reply shapes are unrecovered, so the core is exercised
-through zonghe_recharge/zonghe_first_claim directly.
-"""
+int values (hdct.txt) and checkHuodongIsValid/timeIsExpiry semantics. The loader reads the shipped snapshot in place (like the reference/
+ config tree) and preserves JSON types (con1 stays a string, thresholds
+ are per-family). 70000/70001 are wired to HuodongAction's
+getRechargeInfo/lingquRechargeReward with the exact firstrecharge
+13-array and [1, configId]/[0, code] shapes recovered from
+RoleHuodongOutputWrapper/HuodongServiceImpl bytecode; the tests pin
+the full lifecycle through the wire: recharge latch + 71002 push
+([activityId, yb, 1]), job-filtered grant, mount-rank side effect,
+duplicate/bag-full/expiry gates.
+ """
 import json
 import os
 import sys
@@ -48,6 +47,47 @@ LIVE_ACT = '20140301-qbsc0002-1'
 LIVE_PAIRS = [['qibinglixiang1', 1], ['qibing001', 2],
               ['expfold_002', 1], ['xunbaotu01', 2],
               ['xunbaotu02', 2], ['tongqian003', 1]]
+# The grant filters like GoodsJobFilter: xunbaotu02 has no goods-table
+# row, so the jar drops it from the grant (the 70000 display keeps it).
+LIVE_GRANTED = [p for p in LIVE_PAIRS if p[0] != 'xunbaotu02']
+# Kaifu-relative day-1 category (startday 0, kaifudays 1): live in
+# [kaifu, kaifu + 1 day). Its award mixes job-C/A/D/B equips with
+# universal goods; a job-C role keeps zj0401 plus the universals.
+DAY1_ACT = '201400001-m003-1'
+DAY1_KAIFU = 1400000000000
+DAY1_NOW = DAY1_KAIFU + 43200000
+DAY1_GRANTED = [['zj0401', 1], ['expfold_003', 1],
+                ['jinjiedan002', 1], ['zhenqipill_003', 5],
+                ['tongqian003', 3], ['10yb', 1]]
+# Exact 70000 display array for the live row, uncharged (state 0): the
+# 13-slot firstrecharge layout with the 6 config items (unfiltered)
+# and zero currencies, per RoleHuodongOutputWrapper bytecode.
+LIVE_INFO_UNCHARGED = [
+    LIVE_ACT, '天天首充', 0, ['', ''],
+    1393603201000, 1393689599000, 0, 0,
+    [0, 0, 0, 0, 0, [
+        ['qibinglixiang1', 1, 1, 24.0, [0, 0], 0, ''],
+        ['qibing001', 2, 1, 0.0, [0, 0], 0, ''],
+        ['expfold_002', 1, 1, 0.0, [0, 0], 0, ''],
+        ['xunbaotu01', 2, 1, 0.0, [0, 0], 0, ''],
+        ['xunbaotu02', 2, 1, 0.0, [0, 0], 0, ''],
+        ['tongqian003', 1, 1, 0.0, [0, 0], 0, ''],
+    ]],
+    'huodong_bg11.png', '', '', 'wanshengjieshouchong.png',
+]
+# Exact 70000 item half for the day-1 row: job equips carry
+# strengthenlv '10|10' -> [10, 10] and rare 3; 10yb rides 48h.
+DAY1_ITEMS = [
+    ['zj0401', 1, 1, 0.0, [10, 10], 3, ''],
+    ['zj0403', 1, 1, 0.0, [10, 10], 3, ''],
+    ['zj0405', 1, 1, 0.0, [10, 10], 3, ''],
+    ['zj0407', 1, 1, 0.0, [10, 10], 3, ''],
+    ['expfold_003', 1, 1, 0.0, [0, 0], 0, ''],
+    ['jinjiedan002', 1, 1, 0.0, [0, 0], 0, ''],
+    ['zhenqipill_003', 5, 1, 0.0, [0, 0], 0, ''],
+    ['tongqian003', 3, 1, 0.0, [0, 0], 0, ''],
+    ['10yb', 1, 1, 48.0, [0, 0], 0, ''],
+]
 PROD_KAIFU = 1394466091000
 
 # Genuine fu0 census (docs/zonghe-finding.md section 5): categories and
@@ -156,11 +196,16 @@ class ZongheFirstRechargeTest(unittest.TestCase):
             'hero', 'fu1304', 'Wukong', job='C', level=56)
         self.store.save_role_bag_state(self.rid, bag_capacity=144,
                                        storage_capacity=144)
-        self.sess = Session(
+        self.sess = self.make_sess(PROD_KAIFU)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        self.role = dict(self.store.list_roles('hero', 'fu1304')[0])
+
+    def make_sess(self, kaifu_ms):
+        return Session(
             conn_id=1, check_sign=lambda *a: False,
             get_roles=lambda u, s: [dict(r) for r in
                                     self.store.list_roles(u, s)],
-            server_start_ms=PROD_KAIFU,
+            server_start_ms=kaifu_ms,
             save_role_state=self.store.update_character_state,
             get_role_huodong=self.store.get_role_huodong,
             save_role_huodong=self.store.save_role_huodong,
@@ -170,9 +215,9 @@ class ZongheFirstRechargeTest(unittest.TestCase):
             delete_role_bag_slot=self.store.delete_role_bag_slot,
             insert_role_bag_slot=self.store.insert_role_bag_slot,
             save_role_bag_state=self.store.save_role_bag_state,
+            get_role_zuoqi=self.store.get_role_zuoqi,
+            save_role_zuoqi=self.store.save_role_zuoqi,
             config=self.cfg)
-        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
-        self.role = dict(self.store.list_roles('hero', 'fu1304')[0])
 
     # -- helpers ---------------------------------------------------------
     def state(self):
@@ -194,7 +239,7 @@ class ZongheFirstRechargeTest(unittest.TestCase):
     def test_recharge_latches_and_pushes(self):
         out = self.sess.zonghe_recharge(
             self.role, 1000, now_ms=LIVE_NOW)
-        self.assertEqual(frames(out), [['71002', [LIVE_CAT, 1000, 1]]])
+        self.assertEqual(frames(out), [['71002', [LIVE_ACT, 1000, 1]]])
         self.assertEqual(self.state(), {'charged': 1, 'claimed': []})
 
     def test_recharge_outside_window_latches_without_push(self):
@@ -203,44 +248,100 @@ class ZongheFirstRechargeTest(unittest.TestCase):
         self.assertEqual(out, [])
         self.assertEqual(self.state(), {'charged': 1, 'claimed': []})
 
-    # -- claim ---------------------------------------------------------------
-    def test_claim_before_recharge(self):
-        self.assertIsNone(
-            self.sess.zonghe_first_claim(self.role, now_ms=LIVE_NOW))
-        self.assertEqual(self.bag(), {})
+    # -- 70000 info (HuodongAction.getRechargeInfo) -----------------------
+    def info(self, now_ms):
+        out = self.sess.huodong_first_info(None, now_ms=now_ms)
+        return decode(bytes(out)[4:])
 
-    def test_claim_grants_snapshot_items_and_persists(self):
+    def test_info_no_live_is_null(self):
+        self.assertEqual(self.info(1390000000000), ['70000', None])
+
+    def test_info_uncharged_state_zero(self):
+        self.assertEqual(self.info(LIVE_NOW),
+                         ['70000', LIVE_INFO_UNCHARGED])
+
+    def test_info_level_gate(self):
+        body = self.sess._zonghe_first_info(dict(self.role, level=0),
+                                             now_ms=LIVE_NOW)
+        self.assertEqual(body, [0, 792005])
+
+    def test_info_charged_then_claimed(self):
         self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
-        got = self.sess.zonghe_first_claim(self.role, now_ms=LIVE_NOW)
-        self.assertEqual(got, LIVE_PAIRS)
+        body = self.sess._zonghe_first_info(self.role, now_ms=LIVE_NOW)
+        self.assertEqual((body[2], body[7]), (1, 0))
+        self.sess.huodong_first_reward(None, now_ms=LIVE_NOW)
+        body = self.sess._zonghe_first_info(self.role, now_ms=LIVE_NOW)
+        self.assertEqual((body[2], body[7]), (2, 1))
+
+    # -- 70001 reward (HuodongAction.lingquRechargeReward) ----------------
+    def reward(self, now_ms):
+        out = self.sess.huodong_first_reward(None, now_ms=now_ms)
+        if isinstance(out, list):
+            return frames(out)
+        return [decode(bytes(out)[4:])]
+
+    def test_reward_no_live(self):
+        self.assertEqual(self.reward(1390000000000),
+                         [['70001', [0, 792005]]])
+
+    def test_reward_uncharged(self):
+        self.assertEqual(self.reward(LIVE_NOW),
+                         [['70001', [0, 792001]]])
+
+    def test_reward_success_pushes_mount_then_reply(self):
+        self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
+        self.assertEqual(
+            self.reward(LIVE_NOW),
+            [['33004', [1, 3, 30]], ['70001', [1, LIVE_ACT]]])
+        self.assertEqual(self.state(),
+                         {'charged': 1, 'claimed': [LIVE_ACT]})
         self.assertEqual(
             self.bag(),
-            {gid: count for gid, count in LIVE_PAIRS})
-        self.assertEqual(self.state(),
-                         {'charged': 1, 'claimed': [LIVE_ACT]})
+            {gid: count for gid, count in LIVE_GRANTED})
 
-    def test_claim_duplicate(self):
+    def test_reward_duplicate(self):
         self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
-        self.assertIsNotNone(
-            self.sess.zonghe_first_claim(self.role, now_ms=LIVE_NOW))
-        self.assertIsNone(
-            self.sess.zonghe_first_claim(self.role, now_ms=LIVE_NOW))
-        self.assertEqual(self.state(),
-                         {'charged': 1, 'claimed': [LIVE_ACT]})
+        self.sess.huodong_first_reward(None, now_ms=LIVE_NOW)
+        self.assertEqual(self.reward(LIVE_NOW),
+                         [['70001', [0, 792002]]])
 
-    def test_claim_after_window(self):
-        self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
-        self.assertIsNone(self.sess.zonghe_first_claim(
-            self.role, now_ms=1393689599000 + 1))
-        self.assertEqual(self.state(), {'charged': 1, 'claimed': []})
-
-    def test_claim_full_bag_keeps_state(self):
+    def test_reward_bag_full(self):
         self.store.save_role_bag_state(self.rid, bag_capacity=0,
                                        storage_capacity=0)
         self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
-        self.assertIsNone(
-            self.sess.zonghe_first_claim(self.role, now_ms=LIVE_NOW))
+        self.assertEqual(self.reward(LIVE_NOW),
+                         [['70001', [0, 430212]]])
         self.assertEqual(self.state(), {'charged': 1, 'claimed': []})
+
+    def test_reward_after_window(self):
+        self.sess.zonghe_recharge(self.role, 1000, now_ms=LIVE_NOW)
+        self.assertEqual(self.reward(1393689599000 + 1),
+                         [['70001', [0, 792005]]])
+        self.assertEqual(self.state(), {'charged': 1, 'claimed': []})
+
+    # -- kaifu-relative day-1 row: job filter ----------------------------
+    def test_day1_claim_grants_job_filtered_items(self):
+        sess = self.make_sess(DAY1_KAIFU)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.zonghe_recharge(self.role, 100, now_ms=DAY1_NOW)
+        self.assertEqual(frames(out), [['71002', [DAY1_ACT, 100, 1]]])
+        body = decode(bytes(
+            sess.huodong_first_info(None, now_ms=DAY1_NOW))[4:])
+        self.assertEqual(body[0], '70000')
+        info = body[1]
+        self.assertEqual(info[0], DAY1_ACT)
+        self.assertEqual(info[1], '首次充值')
+        self.assertEqual(info[2], 1)
+        self.assertEqual(info[4:6],
+                         [DAY1_KAIFU, DAY1_KAIFU + 86400000])
+        self.assertEqual(info[8][:5], [0, 0, 0, 0, 0])
+        self.assertEqual(info[8][5], DAY1_ITEMS)
+        self.assertEqual(info[12], 'shouchong002.png')
+        got = frames(sess.huodong_first_reward(None, now_ms=DAY1_NOW))
+        self.assertEqual(got[1], ['70001', [1, DAY1_ACT]])
+        self.assertEqual(
+            self.bag(),
+            {gid: count for gid, count in DAY1_GRANTED})
 
 
 if __name__ == '__main__':

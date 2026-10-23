@@ -518,6 +518,16 @@ CMD_HUODONG_ONLINE_REWARD = 94001
 # RoleHuodongErrorCode (huodong/output clinit: values equal names).
 HUODONG_ERR_NO_GIFT = 792010
 HUODONG_ERR_NOT_YET = 792011
+# HuodongAction first-recharge routes (EasyMapping + HuodongServiceImpl
+# bytecode): 70000 getRechargeInfo, 70001 lingquRechargeReward (the
+# action only sends 70001 when the service result is non-null; the
+# 70000 result goes out verbatim, including null).
+CMD_HUODONG_FIRST_INFO = 70000
+CMD_HUODONG_FIRST_REWARD = 70001
+# RoleHuodongErrorCode for the first-recharge claim (clinit values).
+HUODONG_ERR_FIRST_UNCHARGED = 792001
+HUODONG_ERR_FIRST_CLAIMED = 792002
+HUODONG_ERR_FIRST_NO_CONFIG = 792005
 # GongHuiTaskConstants (jar clinit) + condition export impl costs.
 GONGHUI_MIN_LEVEL = 30
 GONGHUI_MAX_LOOP = 20
@@ -1603,6 +1613,10 @@ class Session:
             return self.huodong_online_info()
         if cmd_num == CMD_HUODONG_ONLINE_REWARD:
             return self.huodong_online_reward()
+        if cmd_num == CMD_HUODONG_FIRST_INFO:
+            return self.huodong_first_info(msg)
+        if cmd_num == CMD_HUODONG_FIRST_REWARD:
+            return self.huodong_first_reward(msg)
         if cmd_num == CMD_POZHEN_INFO:
             return self.pozhen_info()
         if cmd_num == CMD_POZHEN_START:
@@ -1926,8 +1940,7 @@ class Session:
                         86000, 85000, 87000, 70500, 91002, 90000,
                         92015, 93000, 94002, 94100, 95000, 97001,
                         114000, 113000,
-                        120100, 124001,
-                        70000):
+                        120100, 124001):
             return self.loading_stub(msg, cmd_num)
         log.warning('conn %d: unknown command %r payload=%r (ignored)',
                       self.conn_id, cmd, msg)
@@ -3704,7 +3717,6 @@ class Session:
             113000: [None],
             120100: [['db1a1b532903d4a0964771755d4ca6c6902d057451c42eff9d2ae217a1fc9ae2', [[10, None], [[10, ['fanpaika', 1]], [30, ['fanpaika', 3]], [50, ['fanpaika', 5]], [70, ['fanpaika', 7]], [90, ['fanpaika', 9]]], ['chip_baishu:1:1', 'jinglianshi:1:1', 'bsclbig:1:1', 'sj0208:1:1', 'sj0211:1:1', 'sj0217:1:1', 'zuoqishuxing3:1:1', 'zj0615:1:1:0:0|0:4:8|5,8|5,8|5,8|5,8|5,8|5', 'zj0616:1:1:0:0|0:4:9|5,9|5,9|5,9|5,9|5,9|5', 'ys010602:1:1:0:0|0:4', 'ys010604:1:1:0:0|0:4', 'ys010606:1:1:0:0|0:4', 'ys010608:1:1:0:0|0:4', 'ys010610:1:1:0:0|0:4', 'ys010611:1:1:0:0|0:4', 'ys010612:1:1:0:0|0:4', 'ys010613:1:1:0:0|0:4', 'ys010614:1:1:0:0|0:4'], None, 1394254801000.0, 1394510399000.0]]],
             124001: [None],
-            70000: [None],
         }.get(int(cmd_num))
         if payload is None:
             return None
@@ -15092,12 +15104,14 @@ class Session:
             [str(CMD_HUODONG_ONLINE_REWARD),
              [1, self._huodong_remainder_ms(advanced, now), arr]]))
 
-    # First-recharge lifecycle (zonghe clienttype 21, no inbound wire yet:
-    # 70000/70001 reply shapes are unrecovered, so the core runs through
-    # the recharge hook and the claim method below, both tested directly.
-    # State rides the role_huodong max_count JSON map under 'zonghe_first'
-    # as {'charged': 0/1, 'claimed': [activity ids]}, mirroring the jar's
-    # getValue/setValue helpers and the online_gift precedent.
+    # First-recharge lifecycle (zonghe clienttype 21: HuodongAction
+    # getRechargeInfo/lingquRechargeReward -> HuodongServiceImpl
+    # getFirstRechargeInfo/lingquFirstRechargeReward ->
+    # RoleHuodongOutputWrapper.firstrecharge for the 70000 display
+    # array). State rides the role_huodong max_count JSON map under
+    # 'zonghe_first' as {'charged': 0/1, 'claimed': [activity ids]},
+    # mirroring the jar's getValue/setValue helpers and the
+    # online_gift precedent.
     HUODONG_FIRST_KEY = 'zonghe_first'
 
     def _zonghe_first_get(self, row):
@@ -15141,14 +15155,9 @@ class Session:
         return live[0]
 
     def zonghe_recharge(self, role, yb, now_ms=None):
-        """Recharge hook (VipQqServiceImpl.recharge pattern): latch + push.
-
-        Non-positive amounts stay silent like vipqq_recharge. A positive
-        recharge latches 'charged' on the role's zonghe_first state and,
-        when a first-recharge category is live, pushes 71002
-        [categoryId, yb, 1] (ledger-documented shape; the category id is
-        the zongheHuodong category id). Returns the pushed frames.
-        """
+        """Recharge hook: latch 'charged', push 71002 [activityId, yb, 1]
+        when a first-recharge category is live. Non-positive amounts
+        stay silent."""
         if role is None:
             return []
         try:
@@ -15173,49 +15182,185 @@ class Session:
         found = self._zonghe_first_live(now_ms)
         if found is None:
             return []
-        cat, _act = found
+        _cat, act = found
         return self._vip_push(
             role, [frame(amf3_encode(
-                ['71002', [cat.get('id'), amount, 1]]))])
+                ['71002', [act.get('id'), amount, 1]]))])
 
-    def zonghe_first_claim(self, role, now_ms=None):
-        """Claim the live first-recharge award, or None.
+    def _zonghe_first_grantable(self, role, parcels):
+        """Award parcels passing GoodsJobFilter (job '0' or the role's job;
+        unknown/job-mismatched goods drop, like the jar)."""
+        job = str(role.get('job') or '')
+        grant = []
+        for gid, count, bind in parcels or []:
+            try:
+                gate = self.config.goods_job(gid)
+            except Exception:
+                continue
+            if gate != '0' and gate != job:
+                continue
+            grant.append((gid, count, bind))
+        return grant
 
-        None when no live category, the role never recharged, the award
-        is already claimed, or the bag cannot fit the snapshot parcels
-        (no state change then, like the online-gift full-bag rule).
-        Grants only the snapshot items: every fu0 first-recharge award
-        carries zero currencies, so nothing else is owed. Returns the
-        granted [[goodsId, count]] pairs.
-        """
-        if role is None or self.config is None:
+    def _zonghe_first_mount(self, role, rid, now_ms):
+        """changeZuoqiRank(roleId, 3): ranks below 3 rise to 3 and push
+        the 33004 [1, 3, level] frame; rank 3+ pushes nothing."""
+        try:
+            row = self._zuoqi_row(rid)
+        except Exception:
+            row = None
+        if row is None:
             return None
+        try:
+            rank = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        if rank >= 3:
+            return None
+        try:
+            row.update(zuoqi_rank=3, zuoqi_cur_rank=3,
+                       update_time=int(now_ms))
+            self._zuoqi_save(rid, row)
+            cfg = self.config.zuoqi_rank_config(self.ZUOQI_MIN_RANK)
+        except Exception:
+            return None
+        level = self._zuoqi_level(self._task_role_level(role), cfg) \
+            if cfg is not None else 0
+        return frame(amf3_encode([str(CMD_ZUOQI_CLAIM), [1, 3, level]]))
+
+    def _zonghe_first_claim_full(self, role, now_ms=None):
+        """Claim core (lingquFirstRechargeReward): (True, {'pairs',
+        'act_id', 'mount'}) on success, else (False, reason) with
+        'no_live'/'claimed'/'uncharged'/'bag_full'. Currency/meiren
+        grants only run for non-zero configs (none in fu0)."""
+        if role is None or self.config is None:
+            return (False, 'no_live')
         if now_ms is None:
             now_ms = int(time.time() * 1000)
         try:
             rid = _wire_id(role)
             row = self._huodong_row(rid)
         except Exception:
-            return None
+            return (False, 'no_live')
         if row is None:
-            return None
+            return (False, 'no_live')
+        found = self._zonghe_first_live(now_ms)
+        if found is None:
+            return (False, 'no_live')
+        _cat, act = found
+        state = self._zonghe_first_get(row) or {}
+        claimed = state.get('claimed') or []
+        if act.get('id') in claimed:
+            return (False, 'claimed')
+        if not state.get('charged'):
+            return (False, 'uncharged')
+        parcels = act.get('parcels') or []
+        if not self._vip_fits_list(rid, parcels):
+            return (False, 'bag_full')
+        grant = self._zonghe_first_grantable(role, parcels)
+        self._task_grant(rid, self._vip_parcel_items(grant))
+        mount = self._zonghe_first_mount(role, rid, now_ms)
+        state['claimed'] = list(claimed) + [act.get('id')]
+        self._zonghe_first_save(rid, row, state)
+        return (True, {'pairs': [[gid, count]
+                                 for gid, count, _bind in grant],
+                       'act_id': act.get('id'), 'mount': mount})
+
+    def _zonghe_first_info(self, role, now_ms=None):
+        """70000 payload: None when no category is live, [0, 792005]
+        when gated, else the 13-slot firstrecharge array
+        ([configId, title, state, [mm, mmEffect], startMs, endMs,
+        needPayYb, claimedCount, [jb, lijin, zhenqi, shengwang, exp,
+        items], jiemian, anniu, chufa, categoryTitle]; items are
+        [goodsId, count, bind, hours, [qinghua, qianghua], rare,
+        fjid], state 2/1/0 claimed/charged/otherwise)."""
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
         found = self._zonghe_first_live(now_ms)
         if found is None:
             return None
-        _cat, act = found
-        state = self._zonghe_first_get(row) or {}
-        if not state.get('charged'):
+        cat, act = found
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            row = None
+        state = (self._zonghe_first_get(row)
+                 if row is not None else None) or {}
+        try:
+            level = int((role or {}).get('level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        try:
+            need_level = int(act.get('need_level') or 0)
+        except (TypeError, ValueError):
+            need_level = 0
+        try:
+            need_pay = int(act.get('need_pay_yb') or 0)
+        except (TypeError, ValueError):
+            need_pay = 0
+        if level < need_level or \
+                (need_pay > 0 and not state.get('charged')):
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        claimed = act.get('id') in (state.get('claimed') or [])
+        if claimed:
+            status, claimed_count = 2, 1
+        elif state.get('charged'):
+            status, claimed_count = 1, 0
+        else:
+            status, claimed_count = 0, 0
+        currencies = act.get('currencies') or {}
+        items = [[it['goods_id'], it['count'], it['bind'],
+                  it['hours'], [it['qinghua'], it['qianghua']],
+                  it['rare'], it['fjid']]
+                 for it in act.get('award_items') or []]
+        return [act.get('id'), act.get('cfg_title') or '', status,
+                [act.get('cfg_mm') or '', act.get('cfg_mmeffect') or ''],
+                cat.get('start_ms') or 0, cat.get('end_ms') or 0,
+                need_pay, claimed_count,
+                [currencies.get('jb') or 0,
+                 currencies.get('lijin') or 0,
+                 currencies.get('zhenqi') or 0,
+                 currencies.get('shengwang') or 0,
+                 currencies.get('exp') or 0, items],
+                act.get('cfg_jiemian') or '',
+                act.get('cfg_anniu') or '',
+                act.get('cfg_chufa') or '',
+                cat.get('title') or '']
+
+    def huodong_first_info(self, msg=None, now_ms=None):
+        """Command 70000: the first-recharge panel for the live row."""
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
             return None
-        claimed = state.get('claimed') or []
-        if act.get('id') in claimed:
+        return frame(amf3_encode(
+            [str(CMD_HUODONG_FIRST_INFO),
+             self._zonghe_first_info(role, now_ms=now_ms)]))
+
+    def huodong_first_reward(self, msg=None, now_ms=None):
+        """Command 70001: [1, configId] on success (33004 mount frame
+        first when the mount rank rose), else [0, code]."""
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
             return None
-        parcels = act.get('parcels') or []
-        if not self._vip_fits_list(rid, parcels):
-            return None
-        self._task_grant(rid, self._vip_parcel_items(parcels))
-        state['claimed'] = list(claimed) + [act.get('id')]
-        self._zonghe_first_save(rid, row, state)
-        return [[gid, count] for gid, count, _bind in parcels]
+        ok, res = self._zonghe_first_claim_full(role, now_ms=now_ms)
+        if not ok:
+            code = {'no_live': HUODONG_ERR_FIRST_NO_CONFIG,
+                    'claimed': HUODONG_ERR_FIRST_CLAIMED,
+                    'uncharged': HUODONG_ERR_FIRST_UNCHARGED,
+                    'bag_full': BAG_ERR_SLOT_LESS}.get(res, 0)
+            return frame(amf3_encode(
+                [str(CMD_HUODONG_FIRST_REWARD), [0, code]]))
+        out = []
+        if res.get('mount') is not None:
+            out.append(res['mount'])
+        out.append(frame(amf3_encode(
+            [str(CMD_HUODONG_FIRST_REWARD), [1, res['act_id']]])))
+        return out if len(out) > 1 else out[0]
 
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
     # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and

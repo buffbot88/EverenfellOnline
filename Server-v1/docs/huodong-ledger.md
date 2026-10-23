@@ -82,14 +82,31 @@ getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
   across sessions because logout banks it; a dropped connection without
   the close hook would lose the session (hence the server.py hook).
 
+## Batch 2: zonghe loader + first-recharge core (no inbound wire yet)
+
+`GameConfig.zonghe(server_id, kaifu_ms)` reads the fu0 snapshot in
+place (13-byte Java-serialization header check, then JSON): unknown
+clienttypes dropped with a log (ct 36), categories without `activitys`
+skipped, explicit starttime/endtime windows pass through, the rest
+resolve kaifu-relative `[kaifu + startday, + kaifudays]` days, `con1`
+stays a string, and failed reloads keep the previous table (first load
+with no snapshot is `{}`). `zonghe_live` is the `timeIsExpiry` read
+API. `Session.zonghe_recharge` latches `charged` and pushes 71002
+`[categoryId, yb, 1]` when a ct-21 category is live;
+`zonghe_first_claim` grants the snapshot items, persists the activity
+id under `zonghe_first.claimed`, and answers None when uncharged,
+claimed, out-of-window, or bag-full (no state change then). Every fu0
+first-recharge award carries zero currencies, so the items-only grant
+is complete. 70000/70001 stay `missing`: their reply shapes are still
+unrecovered and are not guessed at.
+
 ## Genuine remaining gaps
 
-- Zonghe families: snapshot RECOVERED (`.../compositiveactivity/fu0`,
-  see `docs/zonghe-finding.md`). Remaining work is the Python loader +
-  service port for 70000/70001/70500-70502/70505-70509/
-  70530/70550/70551/70552-70554/70580/70520/71002, plus the still-
-  unrecovered inbound-ID→method routing table and the families absent
-  from `fu0` (ct 3/4/6/7/8/11-17/19/20/23/35). No seeded stand-in.
+- Zonghe service port for 70000/70001/70500-70502/70505-70509/
+  70530/70550/70551/70552-70554/70580/70520 (wire shapes unrecovered)
+  and the families absent from `fu0` (ct 3/4/6/7/8/11-17/19/20/23/35).
+  Loader + first-recharge core are in (batch 2, above). No seeded
+  stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/
   handleKillBossRankData + quartz settlement); paihang itself is unported.

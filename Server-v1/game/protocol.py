@@ -15092,6 +15092,131 @@ class Session:
             [str(CMD_HUODONG_ONLINE_REWARD),
              [1, self._huodong_remainder_ms(advanced, now), arr]]))
 
+    # First-recharge lifecycle (zonghe clienttype 21, no inbound wire yet:
+    # 70000/70001 reply shapes are unrecovered, so the core runs through
+    # the recharge hook and the claim method below, both tested directly.
+    # State rides the role_huodong max_count JSON map under 'zonghe_first'
+    # as {'charged': 0/1, 'claimed': [activity ids]}, mirroring the jar's
+    # getValue/setValue helpers and the online_gift precedent.
+    HUODONG_FIRST_KEY = 'zonghe_first'
+
+    def _zonghe_first_get(self, row):
+        """The zonghe_first state object, or None."""
+        state = self._huodong_json((row or {}).get('max_count')).get(
+            self.HUODONG_FIRST_KEY)
+        return dict(state) if isinstance(state, dict) else None
+
+    def _zonghe_first_save(self, rid, row, state):
+        """Persist the zonghe_first state object."""
+        try:
+            counters = self._huodong_json((row or {}).get('max_count'))
+            counters[self.HUODONG_FIRST_KEY] = dict(state)
+            self.save_role_huodong(rid, max_count=json.dumps(counters))
+            row['max_count'] = json.dumps(counters)
+        except Exception:
+            pass
+
+    def _zonghe_first_live(self, now_ms):
+        """(category, activity) for the live first-recharge row, or None.
+
+        Earliest-ending live category wins, file order breaking ties;
+        the snapshot windows for one server do not overlap in practice.
+        """
+        if self.config is None:
+            return None
+        try:
+            kaifu = int(self.server_start_ms or 0)
+        except (TypeError, ValueError):
+            kaifu = 0
+        try:
+            live = self.config.zonghe_live(
+                self.config.ZONGHE_FIRST_RECHARGE, kaifu_ms=kaifu,
+                now_ms=now_ms)
+        except Exception:
+            return None
+        if not live:
+            return None
+        live.sort(key=lambda pair: (pair[0].get('end_ms') or 0,
+                                    pair[0].get('id') or ''))
+        return live[0]
+
+    def zonghe_recharge(self, role, yb, now_ms=None):
+        """Recharge hook (VipQqServiceImpl.recharge pattern): latch + push.
+
+        Non-positive amounts stay silent like vipqq_recharge. A positive
+        recharge latches 'charged' on the role's zonghe_first state and,
+        when a first-recharge category is live, pushes 71002
+        [categoryId, yb, 1] (ledger-documented shape; the category id is
+        the zongheHuodong category id). Returns the pushed frames.
+        """
+        if role is None:
+            return []
+        try:
+            amount = int(yb or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return []
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return []
+        if row is None:
+            return []
+        state = self._zonghe_first_get(row) or {}
+        state['charged'] = 1
+        state.setdefault('claimed', [])
+        self._zonghe_first_save(rid, row, state)
+        found = self._zonghe_first_live(now_ms)
+        if found is None:
+            return []
+        cat, _act = found
+        return self._vip_push(
+            role, [frame(amf3_encode(
+                ['71002', [cat.get('id'), amount, 1]]))])
+
+    def zonghe_first_claim(self, role, now_ms=None):
+        """Claim the live first-recharge award, or None.
+
+        None when no live category, the role never recharged, the award
+        is already claimed, or the bag cannot fit the snapshot parcels
+        (no state change then, like the online-gift full-bag rule).
+        Grants only the snapshot items: every fu0 first-recharge award
+        carries zero currencies, so nothing else is owed. Returns the
+        granted [[goodsId, count]] pairs.
+        """
+        if role is None or self.config is None:
+            return None
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        if row is None:
+            return None
+        found = self._zonghe_first_live(now_ms)
+        if found is None:
+            return None
+        _cat, act = found
+        state = self._zonghe_first_get(row) or {}
+        if not state.get('charged'):
+            return None
+        claimed = state.get('claimed') or []
+        if act.get('id') in claimed:
+            return None
+        parcels = act.get('parcels') or []
+        if not self._vip_fits_list(rid, parcels):
+            return None
+        self._task_grant(rid, self._vip_parcel_items(parcels))
+        state['claimed'] = list(claimed) + [act.get('id')]
+        self._zonghe_first_save(rid, row, state)
+        return [[gid, count] for gid, count, _bind in parcels]
+
     # Mount panel/ride/claim (zuoqi 33001/33000/33004). Evidence:
     # ZuoQiAction (ZuoqiMianban/rideZuoQi/lingquZuoqi) and
     # RoleZuoQiServiceImpl (getZuoQiPannel/rideZuoqi/changeZuoqiRank).

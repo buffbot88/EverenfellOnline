@@ -1146,6 +1146,7 @@ class GameConfig:
         self._vip_lingjiang = None
         self._vip_huodong = None
         self._online_gift = None
+        self._zonghe = None
         self._kaige = None
         self._task_main = None
         self._task_sub = None
@@ -4384,6 +4385,266 @@ class GameConfig:
                 prev_by_day[day] = cid
             self._online_gift = days
         return self._online_gift
+
+    # Zonghe remote config (compositiveactivity/<serverId> GM snapshot).
+    # Clienttype ints from CompositiveActivityClientType; 36 (ONCE_RECHARGE
+    # rows in fu0) has no enum value, so convert fails and Java drops those
+    # rows with a convert error (mirrored here with a log line).
+    ZONGHE_CLIENT_TYPES = frozenset((1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+                                      13, 14, 15, 16, 17, 19, 20, 21, 22,
+                                      23, 30, 31, 32, 34, 35))
+    ZONGHE_FIRST_RECHARGE = 21
+    ZONGHE_DAY_MS = 86400000
+
+    def _zonghe_path(self, server_id):
+        """Snapshot file, searched upward like the reference config tree."""
+        rel = os.path.join('MKO_Client', 'Assets', 'gameconfig', 'upload',
+                           'gameanalyze', 'compositiveactivity',
+                           str(server_id))
+        here = os.path.abspath(self.config_dir)
+        for _ in range(7):
+            cand = os.path.join(here, rel)
+            if os.path.isfile(cand):
+                return cand
+            parent = os.path.dirname(here)
+            if parent == here:
+                break
+            here = parent
+        return None
+
+    @staticmethod
+    def _zonghe_parcels(entries):
+        """Item dicts to (goods id, count, bind) parcels, skipping garbage.
+
+        Mirrors _huodong_parcels' grant head fields; counts ride as ints
+        (snapshot stores them as strings), non-positive or unparseable
+        counts are skipped like putInBag's left<=0 guard.
+        """
+        out = []
+        for e in entries or []:
+            if not isinstance(e, dict):
+                continue
+            gid = e.get('itemid') or e.get('id')
+            if not gid:
+                continue
+            try:
+                count = int(str(e.get('itemcount', e.get('count', 0)) or 0))
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                continue
+            try:
+                bind = int(str(e.get('bind', 0) or 0))
+            except (TypeError, ValueError):
+                bind = 0
+            out.append((str(gid), count, bind))
+        return out
+
+    def _zonghe_load(self, server_id):
+        """Raw snapshot dict, or None (missing/empty/malformed keep-old).
+
+        Strips the 13-byte Java TC_LONGSTRING header (magic AC ED, length
+        field must match the body) then parses the JSON. A short/empty
+        payload returns None silently like configureDataResolve's
+        null/empty guard; anything else broken logs and returns None.
+        """
+        path = self._zonghe_path(server_id)
+        if path is None:
+            return None
+        try:
+            with open(path, 'rb') as f:
+                blob = f.read()
+        except OSError as e:
+            log.error('bad zonghe snapshot: %s', e)
+            return None
+        if len(blob) <= 13:
+            return None
+        if blob[0:2] != b'\xac\xed':
+            log.error('bad zonghe snapshot: not java-serialized')
+            return None
+        declared = int.from_bytes(blob[5:13], 'big')
+        body = blob[13:]
+        if declared != len(body):
+            log.error('bad zonghe snapshot: length mismatch')
+            return None
+        try:
+            obj = json.loads(body.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError) as e:
+            log.error('bad zonghe snapshot: %s', e)
+            return None
+        if not isinstance(obj, dict) or not obj:
+            return None
+        return obj
+
+    @staticmethod
+    def _zonghe_window(cat, kaifu_ms):
+        """(start_ms, end_ms) for a category (TimeConfigVo equivalent).
+
+        Explicit starttime/endtime win when both are positive; otherwise
+        kaifu-relative [kaifu + startday, + kaifudays] days. The relative
+        formula is the natural reading of the startday/kaifudays fields
+        (durations 1/2/3 with offsets 0/1/2 in fu0); without a kaifu
+        source the window is (0, 0) and never live.
+        """
+        start = config_int((cat or {}).get('starttime'))
+        end = config_int((cat or {}).get('endtime'))
+        if start > 0 and end > 0:
+            return start, end
+        try:
+            kaifu = int(kaifu_ms or 0)
+        except (TypeError, ValueError):
+            kaifu = 0
+        if kaifu <= 0:
+            return 0, 0
+        day = GameConfig.ZONGHE_DAY_MS
+        base = kaifu + config_int((cat or {}).get('startday')) * day
+        return base, base + config_int((cat or {}).get('kaifudays')) * day
+
+    @staticmethod
+    def _zonghe_activity(raw):
+        """Normalized activity, or None when the entry is unusable."""
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                return None
+        if not isinstance(raw, dict):
+            return None
+        data = raw.get('data')
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except ValueError:
+                return None
+        if not isinstance(data, dict):
+            return None
+        awards = data.get('awards')
+        if not isinstance(awards, dict):
+            awards = {}
+        items = GameConfig._zonghe_parcels(awards.get('items'))
+        config = data.get('config')
+        if isinstance(config, dict):
+            items = items + GameConfig._zonghe_parcels(
+                config.get('firstrechargearwardarray'))
+            goods = config.get('config')
+        elif isinstance(config, list):
+            goods = config
+        else:
+            goods = None
+        try:
+            functiontype = int(data.get('functiontype'))
+        except (TypeError, ValueError):
+            functiontype = -1
+        con1 = data.get('con1')
+        return {
+            'id': str(raw.get('id') or ''),
+            'activity_id': str(raw.get('activity_id') or ''),
+            'order': config_int(raw.get('order')),
+            'need_level': config_int(raw.get('needlevel')),
+            'need_pay_yb': config_int(raw.get('neddpayyb')),
+            'day_count': config_int(raw.get('dailycount')),
+            'max_count': config_int(raw.get('totalcount')),
+            'con1': '' if con1 is None else str(con1),
+            'functiontype': functiontype,
+            'icon': str(data.get('dataicon') or ''),
+            'name': str(data.get('dataname') or ''),
+            'title': str(data.get('datatitle') or ''),
+            'awards': dict(awards),
+            'itemtj': str(data.get('itemtj') or ''),
+            'parcels': items,
+            'goods': goods,
+        }
+
+    def zonghe(self, server_id='fu0', kaifu_ms=0):
+        """GM-pushed zonghe table keyed by clienttype int.
+
+        Port of ZongheHuodongConfigExportServiceImpl.configureDataResolve
+        + HuodongInit: categories carry display fields and a resolved
+        (start_ms, end_ms) window; activities key by string id with
+        con1 preserved as string (thresholds are per-family). Unknown
+        clienttypes are dropped with a log (Java's convert error);
+        categories without an activitys key are skipped while the rest
+        still load. Failed reloads keep the previous table; a first
+        load with no snapshot is {}.
+        """
+        try:
+            key = (str(server_id), int(kaifu_ms or 0))
+        except (TypeError, ValueError):
+            key = (str(server_id), 0)
+        if self._zonghe is not None and self._zonghe[0] == key:
+            return self._zonghe[1]
+        previous = self._zonghe[1] if self._zonghe is not None else {}
+        obj = self._zonghe_load(server_id)
+        if obj is None:
+            self._zonghe = (key, previous)
+            return previous
+        table = {}
+        for cat in obj.values():
+            if not isinstance(cat, dict):
+                continue
+            try:
+                clienttype = int(cat.get('clienttype'))
+            except (TypeError, ValueError):
+                continue
+            if clienttype not in self.ZONGHE_CLIENT_TYPES:
+                log.error('unknown zonghe clienttype: %r',
+                          cat.get('clienttype'))
+                continue
+            if cat.get('activitys') is None:
+                continue
+            start_ms, end_ms = self._zonghe_window(cat, kaifu_ms)
+            entry = {
+                'id': str(cat.get('id') or ''),
+                'teamid': config_int(cat.get('teamid')),
+                'pic': str(cat.get('pic') or ''),
+                'pattern': str(cat.get('pattern') or ''),
+                'button': str(cat.get('button') or ''),
+                'tag': str(cat.get('tag') or ''),
+                'zhuti': config_int(cat.get('zhuti')),
+                'zuoqitu': str(cat.get('zuoqitu') or ''),
+                'start_ms': start_ms,
+                'end_ms': end_ms,
+                'activities': [],
+            }
+            bucket = table.setdefault(
+                clienttype, {'categories': [], 'by_activity': {}})
+            for raw in cat.get('activitys') or []:
+                act = self._zonghe_activity(raw)
+                if act is None or not act['id']:
+                    continue
+                entry['activities'].append(act)
+                bucket['by_activity'][act['id']] = (entry, act)
+            bucket['categories'].append(entry)
+        self._zonghe = (key, table)
+        return table
+
+    @staticmethod
+    def _zonghe_live_ms(start_ms, end_ms, now_ms):
+        """timeIsExpiry: start <= now <= end with start <= end."""
+        try:
+            now = int(now_ms)
+        except (TypeError, ValueError):
+            return False
+        return start_ms <= now <= end_ms and start_ms <= end_ms
+
+    def zonghe_live(self, clienttype, server_id='fu0', kaifu_ms=0,
+                    now_ms=None):
+        """[(category, activity)] live right now (checkHuodongIsValid).
+
+        now_ms defaults to the wall clock; tests pass explicit stamps.
+        """
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        table = self.zonghe(server_id=server_id, kaifu_ms=kaifu_ms)
+        bucket = table.get(int(clienttype or 0)) or {}
+        out = []
+        for cat in bucket.get('categories') or []:
+            if not self._zonghe_live_ms(cat.get('start_ms') or 0,
+                                        cat.get('end_ms') or 0, now_ms):
+                continue
+            for act in cat.get('activities') or []:
+                out.append((cat, act))
+        return out
 
     def vip_huodong(self, vip_level):
         """kaifuchoujiang.jat row for a vip: window, bisong, odds, prizes.

@@ -152,11 +152,30 @@ CREATE TABLE IF NOT EXISTS role_jianding (
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Xianjie/chenghao id arrays for a role (legacy role_xianjiechenhao
--- subset: the JSON id lists the title bags resolve through).
+-- subset: the JSON id lists the title bags resolve through, plus the
+-- selected rank (xianjie_qiyong), the XianJieData counter object
+-- (xianjie_data) and the log stamps).
 CREATE TABLE IF NOT EXISTS role_xianjiechenhao (
   role_id INTEGER PRIMARY KEY,
   xianjie_id TEXT,
   chenhao_id TEXT,
+  xianjie_qiyong TEXT,
+  xianjie_data TEXT,
+  xianjie_time INTEGER DEFAULT 0,
+  log_update_time INTEGER DEFAULT 0,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Xianjiehuoyuedu activity per role (legacy role_xianjiehuoyuedu: lifetime
+-- huoyuedu, the daily type counters, the claimed reward ids, the finished
+-- daily type ids and the day stamp the lazy reset compares against).
+CREATE TABLE IF NOT EXISTS role_xianjiehuoyuedu (
+  role_id INTEGER PRIMARY KEY,
+  huoyuedu INTEGER DEFAULT 0,
+  huoyuedu_list TEXT DEFAULT '{}',
+  meiri_jiangli TEXT DEFAULT '[]',
+  meiri_finish_id TEXT DEFAULT '[]',
+  meiri_jiangli_time INTEGER DEFAULT 0,
+  log_update_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Mount rank per role (legacy role_zuoqi subset: rank gates the ZUOQI bag
@@ -1047,6 +1066,17 @@ class Store:
                 if column not in zuoqi_cols:
                     self.db.execute(
                         f'ALTER TABLE role_zuoqi ADD COLUMN {column} {declaration}')
+            xjch_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_xianjiechenhao)')}
+            for column, declaration in (
+                    ('xianjie_qiyong', 'TEXT'),
+                    ('xianjie_data', 'TEXT'),
+                    ('xianjie_time', 'INTEGER DEFAULT 0'),
+                    ('log_update_time', 'INTEGER DEFAULT 0')):
+                if column not in xjch_cols:
+                    self.db.execute(
+                        f'ALTER TABLE role_xianjiechenhao ADD COLUMN'
+                        f' {column} {declaration}')
             gy_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_guangyi)')}
             for column, declaration in (
@@ -1822,24 +1852,71 @@ class Store:
             return True
 
     def get_role_xianjiechenhao(self, role_id):
-        """Xianjie/chenghao id row for a role, or None."""
+        """Xianjie/chenghao row for a role, or None."""
         with self.lock:
             row = self.db.execute(
-                'SELECT xianjie_id, chenhao_id FROM role_xianjiechenhao'
-                ' WHERE role_id=?',
+                'SELECT xianjie_id, chenhao_id, xianjie_qiyong,'
+                ' xianjie_data, xianjie_time, log_update_time'
+                ' FROM role_xianjiechenhao WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
 
     def save_role_xianjiechenhao(self, role_id, xianjie_id=None,
-                                 chenhao_id=None):
-        """Upsert a role's xianjie/chenghao id lists (JSON texts)."""
+                                 chenhao_id=None, xianjie_qiyong=None,
+                                 xianjie_data=None, xianjie_time=None,
+                                 log_update_time=None):
+        """Upsert a role's xianjie/chenghao row (None leaves a cell)."""
+        fields = {}
+        for name, value in (
+                ('xianjie_id', xianjie_id),
+                ('chenhao_id', chenhao_id),
+                ('xianjie_qiyong', xianjie_qiyong),
+                ('xianjie_data', xianjie_data),
+                ('xianjie_time', xianjie_time),
+                ('log_update_time', log_update_time)):
+            if value is not None:
+                fields[name] = value
+        if not fields:
+            return True
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
         with self.lock:
             self.db.execute(
-                'INSERT INTO role_xianjiechenhao(role_id, xianjie_id, chenhao_id)'
-                ' VALUES(?,?,?)'
-                ' ON CONFLICT(role_id) DO UPDATE SET'
-                ' xianjie_id=excluded.xianjie_id, chenhao_id=excluded.chenhao_id',
-                (str(role_id), xianjie_id, chenhao_id))
+                f'INSERT INTO role_xianjiechenhao(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
+            self.db.commit()
+            return True
+
+    def get_role_xianjiehuoyuedu(self, role_id):
+        """Activity row for a role, or None (RoleXianjiehuoyueduDao cacheLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT huoyuedu, huoyuedu_list, meiri_jiangli,'
+                ' meiri_finish_id, meiri_jiangli_time, log_update_time'
+                ' FROM role_xianjiehuoyuedu WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_xianjiehuoyuedu(self, role_id, **fields):
+        """Upsert the activity cells; only known columns."""
+        allowed = {'huoyuedu', 'huoyuedu_list', 'meiri_jiangli',
+                   'meiri_finish_id', 'meiri_jiangli_time',
+                   'log_update_time'}
+        if not fields or set(fields) - allowed:
+            raise ValueError('unknown activity fields: %s'
+                             % sorted(set(fields) - allowed))
+        names = ', '.join(fields)
+        placeholders = ', '.join('?' for _ in fields)
+        updates = ', '.join(f'{n}=excluded.{n}' for n in fields)
+        with self.lock:
+            self.db.execute(
+                f'INSERT INTO role_xianjiehuoyuedu(role_id,{names})'
+                f' VALUES(?,{placeholders})'
+                f' ON CONFLICT(role_id) DO UPDATE SET {updates}',
+                [str(role_id), *fields.values()])
             self.db.commit()
             return True
 

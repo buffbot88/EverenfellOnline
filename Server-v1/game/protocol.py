@@ -53,6 +53,7 @@ from .ground_items import can_pick_up as _ground_can_pick_up
 from .team import now_ms as team_now_ms
 from . import combat as combat_lib
 from . import pet as pet_lib
+from . import xianjie as xianjie_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
 from .ratelimit import TokenBucket
@@ -100,6 +101,30 @@ CMD_ROLE_QUERY_NAME = 12200
 RECIVE_YB_ERR_ZERO = 424016
 RECIVE_YB_ERR_OVERFLOW = 424017
 INT64_MAX = 9223372036854775807
+# Xianjiehuoyuedu / Xianjiechenhao command families (XianjiehuoyueduAction
+# and XianjiechenhaoAction). 91000/91004/91006/91008 ride the server side.
+CMD_XIANJIE_HUOYUE = 90000
+CMD_XIANJIE_MIAOSHA = 90001
+CMD_XIANJIE_HUOYUE_PUSH = 91000
+CMD_XIANJIE_REWARD = 91001
+CMD_XIANJIE_DATA = 91002
+CMD_XIANJIE_UPGRADE = 91003
+CMD_XIANJIE_SWITCH = 91004
+CMD_XIANJIE_LOG = 91005
+CMD_XIANJIE_ACTIVATE_PUSH = 91006
+CMD_XIANJIE_LOG_APPEND = 91007
+CMD_XIANJIE_ROUTE = 91008
+CMD_XIANJIE_ACTIVATE = 91009
+# XianjiechenhaoErrorCode values used as [0, code] replies.
+XIANJIE_ERR_PREV = 91001
+XIANJIE_ERR_HAS = 91002
+XIANJIE_ERR_HUOYUE = 91003
+XIANJIE_ERR_SHOW = 91004
+XIANJIE_ERR_LOG = 91005
+XIANJIE_ERR_ACTIVATE = 91006
+XIANJIE_ERR_LOG_APPEND = 91007
+XIANJIE_ERR_TITLE = 91009
+XIANJIE_ERR_NOTICE = 91010
 CMD_MALL = 32000
 CMD_MALL_BUY = 32001
 CMD_DAFUWENG = 105003
@@ -1228,6 +1253,9 @@ class Session:
                  get_role_attr_buffs=None,
                  save_role_attr_buffs=None,
                  get_role_vip=None, get_role_xianjiechenhao=None,
+                 save_role_xianjiechenhao=None,
+                 get_role_xianjiehuoyuedu=None,
+                 save_role_xianjiehuoyuedu=None,
                  get_role_meiren=None, save_role_meiren=None,
                  get_role_baoshi=None, save_role_baoshi=None,
                  get_role_zuoqi=None, save_role_zuoqi=None,
@@ -1346,6 +1374,12 @@ class Session:
             (lambda *a, **k: False)
         self.get_role_vip = get_role_vip or (lambda role_id: None)
         self.get_role_xianjiechenhao = get_role_xianjiechenhao or (lambda role_id: None)
+        self.save_role_xianjiechenhao = save_role_xianjiechenhao or \
+            (lambda *a, **k: False)
+        self.get_role_xianjiehuoyuedu = get_role_xianjiehuoyuedu or \
+            (lambda role_id: None)
+        self.save_role_xianjiehuoyuedu = save_role_xianjiehuoyuedu or \
+            (lambda *a, **k: False)
         self.get_role_jianding = get_role_jianding or (lambda role_id: None)
         self.save_role_jianding = save_role_jianding or (lambda *a, **k: False)
         self.save_role_vip = save_role_vip or (lambda *a, **k: False)
@@ -1719,6 +1753,9 @@ class Session:
         # events during feed handling; _feed_unlocked drains them
         # behind the triggering command's reply (the port's send2One).
         self._huodong_pushes = []
+        # Xianjiehuoyuedu 91000 pushes raised by gameplay producers; they
+        # drain behind the triggering reply like the 70520 pushes above.
+        self._xianjie_pushes = []
         # ZhanDouLi dirty flag: a producer that changed fight inputs marks
         # it, and _fight_refresh_frames() pushes one coalesced 12010 at the
         # end of the request (Java's ZDL:* changeFight -> inner 12010).
@@ -1782,6 +1819,9 @@ class Session:
             if self._huodong_pushes:
                 out.extend(self._huodong_pushes)
                 del self._huodong_pushes[:]
+            if self._xianjie_pushes:
+                out.extend(self._xianjie_pushes)
+                del self._xianjie_pushes[:]
             out.extend(self._fight_refresh_frames())
         return out
 
@@ -2470,9 +2510,15 @@ class Session:
             return self.friend_xinqing(msg)
         if cmd_num == CMD_FRIEND_FIGHT:
             return self.friend_fight(msg)
+        if cmd_num == CMD_XIANJIE_HUOYUE:
+            return self.xianjie_huoyue_info(msg)
+        if cmd_num == CMD_XIANJIE_MIAOSHA:
+            return self.xianjie_huoyue_miaosha(msg)
+        if cmd_num == CMD_XIANJIE_REWARD:
+            return self.xianjie_huoyue_claim(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
-                        86000, 85000, 91002, 90000,
+                        86000, 85000,
                         92015, 93000, 94002, 94100, 95000, 97001,
                         114000, 113000,
                         120100, 124001):
@@ -4205,6 +4251,197 @@ class Session:
         return self._friend_notify_followers(
             cid, CMD_FRIEND_ROLE_INFO, [cid, -1, map_id, None])
 
+    # -- xianjiehuoyuedu activity -------------------------------------
+    def _xianjie_self(self):
+        """Requester role and its canonical id, or (None, None)."""
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None, None
+        return role, str(role.get('id'))
+
+    def _xianjie_request_arg(self, msg):
+        """The single scalar Java reads through getData().toString()."""
+        arg = self.safe(msg, 1)
+        if isinstance(arg, list):
+            arg = self.safe(arg, 0)
+        return None if arg is None else str(arg)
+
+    def _huoyue_cfg(self):
+        return self.config.meirihuoyue_table() if self.config is not None else {}
+
+    def _xianjie_row(self, rid, now_ms=None):
+        """Load (or create) the rows and apply the lazy daily reset."""
+        try:
+            stored = self.get_role_xianjiehuoyuedu(rid)
+        except Exception:
+            stored = None
+        row, fresh = xianjie_lib.row_for(rid, stored, now_ms)
+        row, reset = xianjie_lib.clear_day(row, now_ms)
+        if fresh or reset:
+            self._xianjie_save(rid, row)
+        return row
+
+    def _xianjie_save(self, rid, row):
+        """Persist the activity cells; False when the store refused."""
+        try:
+            return bool(self.save_role_xianjiehuoyuedu(
+                rid,
+                huoyuedu=int(row.get('huoyuedu') or 0),
+                huoyuedu_list=row.get('huoyuedu_list') or '{}',
+                meiri_jiangli=row.get('meiri_jiangli') or '[]',
+                meiri_finish_id=row.get('meiri_finish_id') or '[]',
+                meiri_jiangli_time=int(row.get('meiri_jiangli_time') or 0),
+                log_update_time=int(row.get('log_update_time') or 0)))
+        except Exception:
+            log.warning('conn %d: activity save failed', self.conn_id,
+                        exc_info=True)
+            return False
+
+    def _xianjie_on_enter(self, rid):
+        """XianjiehuoyueduServiceImpl.online on role login.
+
+        Creates the row, runs the daily reset and accounts the current VIP
+        level as the VIP activity type (add=false, so a level gained since
+        the last login pays its per-unit difference once per day). The
+        WEIDUAN type only fires for micro-end logins, which the Flash
+        projector client never sends.
+        """
+        if rid is None:
+            return None
+        row = self._xianjie_row(rid)
+        try:
+            vip = int((self.get_role_vip(rid) or {}).get('vip_level') or 0)
+        except (TypeError, ValueError):
+            vip = 0
+        self._huoyue_record(rid, 1, vip, add=False, row=row)
+        return None
+
+    def _huoyue_record(self, rid, type_id, data=1, add=True, row=None,
+                       now_ms=None):
+        """changeHuoYuedu: one activity type, persisting and queueing 91000.
+
+        Java publishes XianJieHuoYueDuMiaoSha/LingQu events and pushes 91000
+        immediately; the port queues the push behind the triggering reply.
+        Returns the updated row (unpersisted fields included).
+        """
+        if rid is None:
+            return row
+        cfg = self._huoyue_cfg()
+        if str(type_id) not in cfg:
+            return row
+        if row is None:
+            row = self._xianjie_row(rid, now_ms)
+        try:
+            result = xianjie_lib.record(cfg, row, type_id, data, add, now_ms)
+        except (TypeError, ValueError):
+            return row
+        if result.get('changed'):
+            self._xianjie_save(rid, result['row'])
+        if result.get('push'):
+            self._xianjie_pushes.append(frame(amf3_encode(
+                [str(CMD_XIANJIE_HUOYUE_PUSH), result['push']])))
+        return result['row']
+
+    def xianjie_huoyue_info(self, msg):
+        """Command 90000: getXianJieHuoYueDu -> [day, cells, claims].
+
+        ``online`` runs first (row create, daily reset, VIP accounting),
+        then the panel is read: the daily total, every stored type counter
+        as ``[typeId, value]``, and the claimed reward ids. The Java
+        getDayHuoYuedu recomputes finished/jisuan types, which is what the
+        first cell carries.
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        self._xianjie_on_enter(rid)
+        row = self._xianjie_row(rid)
+        cfg = self._huoyue_cfg()
+        cells = [[key, value] for key, value in sorted(
+            xianjie_lib.counters(row).items(),
+            key=lambda item: (0, int(item[0]))
+            if str(item[0]).isdigit() else (1, str(item[0])))]
+        return frame(amf3_encode([
+            str(CMD_XIANJIE_HUOYUE),
+            [xianjie_lib.day_total(cfg, row), cells,
+             xianjie_lib.claims(row)]]))
+
+    def xianjie_huoyue_miaosha(self, msg):
+        """Command 90001: pay YB to finish a daily type instantly.
+
+        Gate order follows miaoSha: configured option, below-threshold
+        check (90001), YB purse (1002), debit, then the activity write and
+        the [1, id, dayTotal] reply. A finished type can be bought again,
+        like Java, because the finish list is never re-checked.
+        """
+        role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        type_id = self._xianjie_request_arg(msg)
+        cfg_row = self._huoyue_cfg().get(str(type_id))
+        if cfg_row is None or not cfg_row.get('miaosha'):
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_MIAOSHA), [0, 90002]]))
+        row = self._xianjie_row(rid)
+        fee = int(cfg_row.get('feiyong') or 0)
+        if fee > 0:
+            if self._bag_money_first(role, fee, ['YB']) is None:
+                return frame(amf3_encode(
+                    [str(CMD_XIANJIE_MIAOSHA), [0, 1002]]))
+        row, err, _award, _type = xianjie_lib.miaosha(
+            self._huoyue_cfg(), row, type_id)
+        if err is not None:
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_MIAOSHA), [0, err]]))
+        if fee > 0 and not self._bag_money_decr(rid, 'YB', fee):
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_MIAOSHA), [0, 1002]]))
+        self._xianjie_save(rid, row)
+        return frame(amf3_encode([
+            str(CMD_XIANJIE_MIAOSHA),
+            [1, str(type_id), xianjie_lib.day_total(
+                self._huoyue_cfg(), row)]]))
+
+    def xianjie_huoyue_claim(self, msg):
+        """Command 91001: jiangLi -> claim one activity reward row.
+
+        Denies a repeated claim (90003), a short daily total (90004) and a
+        full bag (GeneralErrorCode.BAG_SLOT_NOT_ENOUGH); appends the id to
+        meiriJiangli before granting and answers [1, id].
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        reward_id = self._xianjie_request_arg(msg)
+        table = (self.config.huoyuejiangli_table()
+                 if self.config is not None else {})
+        row = self._xianjie_row(rid)
+        total = xianjie_lib.day_total(self._huoyue_cfg(), row)
+        err = xianjie_lib.claim_error(table, row, reward_id, total)
+        cfg_row = table.get(str(reward_id))
+        if err is None and cfg_row is None:
+            return None
+        if err is not None:
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_REWARD), [0, err]]))
+        items = cfg_row.get('items') or []
+        for item in items:
+            if not self._prop_fits(
+                    rid, {'goods': item['goods_id'],
+                          'count': item['count']}, item.get('bind') or 0):
+                return frame(amf3_encode(
+                    [str(CMD_XIANJIE_REWARD), [0, 1004]]))
+        row = xianjie_lib.add_claim(row, reward_id)
+        self._xianjie_save(rid, row)
+        try:
+            self._task_grant(rid, items)
+        except Exception:
+            log.warning('conn %d: activity reward grant failed',
+                        self.conn_id, exc_info=True)
+        return frame(amf3_encode(
+            [str(CMD_XIANJIE_REWARD), [1, str(reward_id)]]))
+
     def loading_stub(self, msg, cmd_num):
         """Post-21000 loading replies: exact fresh-role Java shapes.
 
@@ -4455,6 +4692,10 @@ class Session:
                 pass
             try:
                 self._pet_on_enter(str((role or {}).get('id')))
+            except Exception:
+                pass
+            try:
+                self._xianjie_on_enter(_wire_id(role))
             except Exception:
                 pass
             task_frames = []
@@ -5144,6 +5385,18 @@ class Session:
         granted = combat_lib.fight_exp_with_bonuses(base)
         _total, _level, _gained, exp_frames = self._role_gain_exp(
             role, owner['id'], granted)
+        # stage_monster_dead -> ChengHaoHuoYueDuMonsterEventHandler: the
+        # monster's difficulty picks NORMAL 7, JINGYING 8 or BOSS 9.
+        try:
+            kind = {1: 7, 2: 8, 3: 9}.get(int(tpl.get('difficulty') or 1))
+        except (TypeError, ValueError):
+            kind = 7
+        if kind is not None:
+            try:
+                self._huoyue_record(owner['id'], kind, 1)
+            except Exception:
+                log.warning('conn %d: kill activity failed', self.conn_id,
+                            exc_info=True)
         return exp_frames + [frame(amf3_encode(combat_lib.exp_drop_frame(
             dead_fighter['id'], tpl.get('id'), granted)))] + task_frames
 
@@ -6186,6 +6439,8 @@ class Session:
         if zhenqi_gain > 0:
             self.save_role_state(role_id,
                                  zhenqi=int(role.get('zhenqi') or 0) + zhenqi_gain)
+            # role_incrzhenqi -> ChengHaoHuoYueDuAddZhenqiEventHandler.
+            self._huoyue_record(role_id, 10, zhenqi_gain)
         self._dazuo_timer(role_id)
         out = [frame(amf3_encode(['44004', [exp_gain, zhenqi_gain]]))]
         out.extend(level_frames)
@@ -6280,6 +6535,9 @@ class Session:
         with self.outbox_lock:
             pending, self.outbox = self.outbox, []
         frames.extend(pending)
+        if self._xianjie_pushes:
+            frames.extend(self._xianjie_pushes)
+            del self._xianjie_pushes[:]
         frames.extend(self._fight_refresh_frames())
         return tuple(frames) if frames else None
 
@@ -8018,6 +8276,24 @@ class Session:
             return None, False
         return row, True
 
+    def _huoyue_jianding(self, rid):
+        """equip_jianding -> type 16 with the day's appraisal count.
+
+        Java substitutes equipSlotExportService.getDayJianDingCount for the
+        handler's 1 and passes add=false; role_jianding keeps one running
+        count, so this reports it while the last stamp is today (the
+        lifetime count is a documented approximation of the daily one).
+        """
+        try:
+            row = self.get_role_jianding(rid) or {}
+            stamp = int(row.get('jianding_time') or 0)
+            count = int(row.get('jianding_count') or 0)
+        except (TypeError, ValueError):
+            return
+        if not xianjie_lib.day_is_today(stamp):
+            count = 0
+        self._huoyue_record(rid, 16, count, add=False)
+
     def _jd_persist(self, rid, row, from_bag, attributes):
         """Rewrite one gear blob after a fujia change."""
         if from_bag:
@@ -8210,6 +8486,7 @@ class Session:
                                         jianding_time=now)
             except Exception:
                 pass
+            self._huoyue_jianding(rid)
             new_vo = equip_vo(blob)
             role = self._equip_role()
             new_row = dict(row, attributes=blob)
@@ -8237,6 +8514,7 @@ class Session:
                                     jianding_exp=stored + add)
         except Exception:
             pass
+        self._huoyue_jianding(rid)
         _total, _level, _gained, exp_frames = self._role_gain_exp(
             role, rid, add)
         return (*exp_frames,
@@ -8831,6 +9109,9 @@ class Session:
         self.save_role_vip(rid, **fields)
         # vip_Level_upgrade -> ZDL:VIP_FIGHT.
         self._fight_changed()
+        # vip_Level_upgrade -> ChengHaoHuoYueDuVipChangeEventHandler: the
+        # VIP type is a state cell (add=false) worth level*5 per level.
+        self._huoyue_record(rid, 1, level, add=False)
         return [frame(amf3_encode([str(CMD_VIP_LEVEL_UP), level]))]
 
     def vip_upgrade_level(self, role, charge_total, now_ms=None):
@@ -12644,6 +12925,13 @@ class Session:
             # role_level_upgrade -> ZDL:SKILL_FIGHTCHANGE +
             # ZDL:ROLELEVEL_FIGHTCHANGE + ZDL:ZUOQI_FIGHT.
             self._fight_changed()
+        # role_increxp -> ChengHaoHuoYueDuAddExpEventHandler (type 11).
+        if amount > 0:
+            try:
+                self._huoyue_record(rid, 11, amount)
+            except Exception:
+                log.warning('conn %d: exp activity failed', self.conn_id,
+                            exc_info=True)
         return total, fields.get('level', old_level), gained, frames
 
     def _role_level_frames(self, role, rid, old_level=0):
@@ -13892,6 +14180,9 @@ class Session:
                        task_condition='',
                        current_loop=(row.get('current_loop') or 0) + 1,
                        recevie_time=int(time.time() * 1000))
+            # task_richang_finish -> ChengHaoHuoYueDuRiChangRenWuEventHandler:
+            # the finished loop pays its 1 toward the 20-loop daily row.
+            self._huoyue_record(rid, 6, 1)
         self._richang_save(rid, row)
         return frame(amf3_encode(
             [str(CMD_RICHANG_RECEIVE), self._richang_out(dict(row))]))
@@ -22017,6 +22308,8 @@ class Session:
             self._bag_money_decr(rid, 'YXB', coin)
         except Exception:
             return None
+        # meiren_chanmian -> ChengHaoHuoYueDuMeiRenChanMianEventHandler.
+        self._huoyue_record(rid, 12, 1)
         return frame(amf3_encode(['82003', [1, meiren_type, level, heti + 1]]))
 
     def _baoshi_rows(self, rid):
@@ -25711,6 +26004,10 @@ class Session:
                                    last_day=today)
         except Exception:
             pass
+        # baixian_reward -> ChengHaoBaiXianEventHandler (type 19, and 21
+        # for the YXB variant, which has no config row).
+        self._huoyue_record(rid, 19, 1)
+        self._huoyue_record(rid, 21, 1)
         return frame(amf3_encode(['71001', [1, god, n]]))
 
     def zhuihui_info(self, msg):
@@ -27153,6 +27450,12 @@ class Session:
         self._bag_money_decr(rid, money_name, total)
         self._task_grant(rid, [{'goods_id': str(goods_id), 'count': count,
                                 'bind': bind}])
+        # mall_buy -> ChengHaoHuoYueDuMallBuyEventHandler: BIND_YB is type
+        # 2 (STORE), YB is type 3 (STORE_YB).
+        if money_name == 'BIND_YB':
+            self._huoyue_record(rid, 2, 1)
+        elif money_name == 'YB':
+            self._huoyue_record(rid, 3, 1)
         return frame(amf3_encode(
             [str(CMD_MALL_BUY),
              [1, [str(goods_id), count, total, money_type]]]))
@@ -27887,6 +28190,8 @@ class Session:
         total_zq = int(role.get('zhenqi') or 0) + int(zhenqi or 0)
         total_yxb = int(role.get('tongqian') or 0) + int(yxb or 0)
         self.save_role_state(rid, zhenqi=total_zq, tongqian=total_yxb)
+        if int(zhenqi or 0) > 0:
+            self._huoyue_record(rid, 10, int(zhenqi or 0))
         try:
             role.update(zhenqi=total_zq, tongqian=total_yxb)
         except Exception:

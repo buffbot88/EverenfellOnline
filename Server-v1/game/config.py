@@ -859,6 +859,84 @@ def load_chenghao_table(path):
             if isinstance(r, dict) and r.get('chenghaoid') is not None}
 
 
+def load_meirihuoyue_table(path):
+    """Rows of sys_config/meirihuoyue.jat keyed by id.
+
+    Mirrors MeiRiHuoYueExportServiceImpl.createMeiRiHuoYue: leixing maps
+    through HuoYueDuType.getType, dandusuan is ``jisuan`` and its derived
+    ``value`` is ``huoyuezhi / jindu`` integer division (so thresholds
+    larger than the reward yield 0 per unit, as in the original data).
+    """
+    from .xianjie import HUOYUE_TYPES
+
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of meirihuoyue rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('id') is None:
+            continue
+        type_id = config_int(row.get('leixing'))
+        jindu = config_int(row.get('jindu'))
+        huoyuezhi = config_int(row.get('huoyuezhi'))
+        jisuan = bool(config_int(row.get('dandusuan')))
+        try:
+            value = huoyuezhi // jindu if jisuan and jindu else 0
+        except ZeroDivisionError:
+            value = 0
+        table[str(config_int(row.get('id')))] = {
+            'id': str(config_int(row.get('id'))),
+            'leixing': type_id,
+            'type': HUOYUE_TYPES.get(type_id),
+            'zhiling': str(row.get('zhiling') or ''),
+            'jindu': jindu,
+            'huoyuezhi': huoyuezhi,
+            'jisuan': jisuan,
+            'value': value,
+            'miaosha': bool(config_int(row.get('miaosha'))),
+            'feiyong': config_int(row.get('feiyong')),
+            'tiaojian': config_int(row.get('tiaojian')),
+            'tiaojian2': str(row.get('tiaojian2') or ''),
+        }
+    return table
+
+
+def load_huoyuejiangli_table(path):
+    """Rows of sys_config/huoyuejiangli.jat keyed by id.
+
+    ``item`` is the Java ItemParamVo list string ('goods:count:bind;...');
+    the third cell is the bind flag, exactly what putInBag uses.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of huoyuejiangli rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('id') is None:
+            continue
+        items = []
+        for chunk in str(row.get('item') or '').split(';'):
+            parts = chunk.split(':')
+            if len(parts) < 2 or not parts[0]:
+                continue
+            try:
+                count = int(parts[1])
+            except (TypeError, ValueError):
+                continue
+            try:
+                bind = int(parts[2]) if len(parts) > 2 else 0
+            except (TypeError, ValueError):
+                bind = 0
+            items.append({'goods_id': parts[0], 'count': count,
+                          'bind': bind})
+        table[str(config_int(row.get('id')))] = {
+            'id': str(config_int(row.get('id'))),
+            'huoyue': config_int(row.get('huoyue')),
+            'items': items,
+        }
+    return table
+
+
 def load_meiren_table(path):
     """Rows of sys_config/meiren.jat as ({meinvid: (type, level)},
     {type: {level: attribute map}}).
@@ -1298,6 +1376,8 @@ class GameConfig:
         self._vipqq = None
         self._xianjie = None
         self._chenghao = None
+        self._meirihuoyue = None
+        self._huoyuejiangli = None
         self._meiren = None
         self._meiren_raw = None
         self._baoshi_buwei = None
@@ -5966,6 +6046,38 @@ class GameConfig:
                     row.get('shuxingjiacheng')).items():
                 totals[key] = totals.get(key, 0.0) + value
         return totals
+
+    def chenghao_fight(self, chenghao_ids):
+        """ZhanDouLiServiceImpl.getchenghao: getFight over the summed bags."""
+        if not chenghao_ids:
+            return 0
+        return self.fight_value(self.chenghao_attribute_map(chenghao_ids))
+
+    def meirihuoyue_table(self):
+        """meirihuoyue.jat rows by id; empty when the file is absent."""
+        if self._meirihuoyue is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'meirihuoyue.jat')
+            try:
+                self._meirihuoyue = load_meirihuoyue_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad meirihuoyue table: %s', e)
+                self._meirihuoyue = {}
+        return self._meirihuoyue
+
+    def huoyuejiangli_table(self):
+        """huoyuejiangli.jat rows by id; empty when the file is absent."""
+        if self._huoyuejiangli is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'huoyuejiangli.jat')
+            try:
+                self._huoyuejiangli = load_huoyuejiangli_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad huoyuejiangli table: %s', e)
+                self._huoyuejiangli = {}
+        return self._huoyuejiangli
 
     def meiren_table(self):
         """meiren.jat as ({meinvid: (type, level)}, {type: {level: bag}})."""

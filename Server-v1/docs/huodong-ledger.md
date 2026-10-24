@@ -15,12 +15,13 @@ the jar: no sender, no handler, not in InCmd).
 ## Full 38-ID classification
 
 Zonghe group (19 inbound: 70000/70001/70500/70501/70506/70507/
-70550/70551 `complete+tested`, rest `missing`): 70000/70001
+70550/70551/70508/70580 `complete+tested`, rest `missing`): 70000/70001
 (first recharge, batch 2), 70500 (panel, batch 3), 70501
 (accumulate-recharge, batch 4), 70506 (discount-mall, batch 5),
 70507 (exchange, batch 6), 70550/70551 (durable buy/claim,
-batch 7), 70502/70505/70508/70509/70530/70580
-(accumulate/limited-mall/exchange/ranks),
+batch 7), 70508/70580 (rank displays,
+batch 13), 70502/70505/70509/70530
+(accumulate/limited-mall/exchange),
 70552/70553/70554 (consumption rank/rebate).
 Every one is driven by `ZongheHuodongCategoryConfig` rows from the
 GM-pushed remote JSON (`AbsZongheHuodongRemoteRefreshAble-
@@ -283,9 +284,9 @@ activity's data map). Liveness is the raw service check
 the exclusive end edge, and the wire dispatch.
 
 Next in family, in dependency order: 70551 generic claim + 70550
-mall buy (null-guarded/writes), 70580/70508 rank rows, 70530
-pay/band info. 70502 (YB_CONSUME ct 3) and 70505 (FINAL ct 7)
-have no fu0 rows and stay blocked on config.
+mall buy (null-guarded/writes, batch 7), 70580/70508 rank rows
+(batch 13), 70530 pay/band info. 70502 (YB_CONSUME ct 3) and
+70505 (FINAL ct 7) have no fu0 rows and stay blocked on config.
 
 ## Batch 5: 70506 discount-mall display (getLimitedMall)
 
@@ -480,10 +481,17 @@ ct-30): `87000 getData` / `87001 upgrade(Boolean)` /
 `87002 getbinqi` / `schedule`; service impl and storage were
 not recovered, so `getQizhanBinLevel` stays injected.
 
-- Zonghe service port for 70502/70505/70508/70509/
-  70530/70552-70554/70580/70520 (70580/70508 shapes recovered
-  in batch 12; the rest routing-only: all verbatim `send2One`
-  except null-guarded 70530)
+- Zonghe service port for 70502/70505/70509/
+  70530/70552-70554/70520 (routing-only: all verbatim `send2One`
+  except null-guarded 70530). Batch 13 ports the batch-12
+  map: `Session.huodong_zuoqi_rank` (70508) +
+  `Session.huodong_qibing_rank` (70580, any converted typeId,
+  null/garbage → -1 → `[0, 792005]`) over the shared
+  `_zonghe_rank` builder; completion reads the claim counters
+  (`max_val >= 1`, subsumed by the 1/1 floors in fu0 data);
+  `tests/test_huodong_rank.py` pins all five families, the
+  completion/limit transitions, and the invalid/inactive/
+  missing/level-gated edges through the encrypted wire.
   and the families absent from `fu0`
   (ct 4/6/8/11-17/19/20/23/35; ct-3/ct-7 claims are in but
   their 70502/70505 displays stay blocked on config). Loader +
@@ -491,7 +499,8 @@ not recovered, so `getQizhanBinLevel` stays injected.
   (batch 3) + 70501 display (batch 4) + 70506 display (batch 5)
   + 70507 display (batch 6) + 70550/70551 durable buy/claim
   lifecycle (batch 7) + 70551 ct-1/ct-10 claims (batch 8) +
-  70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims (batch 9) are
+  70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims (batch 9) +
+  70508/70580 rank displays (batch 13) are
   in. No seeded stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/

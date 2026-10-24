@@ -533,6 +533,11 @@ CMD_HUODONG_PANEL_INFO = 70500
 CMD_HUODONG_ACC_RECHARGE = 70501
 # HuodongAction.getLimitedMall -> getLimitedMall (ct-5).
 CMD_HUODONG_LIMITED_MALL = 70506
+# HuodongAction.getZuoqiRank -> getZuoqiRank (ct-10, no data).
+CMD_HUODONG_ZUOQI_RANK = 70508
+# HuodongAction.getQibingRank -> getQibingRank(roleId, typeId)
+# for the 22/30/31/32 rank-display families.
+CMD_HUODONG_QIBING_RANK = 70580
 # HuodongAction.getLimitedExchange -> getLimitedExchange (ct-9).
 CMD_HUODONG_LIMITED_EXCHANGE = 70507
 # HuodongAction.buyHuodongMallGoods route (bytecode):
@@ -1690,6 +1695,10 @@ class Session:
             return self.huodong_accumulate_recharge(msg)
         if cmd_num == CMD_HUODONG_LIMITED_MALL:
             return self.huodong_limited_mall(msg)
+        if cmd_num == CMD_HUODONG_ZUOQI_RANK:
+            return self.huodong_zuoqi_rank(msg)
+        if cmd_num == CMD_HUODONG_QIBING_RANK:
+            return self.huodong_qibing_rank(msg)
         if cmd_num == CMD_HUODONG_LIMITED_EXCHANGE:
             return self.huodong_limited_exchange(msg)
         if cmd_num == CMD_HUODONG_MALL_BUY:
@@ -15480,6 +15489,112 @@ class Session:
         """Command 70506: discount-mall goods for ct-5."""
         return self._zonghe_role_frame(CMD_HUODONG_LIMITED_MALL,
                                        self._zonghe_mall, now_ms=now_ms)
+
+    def _zonghe_rank_metric(self, clienttype, rid):
+        """getSingleHuodongConditionVal family dispatch, 0 by default."""
+        if clienttype == 10:
+            return self._zonghe_zuoqi_rank(rid)
+        if clienttype == 22:
+            return self._zonghe_baoshi_sum(rid)
+        if clienttype == 30:
+            return self._zonghe_qibing_level(rid)
+        if clienttype == 31:
+            return self._zonghe_chibang_level(rid)
+        if clienttype == 32:
+            return self._zonghe_vip_level(rid)
+        return 0
+
+    def _zonghe_rank(self, role, clienttype, now_ms=None):
+        """70508/70580 payload: rows else [2]/[0, 792005]."""
+        found, missing = self._zonghe_live_cat(clienttype, now_ms)
+        if missing:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        if found is None:
+            return [2]
+        acts = found.get('activities') or []
+        if not acts:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        level = self._zonghe_int((role or {}).get('level'))
+        try:
+            total = self._zonghe_charge_total_all(rid)
+        except Exception:
+            total = 0
+        metric = self._zonghe_rank_metric(clienttype, rid)
+        rows = []
+        for act in acts:
+            need = self._zonghe_int(act.get('need_level'))
+            need_pay = self._zonghe_int(act.get('need_pay_yb'))
+            if level < need or total < need_pay:
+                continue
+            try:
+                con = int(str(act.get('con1') or 0))
+            except (TypeError, ValueError):
+                con = 0
+            items = [self._zonghe_item_client(v)
+                     for v in act.get('item_views') or []]
+            day_limit = self._zonghe_int(act.get('day_count'))
+            max_limit = self._zonghe_int(act.get('max_count'))
+            day_val = self._zonghe_acc_value(counters, act.get('id'))
+            max_val = self._zonghe_acc_value(counters_max,
+                                             act.get('id'))
+            # getZuoqiRank/getQibingRank row: state 1 once the
+            # metric covers con (isCompleted reads the claim
+            # counters, hence 2 once taken), the day/max floors
+            # force 2 like the claim displays.
+            state = 0
+            if metric >= con:
+                state = 1
+                if max_val >= 1:
+                    state = 2
+            if day_val >= day_limit or max_val >= max_limit:
+                state = 2
+            rows.append([act.get('id'), con, items, max_val,
+                         max_limit, day_val, day_limit, state,
+                         self._zonghe_int(act.get('order')),
+                         act.get('award_desc'), act.get('name'),
+                         act.get('huodongicon')])
+        return [1, clienttype, found.get('start_ms') or 0,
+                found.get('end_ms') or 0, found.get('pic') or '',
+                rows]
+
+    def _zonghe_zuoqi_rank_rows(self, role, now_ms=None):
+        """First-live ct-10 rows for the 70508 frame."""
+        return self._zonghe_rank(role, 10, now_ms)
+
+    def huodong_zuoqi_rank(self, msg=None, now_ms=None):
+        """Command 70508: mount-progression rows for ct-10."""
+        return self._zonghe_role_frame(CMD_HUODONG_ZUOQI_RANK,
+                                       self._zonghe_zuoqi_rank_rows,
+                                       now_ms=now_ms)
+
+    def huodong_qibing_rank(self, msg=None, now_ms=None):
+        """Command 70580: rank rows for the passed family typeId."""
+        data = msg[1] if isinstance(msg, list) and len(msg) > 1 \
+            else None
+        cells = list(data) if isinstance(data, (list, tuple)) \
+            else [data]
+        try:
+            ctype = int(cells[0]) if cells else None
+        except (TypeError, ValueError):
+            ctype = None
+        if ctype is None:
+            # The jar's convert misses a null type the same way a
+            # missing category misses: [0, 792005].
+            ctype = -1
+        return self._zonghe_role_frame(
+            CMD_HUODONG_QIBING_RANK,
+            lambda role, now_ms=None: self._zonghe_rank(
+                role, ctype, now_ms),
+            now_ms=now_ms)
 
     @staticmethod
     def _zonghe_exchange_costs(con):

@@ -4713,6 +4713,9 @@ class GameConfig:
             'icon': str(data.get('dataicon') or ''),
             'name': str(data.get('dataname') or ''),
             'title': str(data.get('datatitle') or ''),
+            # Row-slot-11 icon for the rank displays (getSingle...
+            # families read huodongicon off the same awards map).
+            'huodongicon': str(awards.get('huodongico') or ''),
             'award_name': (None if awards.get('name') is None
                            else str(awards.get('name'))),
             'award_desc': (None if awards.get('des') is None

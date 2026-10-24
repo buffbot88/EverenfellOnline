@@ -7121,7 +7121,7 @@ class Session:
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
-        qibing, qibing_dan = 0, 0
+        qibing, qibing_dan, qibing_book = 0, 0, 0
         guangyi, guangyi_dan, guangyi_book = 0, 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
@@ -7216,16 +7216,19 @@ class Session:
                         wing_level, self._guangyi_dans(wing))
                 except Exception:
                     guangyi_dan = 0
-            # The book sum reads only the worn 10051..10056 band, so it
-            # counts without a wing row (Java never checks the level).
-            guangyi_book = self._guangyi_skillbook_fight(role.get('id'))
+            # The book sums read only their worn bands, so they count
+            # without a mount or wing row (Java never checks the level).
+            qibing_book = self._skillbook_band_fight(role.get('id'),
+                                                     SKILLBOOK_QIZHAN)
+            guangyi_book = self._skillbook_band_fight(role.get('id'),
+                                                     SKILLBOOK_GUANGYI)
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
             [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
             [qibing, qibing_dan], xianjie,
-            0, 0, 0, 0, [guangyi, guangyi_dan, guangyi_book], 0, 0, 0, 0,
-            0, 0, [0, 0], 0]]))
+            0, 0, qibing_book, 0, [guangyi, guangyi_dan, guangyi_book],
+            0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def equip_info(self):
         """Command 31000: RoleEquipSlotServiceImpl.getInfoEquip -> formart1(List).
@@ -9678,11 +9681,12 @@ class Session:
         return any(lo <= a <= hi and lo <= b <= hi for lo, hi in bands)
 
     def _skillbook_slot_open(self, rid, role, slot):
-        """isOpenSlot: zuoqi and wing mutex cells; qizhan stays locked.
+        """isOpenSlot: each mount band's own live level opens its slots.
 
-        The qizhan table is not migrated, so that band answers closed
-        exactly like Java's empty source would; the wing band reads the
-        live level's mutexN cells through isOpenSkillSlot.
+        zuoqi reads isOpen(rank, slot - 10000), qibing
+        isOpen(binqiLevel, slot - 10030) over the qizhanbingqi mutex
+        cells, wing isOpenSkillSlot(level, slot - 10050) over the wing
+        mutex cells. A missing row leaves the band closed.
         """
         try:
             num = int(slot)
@@ -9697,6 +9701,15 @@ class Session:
                 return False
             return bool(self.config.zuoqi_skill_open(
                 zuoqi.get('zuoqi_rank'), role.get('level'), num - 10000))
+        if SKILLBOOK_QIZHAN[0] <= num <= SKILLBOOK_QIZHAN[1]:
+            if self.config is None:
+                return False
+            try:
+                qbrow = self.get_role_qibing(rid) or {}
+            except Exception:
+                qbrow = {}
+            return bool(self.config.qibing_skill_open(
+                qbrow.get('binqi_level'), num - 10030))
         if SKILLBOOK_GUANGYI[0] <= num <= SKILLBOOK_GUANGYI[1]:
             if self.config is None:
                 return False
@@ -9723,14 +9736,19 @@ class Session:
                 return [0, SKILLBOOK_ERR_ZUOQI]
         except (TypeError, ValueError):
             pass
-        # The qibing table is not migrated, so getQizhanBinLevel still
-        # counts as 0 and those books stay gated (99006). getGuangYiLevel
-        # reads the live wing row, so chibanglv books unlock with it.
+        # getQizhanBinLevel reads the raw binqiLevel (a lapsed trial
+        # still counts), so qibinglv books unlock with the ridden level.
         try:
-            if 0 < int(book.get('qibinglv') or 0):
-                return [0, SKILLBOOK_ERR_QIBING]
+            qb_need = int(book.get('qibinglv') or 0)
         except (TypeError, ValueError):
-            pass
+            qb_need = 0
+        try:
+            qb_level = int((self.get_role_qibing(rid) or {}).get(
+                'binqi_level') or 0)
+        except Exception:
+            qb_level = 0
+        if qb_need > qb_level:
+            return [0, SKILLBOOK_ERR_QIBING]
         try:
             wing_need = int(book.get('chibanglv') or 0)
         except (TypeError, ValueError):
@@ -9912,8 +9930,9 @@ class Session:
                     rid, dict(item, slot_num=equip_slot))
             except Exception:
                 pass
-            log.info('conn %d: wear change event skipped (no bus)',
-                     self.conn_id)
+            # skill_book_peidai -> ZDL:ZUOQISKILLBOOK/QIBINSKILLBOOK/
+            # GUANGYIKILLBOOK.
+            self._fight_changed()
             return frame(amf3_encode(
                 [str(CMD_SKILLBOOK_MOVE),
                  [1, [equip_slot,
@@ -9933,7 +9952,9 @@ class Session:
                 rid, dict(item, slot_num=equip_slot))
         except Exception:
             pass
-        log.info('conn %d: wear swap events skipped (no bus)', self.conn_id)
+        # skill_book_peidai -> ZDL:ZUOQISKILLBOOK/QIBINSKILLBOOK/
+        # GUANGYIKILLBOOK; a swap publishes one event per moved book.
+        self._fight_changed()
         return frame(amf3_encode(
             [str(CMD_SKILLBOOK_MOVE),
              [1, [equip_slot,
@@ -9960,8 +9981,9 @@ class Session:
             self.insert_role_bag_slot(rid, dict(slot, slot_num=bag_slot))
         except Exception:
             pass
-        log.info('conn %d: strip change event skipped (no bus)',
-                 self.conn_id)
+        # skill_book_peidai -> ZDL:ZUOQISKILLBOOK/QIBINSKILLBOOK/
+        # GUANGYIKILLBOOK (xieZai publishes one event).
+        self._fight_changed()
         return frame(amf3_encode(
             [str(CMD_SKILLBOOK_MOVE), [1, [equip_slot, None], None]]))
 
@@ -9996,6 +10018,8 @@ class Session:
                                                 slot_num=from_slot)
             except Exception:
                 pass
+        # move() publishes no SkillBookChangeEvent, so a slider inside a
+        # band never refreshes 12010 (the bucket sum is unchanged).
         first_map = self.bag_goods_map(role, dict(first, slot_num=to_slot))
         if other is None:
             second = [from_slot, None]
@@ -25222,11 +25246,12 @@ class Session:
         """Dan map {goods: count} from the row's attr_dan JSON."""
         return self._dan_count_map((row or {}).get('attr_dan'))
 
-    def _guangyi_skillbook_fight(self, rid):
-        """getGuangYiSkillBookZhanLi: worn wing books' JiNengBiao combat.
+    def _skillbook_band_fight(self, rid, band):
+        """ZhanDouLi book buckets: worn books' JiNengBiao combat.
 
-        getGuangYiSkillBooks loads the 10051..10056 band and wraps each
-        slot with its SkillBookConfig; the fight sums
+        getZuoQiSkillBooks/getQiBinSkillBooks/getGuangYiSkillBooks load
+        one mount band's worn slots and wrap each with its
+        SkillBookConfig; the fight sums
         loadSkillByLevel(skillid, skillbooklevel).getCombat, which is
         the (jhjn, skillbooklevel) JiNengBiao row's combat cell.
         """
@@ -25234,7 +25259,7 @@ class Session:
             return 0
         try:
             rows = self.get_role_skillbook_slots(
-                rid, SKILLBOOK_GUANGYI[0], SKILLBOOK_GUANGYI[1]) or []
+                rid, band[0], band[1]) or []
         except Exception:
             return 0
         total = 0

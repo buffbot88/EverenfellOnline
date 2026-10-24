@@ -67,6 +67,7 @@ traffic.
 | VIP level up | `vip_Level_upgrade` -> `ZDL:VIP_FIGHT` | [5] | `_vip_upgrade` |
 | pozhen layer cleared | `pozhen_tongguan` -> `ZDL:POZHENG_FIGHT` | [7] | sweep award paths |
 | wing granted/upgraded, card, attribute dan | `guangyi_upgrade_level` / `guangyi_attribute_use` -> `ZDL:GUANGYI` (+ `ZDL:GUANGYI_ATT_DAN`) | [16] | `_guangyi_grant`, `guangyi_upgrade` success, `_prop_guangyi_dan`. Wear (102003) publishes only `guangyi_change`, which no ZDL command maps |
+| skill book worn / stripped / swapped | `skill_book_peidai` -> `ZDL:ZUOQISKILLBOOK` + `ZDL:QIBINSKILLBOOK` + `ZDL:GUANGYIKILLBOOK` | [13], [14], [16][2] | `_skillbook_wear` (both the empty-slot and swap paths), `_skillbook_strip`. `move` (worn->worn slide) publishes no event in the jar, and `tunshi`/`yjTunshi` publish only `SkillBookTunShiEvent`, so neither refreshes 12010 |
 
 ## Slots with no in-port producer (documented, not wired)
 
@@ -75,12 +76,16 @@ tables are not ported, so no change can move them yet:
 
 - [4][0] gem **effect** (`baishixiaoguo`) and [0][3]/[0][4] gear effect
   buckets: no attribute-bag source writes them.
-- [8] meiren, [11] xianjie, [12] chenghao, [13]/[14] mount/qibing skill
-  books, [15] taozhuang, [17] wuhun, [18] touxian,
-  [19] zuwu, [20] guild, [21] yuanshen, [22] shenqi, [23] pet zhanfa /
-  heti, [24] hunjie: the wrapper's Java buckets exist, but the port
-  either has no inbound family (xianjiechenhao, shenqi,
-  yuanshen, touxian, wuhun) or computes the value only for 12000.
+- [8] meiren, [11] xianjie, [12] chenghao, [15] taozhuang, [17] wuhun,
+  [18] touxian, [19] zuwu, [20] guild, [21] yuanshen, [22] shenqi,
+  [23] pet zhanfa / heti, [24] hunjie: the wrapper's Java buckets
+  exist, but the port either has no inbound family (xianjiechenhao,
+  shenqi, yuanshen, touxian, wuhun) or computes the value only for
+  12000.
+- [13] the mount-book bucket stays 0: the 10001..10006 band is
+  writable through 99001, but `_fighting_frame` still reports the
+  literal 0 for it (the Qibing slice only wired [14]);
+  `_skillbook_band_fight` already computes the value when it is wired.
 - [6][0] shenjiang rank fight and [6][1] jiangxing: not modelled.
 
 When any of those families lands, its change point only has to call

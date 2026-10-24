@@ -25,8 +25,25 @@ deferred.
 | 42000 | getSkill | complete+tested | `[[category, level]]` per `role_skill` row; empty set answers `[]` |
 | 42003 | upgradeSkill | complete+tested | gates in Java order: unknown 420005, level 100 cap 420010, skill >= role level 420006, shenjiang `bianshenneed` rank 420012, config `levelneed` 1000, zhenqi 1001, YXB 1003; costs burn before the `learnodds` roll; success `[1, category, level+1]`, failure `[-1]`; a missing JiNengBiao row stays silent (Java throws) |
 | 99000 | getSkillBookInfo | complete+tested | worn mount/zuoqi book slots as `formart` maps; empty set answers `[]` |
-| 99001 | moveSkillBook | complete+tested | band routing: bag->worn peidai, worn->bag xieZai, worn->worn move, bag->bag tunshi; 99000 bad slot, 99001 equipped target, 99002 eater at cap, 99003 type band, 99004 slot unopened, zuoqi rank gate |
+| 99001 | moveSkillBook | complete+tested | band routing: bag->worn peidai, worn->bag xieZai, worn->worn move, bag->bag tunshi; 99000 bad slot, 99003 type band, 99004 slot unopened (per-band mutex), 99005 zuoqi rank, 99006 qibing level, 99007 `only` mutex, 99011 wing level, 99001 equipped target, 99002 eater at cap |
 | 99002 | yjTunshi | complete+tested | validates every food first (99000/99001/99003/99002), then feeds in order, one 30106 push at the end, reply `[1, [eaterSlot, formart]]`; level-10 eater stops the list early; bound books carry their bind to the eater |
+
+## Skill-book slot bands
+
+`getType`/`isPeiDai`/`isMove` split worn books into three six-slot
+bands, and `isOpenSlot` reads a *different* progression source per
+band (SkillbookServiceImpl bytecode):
+
+| Band | Slots | Config row | Open cell | Eligibility cell |
+| ---- | ----- | ---------- | --------- | ---------------- |
+| mount (zuoqi) | 10001..10006 | ZuoJiBiao keyed by `(stratum, ridelv)` | `mutexN` > 0 at the live rank, plus the role-level row | `zuoqilv` <= `getZuoQiRank` |
+| qibing | 10031..10036 | `qizhanbingqi.jat` keyed by `rideweapon` | `mutexN` > 0 for `isOpen(binqiLevel, slot-10030)`, read from the **raw** `binqi_level` (a lapsed guoqi trial still counts) | `qibinglv` <= `getQizhanBinLevel` |
+| wing | 10051..10056 | GuangYiBiao level rows | `mutexN` > 0 for `isOpenSkillSlot(level, slot-10050)` | `chibanglv` <= `getGuangYiLevel` |
+
+Shipped `qizhanbingqi.jat` has 7 rows: level 1 opens nothing, level
+2 opens 10031, and each further level opens one more slot (level 7
+opens all six). A role without a `role_qizhanbinqi` row therefore
+answers 99004 for the whole band, exactly like Java's empty source.
 
 ## Server pushes (server -> client, no client command)
 
@@ -86,7 +103,15 @@ jar-wide. Per port convention events ride no bus, so they are skipped.
   `role_skill` rows. Nothing to port.
 - **Skill activation/equipping.** The client fires by category (42001/
   42002) and there is no server-side loadout or skill-bar table; the
-  "equipped" surface is the mount/zuoqi skill-book slot (99000-99002),
-  already complete.
+  "equipped" surface is the mount/zuoqi/qibing/wing skill-book slots
+  (99000-99002), already complete.
+- **Zuoqi book fight bucket (12010 [13]).** `_skillbook_band_fight`
+  computes it, but `_fighting_frame` still reports the literal 0; the
+  Qibing slice wired [14] only. One-line follow-up when the mount
+  slice is next touched.
+- **Skill-book passive effects.** Books only feed the 12010 band sums
+  (JiNengBiao `combat` through `loadSkillInfoByLevel`); the jar's
+  `SkillBookChangeEvent` has no combat-handler subscriber beyond
+  `ZDL:*SKILLBOOK`, so no battle-stat layer is missing here.
 - **`getSkills` / `getSkillNumber`** (shenjiang and zuoqi wrappers'
   skill maps) are consumed by those families, not by a skill command.

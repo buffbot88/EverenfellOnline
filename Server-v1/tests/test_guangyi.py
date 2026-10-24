@@ -331,8 +331,9 @@ class GuangyiTest(unittest.TestCase):
             self.rid, {'slot_num': 10051, 'goods_id': BOOK, 'count': 1,
                        'bind': 0, 'expire_time': 0, 'rare_level': 1,
                        'item_level': 1})
-        self.assertEqual(self.sess._guangyi_skillbook_fight(self.rid),
-                         int(info.get('combat') or 0))
+        self.assertEqual(
+            self.sess._skillbook_band_fight(self.rid, (10051, 10056)),
+            int(info.get('combat') or 0))
         self.assertEqual(self.wire(12010, None)[0][1][16][2],
                          int(info.get('combat') or 0))
 

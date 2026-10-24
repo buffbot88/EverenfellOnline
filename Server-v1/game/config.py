@@ -3946,6 +3946,13 @@ class GameConfig:
             odds = float(row.get('odds') or 0)
         except (TypeError, ValueError):
             odds = 0.0
+        skills = set()
+        for index in range(1, 7):
+            try:
+                if float(row.get('mutex%d' % index) or 0) > 0:
+                    skills.add(index)
+            except (TypeError, ValueError):
+                continue
         return {'name': str(row.get('name') or ''),
                 'need_level': config_int(row.get('needleaderlv')),
                 'decr_goods': decr_goods,
@@ -3960,7 +3967,23 @@ class GameConfig:
                 'guoqi_hours': config_int(row.get('guoqi')),
                 'rideweapon': config_int(row.get('rideweapon')),
                 'max_dan_hun': config_int(row.get('xlimit')),
-                'max_dan_ling': config_int(row.get('perxlimit'))}
+                'max_dan_ling': config_int(row.get('perxlimit')),
+                'skill_open': skills}
+
+    def qibing_skill_open(self, level, index):
+        """QiZhanBinQiConfig.isOpenSkill: the level's mutexN cell.
+
+        isOpen(roleId, slot) reads the *raw* binqiLevel (trial expiry is
+        irrelevant here), and SkillBookServiceImpl passes slot - 10030
+        for the 10031..10036 band.
+        """
+        cfg = self.qibing_config(level)
+        if cfg is None:
+            return False
+        try:
+            return int(index) in cfg['skill_open']
+        except (TypeError, ValueError):
+            return False
 
     def qibing_max_level(self):
         """Highest configured qibing level (rideweapon key space)."""

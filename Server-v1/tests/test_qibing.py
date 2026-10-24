@@ -82,6 +82,15 @@ class QibingTest(unittest.TestCase):
             get_role_bag_slots=self.store.get_role_bag_slots,
             get_role_bag_slot_by_bag_id=
             self.store.get_role_bag_slot_by_bag_id,
+            get_role_bag_slot=self.store.get_role_bag_slot,
+            get_role_skillbook_slots=self.store.get_role_skillbook_slots,
+            get_role_skillbook_slot=self.store.get_role_skillbook_slot,
+            insert_role_skillbook_slot=
+            self.store.insert_role_skillbook_slot,
+            update_role_skillbook_slot=
+            self.store.update_role_skillbook_slot,
+            delete_role_skillbook_slot=
+            self.store.delete_role_skillbook_slot,
             update_role_bag_slot=self.store.update_role_bag_slot,
             delete_role_bag_slot=self.store.delete_role_bag_slot,
             insert_role_bag_slot=self.store.insert_role_bag_slot,
@@ -398,6 +407,179 @@ class QibingTest(unittest.TestCase):
             json.loads(self.store.get_role_qibing(
                 self.rid)['attribute_dan']),
             {'bingling': 1})
+
+    # -- skill books (99000/99001) in the 10031..10036 band ----------------
+    def stock_book(self, slot, goods):
+        self.store.insert_role_bag_slot(
+            self.rid, {'slot_num': slot, 'bag_id': f'bk{slot}',
+                       'goods_id': goods, 'count': 1, 'bind': 0,
+                       'attributes': '{"exp":0}'})
+
+    def move(self, frm, to):
+        return self.feed(99001, [frm, to])
+
+    def drain(self):
+        return [decode(bytes(f)[4:]) for f in
+                self.sess._fight_refresh_frames()]
+
+    def fight_body(self, sess=None):
+        sess = sess or self.sess
+        return decode(bytes(sess.fighting_info())[4:])[1]
+
+    def test_skillbook_slot_locked_at_qibing_level_one(self):
+        self.level1_row(binqi_level=1)
+        self.stock_book(30, 'qblvsegongji1')
+        self.assertEqual(self.move(30, 10031), [['99001', [0, 99004]]])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot(self.rid, 30))
+        self.assertIsNone(
+            self.store.get_role_skillbook_slot(self.rid, 10031))
+        self.assertFalse(self.sess._fight_dirty)
+
+    def test_skillbook_slot_opens_at_qibing_level_two(self):
+        self.level1_row(binqi_level=2)
+        self.stock_book(30, 'qblvsegongji1')
+        got = self.move(30, 10031)
+        self.assertEqual(got[0][0], '99001')
+        self.assertEqual(got[0][1][0], 1)
+        self.assertEqual(got[0][1][1][0], 10031)
+        self.assertIsNone(got[0][1][2])
+        self.assertIsNone(self.store.get_role_bag_slot(self.rid, 30))
+        worn = self.store.get_role_skillbook_slot(self.rid, 10031)
+        self.assertEqual(worn['goods_id'], 'qblvsegongji1')
+
+    def test_skillbook_only_first_slot_opens_at_level_two(self):
+        self.level1_row(binqi_level=2)
+        self.stock_book(30, 'qblvsegongji1')
+        self.assertEqual(self.move(30, 10032), [['99001', [0, 99004]]])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot(self.rid, 30))
+
+    def test_skillbook_wear_emits_one_coalesced_refresh(self):
+        self.level1_row(binqi_level=2)
+        self.stock_book(30, 'qblvsegongji1')
+        got = self.move(30, 10031)
+        self.assertEqual([f[0] for f in got], ['99001', '12010'])
+        self.assertEqual(got[1][1][14], 50)
+        self.assertFalse(self.sess._fight_dirty)
+        self.assertEqual(self.drain(), [])
+
+    def test_skillbook_level_requirement_reports_99006(self):
+        self.level1_row(binqi_level=2)
+        self.stock_book(30, 'qbzisegongji1')
+        self.assertEqual(self.move(30, 10031), [['99001', [0, 99006]]])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot(self.rid, 30))
+        self.assertIsNone(
+            self.store.get_role_skillbook_slot(self.rid, 10031))
+        self.assertFalse(self.sess._fight_dirty)
+
+    def test_skillbook_level_requirement_allows_equal(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qbzisegongji1')
+        got = self.move(30, 10031)
+        self.assertEqual(got[0][1][0], 1)
+        worn = self.store.get_role_skillbook_slot(self.rid, 10031)
+        self.assertEqual(worn['goods_id'], 'qbzisegongji1')
+        self.assertEqual(got[-1][1][14], 180)
+
+    def test_skillbook_replacement_returns_old_book(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qblvsegongji1')
+        self.stock_book(31, 'qbchengsegongji1')
+        self.move(30, 10031)
+        got = self.move(31, 10031)
+        self.assertEqual(got[0][1][0], 1)
+        self.assertEqual(got[0][1][1][0], 10031)
+        self.assertEqual(got[0][1][2], None)
+        self.assertEqual(
+            self.store.get_role_skillbook_slot(
+                self.rid, 10031)['goods_id'], 'qbchengsegongji1')
+        back = self.store.get_role_bag_slot(self.rid, 31)
+        self.assertEqual(back['goods_id'], 'qblvsegongji1')
+        self.assertIsNone(self.store.get_role_bag_slot(self.rid, 30))
+        self.assertEqual(got[-1][1][14], 300)
+
+    def test_skillbook_mutex_blocks_same_type_in_band(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qblvsegongji1')
+        self.stock_book(31, 'qblvsegongji2')
+        self.move(30, 10031)
+        got = self.move(31, 10032)
+        self.assertEqual(got, [['99001', [0, 99007]]])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot(self.rid, 31))
+        self.assertIsNone(
+            self.store.get_role_skillbook_slot(self.rid, 10032))
+
+    def test_skillbook_mutex_allows_other_type(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qblvsegongji1')
+        self.stock_book(31, 'qblvsefangyu1')
+        self.move(30, 10031)
+        got = self.move(31, 10032)
+        self.assertEqual(got[0][1][0], 1)
+        self.assertEqual(
+            self.store.get_role_skillbook_slot(
+                self.rid, 10032)['goods_id'], 'qblvsefangyu1')
+        self.assertEqual(got[-1][1][14], 100)
+
+    def test_skillbook_strip_refreshes_and_persists(self):
+        self.level1_row(binqi_level=2)
+        self.stock_book(30, 'qblvsegongji1')
+        self.move(30, 10031)
+        got = self.move(10031, 40)
+        self.assertEqual(got[0], ['99001', [1, [10031, None], None]])
+        self.assertIsNone(
+            self.store.get_role_skillbook_slot(self.rid, 10031))
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.rid, 40)['goods_id'],
+            'qblvsegongji1')
+        self.assertEqual(got[-1][1][14], 0)
+        # Reconnect: a fresh session over the same rows still answers
+        # from the persisted slot table.
+        other = self.make_sess(self.cfg)
+        other.authed_user, other.server_id = 'hero', 'fu1304'
+        self.assertEqual(decode(bytes(other.skillbook_info())[4:]),
+                         ['99000', []])
+        self.assertEqual(self.fight_body(other)[14], 0)
+
+    def test_skillbook_worn_book_survives_reconnect(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qblvsegongji1')
+        self.move(30, 10031)
+        other = self.make_sess(self.cfg)
+        other.authed_user, other.server_id = 'hero', 'fu1304'
+        info = decode(bytes(other.skillbook_info())[4:])
+        self.assertEqual(len(info[1]), 1)
+        cell = info[1][0]
+        cell = cell.get('__assoc__', cell)
+        self.assertEqual(cell['0'], 'qblvsegongji1')
+        body = self.fight_body(other)
+        self.assertEqual(body[14], 50)
+        self.assertEqual(body[16][2], 0)
+
+    def test_skillbook_wrong_band_reports_type(self):
+        self.level1_row(binqi_level=3)
+        self.stock_book(30, 'qblvsegongji1')
+        self.assertEqual(self.move(30, 10001), [['99001', [0, 99003]]])
+        self.assertIsNotNone(
+            self.store.get_role_bag_slot(self.rid, 30))
+
+    def test_skillbook_wing_band_does_not_feed_qibing_bucket(self):
+        self.level1_row(binqi_level=3)
+        self.store.save_role_guangyi(
+            self.rid, level=5, lucky=0, fail_count=0, ispeidai=1,
+            update_time=0, attr_dan=None, lingqu_time=0)
+        self.stock_book(30, 'gylvsegongji1')
+        worn = dict(self.store.get_role_bag_slot(self.rid, 30),
+                    slot_num=10051)
+        self.store.delete_role_bag_slot(self.rid, 30)
+        self.store.insert_role_skillbook_slot(self.rid, worn)
+        body = self.fight_body()
+        self.assertEqual(body[14], 0)
+        self.assertEqual(body[16][2], 50)
+        self.assertEqual(self.drain(), [])
 
 
 if __name__ == '__main__':

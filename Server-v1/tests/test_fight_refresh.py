@@ -86,6 +86,7 @@ class FightRefreshTest(unittest.TestCase):
             save_role_qibing=self.store.save_role_qibing,
             get_role_pozhen=self.store.get_role_pozhen,
             save_role_pozhen=self.store.save_role_pozhen,
+            get_role_skillbook_slots=self.store.get_role_skillbook_slots,
             get_role_bag_slots=self.store.get_role_bag_slots,
             get_role_bag_state=self.store.get_role_bag_state,
             get_role_bag_slot=self.store.get_role_bag_slot,
@@ -261,6 +262,28 @@ class FightRefreshTest(unittest.TestCase):
         self.assertGreater(refresh[0][1][3][0], 0)
         self.assertEqual(self.store.get_role_zuoqi(self.role_id)['zuoqi_rank'],
                          1)
+
+    # -- skill books ------------------------------------------------------
+    def test_mount_book_feeds_slot_13(self):
+        book = self.cfg.skillbook_book('zuoqijineng1')
+        info = self.cfg.skill_info(book.get('jhjn'),
+                                   book.get('skillbooklevel'))
+        self.store.insert_role_skillbook_slot(
+            self.role_id, {'slot_num': 10001, 'goods_id': 'zuoqijineng1',
+                           'count': 1, 'bind': 0})
+        body = self.wire(12010, None)[0][1]
+        self.assertEqual(body[13], int(info.get('combat') or 0))
+
+    def test_qibing_book_feeds_slot_14(self):
+        book = self.cfg.skillbook_book('qblvsegongji1')
+        info = self.cfg.skill_info(book.get('jhjn'),
+                                   book.get('skillbooklevel'))
+        self.store.insert_role_skillbook_slot(
+            self.role_id, {'slot_num': 10031, 'goods_id': 'qblvsegongji1',
+                           'count': 1, 'bind': 0})
+        body = self.wire(12010, None)[0][1]
+        self.assertEqual(body[13], 0)
+        self.assertEqual(body[14], int(info.get('combat') or 0))
 
     # -- delivery ---------------------------------------------------------
     def test_refresh_is_self_only(self):

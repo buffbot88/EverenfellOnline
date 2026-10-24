@@ -105,10 +105,9 @@ jar-wide. Per port convention events ride no bus, so they are skipped.
   42002) and there is no server-side loadout or skill-bar table; the
   "equipped" surface is the mount/zuoqi/qibing/wing skill-book slots
   (99000-99002), already complete.
-- **Zuoqi book fight bucket (12010 [13]).** `_skillbook_band_fight`
-  computes it, but `_fighting_frame` still reports the literal 0; the
-  Qibing slice wired [14] only. One-line follow-up when the mount
-  slice is next touched.
+- ~~**Zuoqi book fight bucket (12010 [13]).**~~ Wired: `_fighting_frame`
+  now calls `_skillbook_band_fight(role, SKILLBOOK_ZUOQI)` for slot
+  [13], matching `setZuoqiBook`/`getZuoQiSkillBookZhanLi`.
 - **Skill-book passive effects.** Books only feed the 12010 band sums
   (JiNengBiao `combat` through `loadSkillInfoByLevel`); the jar's
   `SkillBookChangeEvent` has no combat-handler subscriber beyond

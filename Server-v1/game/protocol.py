@@ -7122,6 +7122,7 @@ class Session:
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
         qibing, qibing_dan, qibing_book = 0, 0, 0
+        zuoqi_book = 0
         guangyi, guangyi_dan, guangyi_book = 0, 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
@@ -7215,19 +7216,23 @@ class Session:
                     guangyi_dan = self.config.guangyi_dan_fight(
                         wing_level, self._guangyi_dans(wing))
                 except Exception:
-                    guangyi_dan = 0
-            # The book sums read only their worn bands, so they count
+                    guangyi_dan = 0            # The book sums read only their worn bands, so they count
             # without a mount or wing row (Java never checks the level).
+            # Wrapper 13/14/16[2] are setZuoqiBook/setQiBinBook/
+            # setGuangYiBook, the three get*SkillBookZhanLi readers.
+            zuoqi_book = self._skillbook_band_fight(role.get('id'),
+                                                    SKILLBOOK_ZUOQI)
             qibing_book = self._skillbook_band_fight(role.get('id'),
                                                      SKILLBOOK_QIZHAN)
             guangyi_book = self._skillbook_band_fight(role.get('id'),
-                                                     SKILLBOOK_GUANGYI)
+                                                      SKILLBOOK_GUANGYI)
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
             [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
             [qibing, qibing_dan], xianjie,
-            0, 0, qibing_book, 0, [guangyi, guangyi_dan, guangyi_book],
+            0, zuoqi_book, qibing_book, 0,
+            [guangyi, guangyi_dan, guangyi_book],
             0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def equip_info(self):

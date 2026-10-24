@@ -1,11 +1,11 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (319 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (320 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 
 - total Java numeric command IDs: 497
-- implemented: 246
+- implemented: 247
 - implemented-untested: 8
 - partial: 0
 - dispatched-no-direct-handler: 0
@@ -14,7 +14,7 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - stub: 2
 - push-only: 27
 - known-unhandled: 0
-- missing: 209
+- missing: 208
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -59,13 +59,13 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | jijin | 0 | 0 | 0 | 0 | 4 | 4 |
 | guildfuben | 5 | 0 | 0 | 0 | 3 | 8 |
 | bag | 17 | 1 | 1 | 0 | 3 | 22 |
-| guangyi | 3 | 0 | 0 | 0 | 3 | 6 |
 | shenmizhuanpan | 0 | 1 | 0 | 0 | 3 | 4 |
 | zuoqi | 10 | 0 | 0 | 0 | 3 | 13 |
 | jingyanyu | 0 | 0 | 0 | 0 | 3 | 3 |
 | duihuangoods | 0 | 0 | 0 | 0 | 3 | 3 |
 | jchuodong | 0 | 0 | 0 | 0 | 3 | 3 |
 | juqingfuben | 8 | 0 | 0 | 0 | 2 | 10 |
+| guangyi | 4 | 0 | 0 | 0 | 2 | 6 |
 | meiren | 4 | 0 | 0 | 0 | 2 | 6 |
 | touxian | 3 | 0 | 0 | 0 | 2 | 5 |
 | jinfeng | 0 | 0 | 0 | 0 | 2 | 2 |
@@ -152,7 +152,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - email (2): 63005 (NOTIFY_NEW), 63009 (CHECK_NEW)
 - jindi (2): 65001 (INFO), 65002 (ENTER)
 - attributebuff (2): 85000 (CMD_85000), 85010 (CMD_85010)
-- guangyi (2): 102001 (CMD_102001), 102005 (CMD_102005)
 - movie (2): 106000 (CMD_106000), 106001 (CMD_106001)
 - shenmizhuanpan (2): 114001 (GET_LOG), 114002 (ZHUAN)
 - phone (2): 116000 (GETINFO), 116001 (REWARD)
@@ -166,6 +165,7 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - goodsbuyback (1): 32005 (DELETE_BACK_GOODS_NOTIFY)
 - jiangli (1): 58016 (J58016)
 - meiren (1): 82004 (MEIREN_82004)
+- guangyi (1): 102005 (CMD_102005)
 - touxian (1): 104004 (CMD_104004)
 - giftcode (1): 570001 (USE5CODE)
 

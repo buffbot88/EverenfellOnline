@@ -987,7 +987,8 @@ CMD_LIHE_PREVIEW = 30304
 BAG_ERR_BIND_NO_DISCARD = 430218
 # PropStageAction.consumeGoods reply id; the 30104/30105 ids below are
 # server pushes emitted by splitGoods (no inbound route exists for them).
-PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 33, 35, 36, 37, 45, 46])
+PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 33, 35, 36, 37, 45, 46,
+                            49, 50, 51])
 PROP_CONSUME_CATEGORIES = frozenset(
     ['14', '40', '11', '13', '16', '15', '17', '80'])
 PROP_HP_CD_MS = 1500
@@ -997,6 +998,15 @@ PROP_ERROR_100004 = 100004
 PROP_ERROR_100008 = 100008
 PROP_ERROR_ZUOQI = 100014
 DAN_ERROR_CAPPED = 851003
+# Wing command ids (GuangyiCommands) and its output codes; 102001/102002
+# double as the "already owned" and "level not owned" errors.
+CMD_GUANGYI_INFO = 102000
+CMD_GUANGYI_UPGRADE = 102001
+CMD_GUANGYI_BUY = 102002
+CMD_GUANGYI_WEAR = 102003
+GUANGYI_ERR_OWNED = 102001
+GUANGYI_ERR_UNOWNED = 102002
+GUANGYI_ERR_DAN_CAP = 87104
 GENERAL_LEVEL = 1000
 GENERAL_YB = 1002
 GENERAL_JB = 1003
@@ -2356,11 +2366,13 @@ class Session:
             return self.touxian_activate(msg)
         if cmd_num == 104002:
             return self.touxian_wear(msg)
-        if cmd_num == 102000:
+        if cmd_num == CMD_GUANGYI_INFO:
             return self.guangyi_info(msg)
-        if cmd_num == 102002:
+        if cmd_num == CMD_GUANGYI_UPGRADE:
+            return self.guangyi_upgrade(msg)
+        if cmd_num == CMD_GUANGYI_BUY:
             return self.guangyi_buy(msg)
-        if cmd_num == 102003:
+        if cmd_num == CMD_GUANGYI_WEAR:
             return self.guangyi_wear(msg)
         if cmd_num == CMD_QIBING_DATA:
             return self.qibing_data(msg)
@@ -4558,16 +4570,18 @@ class Session:
 
     def role_bags(self, role):
         """No-effect attribute bags for a role: gear, dan, xianjie,
-        chenghao, meiren, baoshi and zuoqi.
+        chenghao, meiren, baoshi, zuoqi, wing and pet.
 
         Port of RoleFactoryHelper's replace*Attribute sequence over the
         migrated role_equip / role_attribute_buff / role_xianjiechenhao /
-        role_meiren / role_zuoqi rows; empty sources yield no bags,
-        exactly Java's clear-and-skip behavior. The ZUOQI bag carries
-        the replaceZuoqiAttribute goods loop over the role's
-        attribute-goods map. The ZUOQI_SPEED bag stays empty: it needs
-        rideOrNot, which decodeZuoQiInfo reads false from the stage blob
-        at entry, so Java skips replaceZuoqiSudu too.
+        role_meiren / role_zuoqi / role_guangyi rows; empty sources yield
+        no bags, exactly Java's clear-and-skip behavior. The ZUOQI bag
+        carries the replaceZuoqiAttribute goods loop over the role's
+        attribute-goods map; the GUANGYI bag is replaceGuangYiAttribute,
+        the worn wing level's cells plus its dan contributions. The
+        ZUOQI_SPEED bag stays empty: it needs rideOrNot, which
+        decodeZuoQiInfo reads false from the stage blob at entry, so
+        Java skips replaceZuoqiSudu too.
         """
         bags = []
         if self.config is None or role is None:
@@ -4616,6 +4630,13 @@ class Session:
             bags.append(self.config.zuoqi_effect_attribute_map(
                 mount.get('zuoqi_rank'), role.get('level'),
                 self._zuoqi_att_map(mount)))
+        try:
+            wing = self.get_role_guangyi(role.get('id'))
+        except Exception:
+            wing = None
+        if wing:
+            bags.append(self.config.guangyi_attribute_bag(
+                wing.get('level'), self._guangyi_dans(wing)))
         bags.append(self._pet_attribute_bag(role))
         return [b for b in bags if b]
 
@@ -7101,6 +7122,7 @@ class Session:
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
         qibing, qibing_dan = 0, 0
+        guangyi, guangyi_dan, guangyi_book = 0, 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
         if role is not None and self.config is not None:
@@ -7175,12 +7197,35 @@ class Session:
             except Exception:
                 stored = None
             xianjie = self.config.xianjie_fight(self.xianjie_id_for(stored))
+            # [16] getGuangYiZhanli / getGuangYiAttDanZhanli /
+            # getGuangYiSkillBookZhanLi: the worn level's attribute bag,
+            # its dan contributions, and the combat of the worn books in
+            # the 10051..10056 band. No wing row reads 0 for all three.
+            try:
+                wing = self.get_role_guangyi(role.get('id')) or {}
+            except Exception:
+                wing = {}
+            try:
+                wing_level = int(wing.get('level') or 0)
+            except (TypeError, ValueError):
+                wing_level = 0
+            if wing_level:
+                guangyi = self.config.guangyi_fight(wing_level)
+                try:
+                    guangyi_dan = self.config.guangyi_dan_fight(
+                        wing_level, self._guangyi_dans(wing))
+                except Exception:
+                    guangyi_dan = 0
+            # The book sum reads only the worn 10051..10056 band, so it
+            # counts without a wing row (Java never checks the level).
+            guangyi_book = self._guangyi_skillbook_fight(role.get('id'))
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
             [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
             [qibing, qibing_dan], xianjie,
-            0, 0, 0, 0, [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
+            0, 0, 0, 0, [guangyi, guangyi_dan, guangyi_book], 0, 0, 0, 0,
+            0, 0, [0, 0], 0]]))
 
     def equip_info(self):
         """Command 31000: RoleEquipSlotServiceImpl.getInfoEquip -> formart1(List).
@@ -9633,10 +9678,11 @@ class Session:
         return any(lo <= a <= hi and lo <= b <= hi for lo, hi in bands)
 
     def _skillbook_slot_open(self, rid, role, slot):
-        """isOpenSlot: zuoqi mutex cells; qizhan/guanyi stay locked.
+        """isOpenSlot: zuoqi and wing mutex cells; qizhan stays locked.
 
-        The qizhan and guanyi tables are not migrated, so their bands
-        answer closed exactly like Java's empty sources would.
+        The qizhan table is not migrated, so that band answers closed
+        exactly like Java's empty source would; the wing band reads the
+        live level's mutexN cells through isOpenSkillSlot.
         """
         try:
             num = int(slot)
@@ -9651,6 +9697,15 @@ class Session:
                 return False
             return bool(self.config.zuoqi_skill_open(
                 zuoqi.get('zuoqi_rank'), role.get('level'), num - 10000))
+        if SKILLBOOK_GUANGYI[0] <= num <= SKILLBOOK_GUANGYI[1]:
+            if self.config is None:
+                return False
+            try:
+                wing = self.get_role_guangyi(rid) or {}
+            except Exception:
+                wing = {}
+            return bool(self.config.guangyi_skill_open(
+                wing.get('level'), num - 10050))
         return False
 
     def _skillbook_wear_gate(self, rid, role, book, existing, slot):
@@ -9668,15 +9723,25 @@ class Session:
                 return [0, SKILLBOOK_ERR_ZUOQI]
         except (TypeError, ValueError):
             pass
-        # getQizhanBinLevel/getGuangYiLevel read unmigrated tables, so
-        # both count as 0 here; books above 0 stay gated (99006/99011).
-        for column, code in (('qibinglv', SKILLBOOK_ERR_QIBING),
-                             ('chibanglv', SKILLBOOK_ERR_CHIBANG)):
-            try:
-                if 0 < int(book.get(column) or 0):
-                    return [0, code]
-            except (TypeError, ValueError):
-                pass
+        # The qibing table is not migrated, so getQizhanBinLevel still
+        # counts as 0 and those books stay gated (99006). getGuangYiLevel
+        # reads the live wing row, so chibanglv books unlock with it.
+        try:
+            if 0 < int(book.get('qibinglv') or 0):
+                return [0, SKILLBOOK_ERR_QIBING]
+        except (TypeError, ValueError):
+            pass
+        try:
+            wing_need = int(book.get('chibanglv') or 0)
+        except (TypeError, ValueError):
+            wing_need = 0
+        try:
+            wing_level = int((self.get_role_guangyi(rid) or {}).get('level')
+                             or 0)
+        except Exception:
+            wing_level = 0
+        if wing_need > wing_level:
+            return [0, SKILLBOOK_ERR_CHIBANG]
         if self.config is None:
             return None
         try:
@@ -10523,8 +10588,10 @@ class Session:
         # (their services consume internally, so the pipeline post-decrs),
         # and null for LongHun/LongLing (useLongHun/useLongLing decr
         # inside, so the pipeline never does).
+        # 49/50/51 (wing card and wing dan) are consumePrior false too:
+        # their services charge inside or leave it to the post-consume.
         prior = None if skill in (33, 35, 45, 46) \
-            else skill not in (1, 37, 11, 3)
+            else skill not in (1, 37, 11, 3, 49, 50, 51)
         if prior and not self._prop_decr(rid, row):
             return None
         frames = self._prop_effect(role, rid, row, grow, skill)
@@ -10599,6 +10666,10 @@ class Session:
             return self._prop_qibing_dan(role, rid, row, grow, 1)
         if skill == 46:
             return self._prop_qibing_dan(role, rid, row, grow, 2)
+        if skill == 49:
+            return self._prop_guangyi_card(role, rid, row, grow)
+        if skill in (50, 51):
+            return self._prop_guangyi_dan(role, rid, row, grow)
         if skill == 2:
             frames = self._prop_exp(role, rid, grow)
         elif skill == 5:
@@ -10877,6 +10948,63 @@ class Session:
         # BingHun/BingLing pill -> ZDL:BINHUN.
         self._fight_changed()
         return ([], True)
+
+    def _prop_guangyi_card(self, role, rid, row, grow):
+        """Skill 49 wing card: propJiHuo(zqshengxian).
+
+        propJiHuo pushes its 102002 [1, level, lucky] on a grant, then
+        PropServiceImpl$GuangYi returns result[1]: the pipeline frames a
+        non-null result as [0, that] and its early return skips the
+        post-consume block, so a granted card also answers [0, level]
+        and stays in the bag while the wing lands. An owned level
+        answers [0, 102001] with nothing pushed or published (Java
+        quirk, golden-pinned).
+        """
+        try:
+            level = int(grow.get('zqshengxian') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        body = self._guangyi_grant(rid, level)
+        frames = []
+        if body[0] == 1:
+            frames.append(frame(amf3_encode([str(CMD_GUANGYI_BUY), body])))
+        frames.append(frame(amf3_encode(
+            [str(CMD_PROP_USE), [0, body[1]]])))
+        return (frames, False)
+
+    def _prop_guangyi_dan(self, role, rid, row, grow):
+        """Skill 50/51 wing dan: useAttributeDan with the level's cap.
+
+        No wing row is silent (the jar throws on the one-cell result);
+        a full id answers [0, 87104]. The map bumps and persists, then
+        the export's inner 102000 reports the panel and the pipeline
+        appends the terminal [1, bagId]; ZDL:GUANGYI and
+        ZDL:GUANGYI_ATT_DAN refresh 12010.
+        """
+        goods_id = str(row.get('goods_id') or '')
+        if not goods_id or self.config is None:
+            return None
+        wrow = self._guangyi_row(rid)
+        if wrow is None:
+            return None
+        if not wrow.get('attr_dan'):
+            wrow['attr_dan'] = '{}'
+        cfg = self.config.guangyi_config(wrow.get('level'))
+        if cfg is None:
+            return None
+        counts = self._guangyi_dans(wrow)
+        current = counts.get(goods_id, 0)
+        if current + 1 > cfg['max_dan'].get(goods_id, 0):
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, GUANGYI_ERR_DAN_CAP]]))], False)
+        counts[goods_id] = current + 1
+        wrow['attr_dan'] = json.dumps(counts)
+        self._guangyi_save(rid, wrow)
+        # guangyi_attribute_use -> ZDL:GUANGYI + ZDL:GUANGYI_ATT_DAN.
+        self._fight_changed()
+        return ([frame(amf3_encode(
+            [str(CMD_GUANGYI_INFO), self._guangyi_info_body(wrow)]))],
+            True)
 
     def _prop_lihe(self, role, rid, row, grow):
         """LiHe: deterministic gift boxes; lottery/vip boxes stay open."""
@@ -24821,20 +24949,23 @@ class Session:
         return frame(amf3_encode(['104002', [1, tid]]))
 
     def guangyi_info(self, msg):
-        """102000: GuangyiServiceImpl.guangyiInfo; null with no row."""
+        """102000: GuangyiServiceImpl.guangyiInfo; null with no row.
+
+        clear() runs first: a row last touched on an earlier day drops
+        its fail count and blessing (luckyclear levels) before the
+        panel reads them. The body is [worn, level, lucky, wearing,
+        [[dan, count]...]] with the dan map in fastjson key order.
+        """
         role = self._equip_role()
         if role is None:
             return None
-        try:
-            row = self.get_role_guangyi(role.get('id'))
-        except Exception:
-            row = None
+        rid = role.get('id')
+        row = self._guangyi_row(rid)
         if row is None:
-            return frame(amf3_encode(['102000', None]))
-        return frame(amf3_encode(['102000', [
-            row.get('peidai_id') or 0, row.get('level') or 1,
-            row.get('lucky') or 0, row.get('ispeidai') or 0,
-            self._json_pairs(row.get('attr_dan'))]]))
+            return frame(amf3_encode([str(CMD_GUANGYI_INFO), None]))
+        self._guangyi_clear(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_GUANGYI_INFO), self._guangyi_info_body(row)]))
 
     @staticmethod
     def _json_pairs(text):
@@ -24851,10 +24982,14 @@ class Session:
         return [[str(k), v] for k, v in data.items()]
 
     def guangyi_buy(self, msg):
-        """102002: buyGuangYi creates the level-1 row.
+        """102002: buyGuangYi charges the level-1 cost, then propJiHuo(1).
 
-        Cost is needthingsid x needthingsvalue from guangyi.jat (the
-        first row's pair), paid from the bag; missing goods fail [0].
+        An owned wing answers [0, 102001]; a short purse answers
+        [0, 1002] (account decrCheck on YB over the level-1 `cost`
+        cell). The grant itself rides propJiHuo, so the client sees only
+        its [1, level, lucky] push: the action sends nothing for the
+        null return, and the needthingsid/value pair is the upgrade
+        cost, not the purchase price.
         """
         if self.config is None:
             return None
@@ -24862,29 +24997,19 @@ class Session:
         if role is None:
             return None
         rid = role.get('id')
-        try:
-            if self.get_role_guangyi(rid) is not None:
-                return frame(amf3_encode(['102002', [0]]))
-        except Exception:
-            pass
-        rows = self.config.guangyi_table()
-        if not rows:
-            return frame(amf3_encode(['102002', [0]]))
-        first = rows[0]
-        need_id = str(first.get('needthingsid') or '')
-        try:
-            need_n = int(first.get('needthingsvalue') or 0)
-        except (TypeError, ValueError):
-            need_n = 0
-        if need_id and need_n > 0 and not self._bag_decr(rid, need_id,
-                                                         need_n):
-            return frame(amf3_encode(['102002', [0]]))
-        try:
-            self.save_role_guangyi(rid, peidai_id=1, level=1, lucky=0,
-                                   ispeidai=1, attr_dan='{}')
-        except Exception:
-            return frame(amf3_encode(['102002', [0]]))
-        return frame(amf3_encode(['102002', [1, 1]]))
+        if self._guangyi_row(rid) is not None:
+            return frame(amf3_encode(
+                [str(CMD_GUANGYI_BUY), [0, GUANGYI_ERR_OWNED]]))
+        cfg = self.config.guangyi_config(1)
+        if cfg is None:
+            return None
+        if cfg['gold'] > 0:
+            if not self._bag_money_check(role, 'YB', cfg['gold']):
+                return frame(amf3_encode(
+                    [str(CMD_GUANGYI_BUY), [0, GENERAL_YB]]))
+            self._bag_money_decr(rid, 'YB', cfg['gold'])
+        return frame(amf3_encode(
+            [str(CMD_GUANGYI_BUY), self._guangyi_grant(rid, 1)]))
 
     def _bag_decr(self, rid, goods_id, count):
         """Decr count of goods_id across bag slots; False if short."""
@@ -24926,26 +25051,260 @@ class Session:
         return left <= 0
 
     def guangyi_wear(self, msg):
-        """102003: qiehuan(id) wears the wing (no cost, like change)."""
+        """102003: qiehuan(id) picks, toggles or hides the worn wing.
+
+        id null flips ispeidai (0 or absent -> 1, else 0); an id above
+        the owned level answers [0, 102002]; otherwise it becomes
+        peidaiId and ispeidai is left alone, like the jar. The reply is
+        [1, peidaiId, ispeidai]. A role with no wing row is silent:
+        Java dereferences the null entity there.
+        """
         role = self._equip_role()
         if role is None:
             return None
         rid = role.get('id')
+        row = self._guangyi_row(rid)
+        if row is None:
+            return None
+        pid = self.safe(self.safe(msg, 1, []), 0)
+        if pid is not None:
+            try:
+                pid = int(pid)
+            except (TypeError, ValueError):
+                return frame(amf3_encode(
+                    [str(CMD_GUANGYI_WEAR), [0, GUANGYI_ERR_UNOWNED]]))
+            try:
+                level = int(row.get('level') or 0)
+            except (TypeError, ValueError):
+                level = 0
+            if pid > level:
+                return frame(amf3_encode(
+                    [str(CMD_GUANGYI_WEAR), [0, GUANGYI_ERR_UNOWNED]]))
+            row['peidai_id'] = pid
+        else:
+            try:
+                worn = int(row.get('ispeidai') or 0)
+            except (TypeError, ValueError):
+                worn = 0
+            row['ispeidai'] = 0 if worn else 1
+        self._guangyi_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_GUANGYI_WEAR),
+             [1, row.get('peidai_id') or 0, row.get('ispeidai') or 0]]))
+
+    def guangyi_upgrade(self, msg):
+        """102001: upgrade(useGold) advances the wing through its pity window.
+
+        C> is the Boolean mall-cover flag (other shapes stay silent like
+        the action's early return). A missing row answers null; a
+        missing next level, or a role short of the current level's
+        needLevel, [0, 1000]; a short YXB [0, 1003]; the shared bag
+        planner refuses with GetEquipSlotOutPut.getCodeError's plain
+        [0, code]. The costs burn, then isSuccess reads the
+        mintims/maxtims window: a failure banks randomInt(addminblessing,
+        addmaxblessing) blessing (capped at maxblessing, which forces a
+        success) and answers [-1, level, lucky]; a success raises the
+        level, clears the pity, wears it, and answers [1, level, 0, 1]
+        behind the unconditional 11101 [102000, [name, level,
+        nextName]] world notice. Either attempt persists and refreshes
+        12010 (ZDL:GUANGYI).
+        """
+        if self.config is None:
+            return None
+        role = self._equip_role()
+        if role is None:
+            return None
+        rid = role.get('id')
+        use_gold = self.safe(msg, 1, None)
+        if not isinstance(use_gold, bool):
+            return None
+        row = self._guangyi_row(rid)
+        if row is None:
+            return frame(amf3_encode([str(CMD_GUANGYI_UPGRADE), None]))
+        self._guangyi_clear(rid, row)
         try:
-            gid = int(self.safe(self.safe(msg, 1, []), 0))
+            level = int(row.get('level') or 0)
         except (TypeError, ValueError):
-            return frame(amf3_encode(['102003', [0]]))
+            level = 0
+        cfg = self.config.guangyi_config(level)
+        nxt = self.config.guangyi_config(level + 1)
+        if cfg is None or nxt is None:
+            return frame(amf3_encode(
+                [str(CMD_GUANGYI_UPGRADE), [0, GENERAL_LEVEL]]))
+        if self._task_role_level(role) < cfg['need_level']:
+            return frame(amf3_encode(
+                [str(CMD_GUANGYI_UPGRADE), [0, GENERAL_LEVEL]]))
+        if not self._bag_money_check(role, 'YXB', cfg['decr_money']):
+            return frame(amf3_encode(
+                [str(CMD_GUANGYI_UPGRADE), [0, GENERAL_JB]]))
+        # Same BagServiceImpl.checkSpecialTypeGoodsMoneyEnough body the
+        # qibing upgrade ports: substitutes at the current level, mall
+        # money for the rest when the auto-buy flag holds.
+        decr, mall_money = self._baoshi_material_plan(
+            rid, role, cfg['decr_goods'], level, use_gold, GENERAL_GOODS)
+        if decr is None:
+            return frame(amf3_encode(
+                [str(CMD_GUANGYI_UPGRADE), [0, mall_money]]))
+        self._baoshi_consume(rid, role, decr, mall_money)
+        if cfg['decr_money']:
+            self._bag_money_decr(rid, 'YXB', cfg['decr_money'])
+        try:
+            fails = int(row.get('fail_count') or 0)
+            lucky = int(row.get('lucky') or 0)
+        except (TypeError, ValueError):
+            fails, lucky = 0, 0
+        success = self._qibing_is_success(fails, cfg)
+        if not success:
+            add = self._qibing_random_int(cfg['min_lucky'],
+                                          cfg['max_lucky'])
+            total = lucky + add
+            if total >= cfg['lucky_cap']:
+                row['lucky'] = cfg['lucky_cap']
+                success = True
+            else:
+                row['lucky'] = total
+        now = int(time.time() * 1000)
+        if success:
+            new_level = level + 1
+            row.update(level=new_level, upgrade_time=now, update_time=now,
+                       lucky=0, fail_count=0, peidai_id=new_level,
+                       ispeidai=1)
+            self._guangyi_save(rid, row)
+            # guangyi_upgrade_level -> ZDL:GUANGYI.
+            self._fight_changed()
+            return (frame(amf3_encode(
+                        [str(CMD_NOTICE_ALL),
+                         [CMD_GUANGYI_INFO,
+                          [str(role.get('name')), new_level,
+                           nxt['name']]]])),
+                    frame(amf3_encode(
+                        [str(CMD_GUANGYI_UPGRADE),
+                         [1, new_level, 0, 1]])))
+        row['update_time'] = now
+        row['fail_count'] = fails + 1
+        self._guangyi_save(rid, row)
+        try:
+            lucky_now = int(row.get('lucky') or 0)
+        except (TypeError, ValueError):
+            lucky_now = 0
+        return frame(amf3_encode(
+            [str(CMD_GUANGYI_UPGRADE), [-1, level, lucky_now]]))
+
+    def _guangyi_row(self, rid):
+        """Role's wing row as a dict, or None when never granted."""
         try:
             row = self.get_role_guangyi(rid)
         except Exception:
             row = None
-        if row is None:
-            return frame(amf3_encode(['102003', [0]]))
+        return dict(row) if row is not None else None
+
+    def _guangyi_save(self, rid, row):
+        """Persist a wing row dict under its role id."""
         try:
-            self.save_role_guangyi(rid, peidai_id=gid, ispeidai=1)
+            self.save_role_guangyi(
+                rid, peidai_id=row.get('peidai_id'),
+                level=row.get('level'), lucky=row.get('lucky'),
+                ispeidai=row.get('ispeidai'), attr_dan=row.get('attr_dan'),
+                fail_count=row.get('fail_count'),
+                upgrade_time=row.get('upgrade_time'),
+                lingqu_time=row.get('lingqu_time'),
+                update_time=row.get('update_time'))
         except Exception:
             pass
-        return frame(amf3_encode(['102003', [1, gid]]))
+
+    def _guangyi_info_body(self, row):
+        """The 5-cell panel body guangyiInfo answers and 102000 pushes."""
+        return [row.get('peidai_id') or 0, row.get('level') or 1,
+                row.get('lucky') or 0, row.get('ispeidai') or 0,
+                self._json_pairs(row.get('attr_dan'))]
+
+    def _guangyi_dans(self, row):
+        """Dan map {goods: count} from the row's attr_dan JSON."""
+        return self._dan_count_map((row or {}).get('attr_dan'))
+
+    def _guangyi_skillbook_fight(self, rid):
+        """getGuangYiSkillBookZhanLi: worn wing books' JiNengBiao combat.
+
+        getGuangYiSkillBooks loads the 10051..10056 band and wraps each
+        slot with its SkillBookConfig; the fight sums
+        loadSkillByLevel(skillid, skillbooklevel).getCombat, which is
+        the (jhjn, skillbooklevel) JiNengBiao row's combat cell.
+        """
+        if self.config is None:
+            return 0
+        try:
+            rows = self.get_role_skillbook_slots(
+                rid, SKILLBOOK_GUANGYI[0], SKILLBOOK_GUANGYI[1]) or []
+        except Exception:
+            return 0
+        total = 0
+        for worn in rows:
+            book = self.config.skillbook_book(worn.get('goods_id'))
+            if book is None:
+                continue
+            info = self.config.skill_info(book.get('jhjn'),
+                                          book.get('skillbooklevel'))
+            if info is None:
+                continue
+            try:
+                total += int(info.get('combat') or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _guangyi_clear(self, rid, row):
+        """clear: a stale-day wing loses its pity when luckyclear holds.
+
+        update_time is stamped with the reset, so a second read the
+        same day is a no-op like the jar's.
+        """
+        now = int(time.time() * 1000)
+        try:
+            updated = int(row.get('update_time') or 0)
+        except (TypeError, ValueError):
+            updated = 0
+        if self._same_day_ms(now, updated):
+            return
+        cfg = self.config.guangyi_config(row.get('level')) \
+            if self.config is not None else None
+        if cfg is None or not cfg['lucky_clear']:
+            return
+        row['update_time'] = now
+        row['fail_count'] = 0
+        row['lucky'] = 0
+        self._guangyi_save(rid, row)
+
+    def _guangyi_grant(self, rid, level):
+        """propJiHuo: create or raise the wing; returns the 102002 body.
+
+        A missing row inserts the level-1 wing (the requested level is
+        ignored there, like the jar); an existing row strictly below the
+        request takes it, otherwise the body is [0, 102001]. A grant
+        publishes ZDL:GUANGYI; sending the body is the caller's job.
+        """
+        now = int(time.time() * 1000)
+        row = self._guangyi_row(rid)
+        if row is None:
+            row = {'peidai_id': 1, 'level': 1, 'lucky': 0, 'ispeidai': 1,
+                   'attr_dan': '{}', 'fail_count': 0, 'upgrade_time': now,
+                   'lingqu_time': now, 'update_time': now}
+            self._guangyi_save(rid, row)
+        else:
+            try:
+                current = int(row.get('level') or 0)
+            except (TypeError, ValueError):
+                current = 0
+            try:
+                wanted = int(level)
+            except (TypeError, ValueError):
+                wanted = 0
+            if wanted <= current:
+                return [0, GUANGYI_ERR_OWNED]
+            row['level'] = wanted
+            self._guangyi_save(rid, row)
+        # guangyi_upgrade_level + guangyi_change -> ZDL:GUANGYI.
+        self._fight_changed()
+        return [1, row.get('level'), row.get('lucky') or 0]
 
     def _qibing_row(self, rid):
         """Role's qibing row as a dict, or None when never granted."""
@@ -24969,9 +25328,9 @@ class Session:
         except Exception:
             pass
 
-    def _qibing_dans(self, row):
-        """Attribute-dan map from the row's JSON, {} when unset or bad."""
-        text = (row or {}).get('attribute_dan')
+    @staticmethod
+    def _dan_count_map(text):
+        """{goods: count} from a row's dan JSON; {} when unset or bad."""
         if not text:
             return {}
         try:
@@ -24987,6 +25346,10 @@ class Session:
             except (TypeError, ValueError):
                 continue
         return dans
+
+    def _qibing_dans(self, row):
+        """Attribute-dan map from the row's JSON, {} when unset or bad."""
+        return self._dan_count_map((row or {}).get('attribute_dan'))
 
     def _qibing_clear(self, rid, row):
         """clear: a stale-day row loses pity when its band clears.

@@ -66,6 +66,7 @@ traffic.
 | shenjiang activation / skill up | `shenjiang_activate` -> `ZDL:SHENGJIANG_SKILL_FIGHT`, `shenjiang_skill_upgrade` -> `ZDL:SHENGJIANG_SKILLUPGRADE` | [6][2] | activation and skill-up saves |
 | VIP level up | `vip_Level_upgrade` -> `ZDL:VIP_FIGHT` | [5] | `_vip_upgrade` |
 | pozhen layer cleared | `pozhen_tongguan` -> `ZDL:POZHENG_FIGHT` | [7] | sweep award paths |
+| wing granted/upgraded, card, attribute dan | `guangyi_upgrade_level` / `guangyi_attribute_use` -> `ZDL:GUANGYI` (+ `ZDL:GUANGYI_ATT_DAN`) | [16] | `_guangyi_grant`, `guangyi_upgrade` success, `_prop_guangyi_dan`. Wear (102003) publishes only `guangyi_change`, which no ZDL command maps |
 
 ## Slots with no in-port producer (documented, not wired)
 
@@ -75,10 +76,10 @@ tables are not ported, so no change can move them yet:
 - [4][0] gem **effect** (`baishixiaoguo`) and [0][3]/[0][4] gear effect
   buckets: no attribute-bag source writes them.
 - [8] meiren, [11] xianjie, [12] chenghao, [13]/[14] mount/qibing skill
-  books, [15] taozhuang, [16] guangyi (wing), [17] wuhun, [18] touxian,
+  books, [15] taozhuang, [17] wuhun, [18] touxian,
   [19] zuwu, [20] guild, [21] yuanshen, [22] shenqi, [23] pet zhanfa /
   heti, [24] hunjie: the wrapper's Java buckets exist, but the port
-  either has no inbound family (guangyi, xianjiechenhao, shenqi,
+  either has no inbound family (xianjiechenhao, shenqi,
   yuanshen, touxian, wuhun) or computes the value only for 12000.
 - [6][0] shenjiang rank fight and [6][1] jiangxing: not modelled.
 

@@ -276,8 +276,10 @@ CREATE TABLE IF NOT EXISTS role_touxian (
   jihuoids TEXT DEFAULT '[]',
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
--- Wings (RoleGuangyi subset: worn id, upgrade level, blessing, wear flag
--- and the attribute-dan JSON map guangyiInfo reports).
+-- Wings (RoleGuangyi: worn id, upgrade level, pity counters, stamps and
+-- the attribute-dan JSON map guangyiInfo reports). level/lucky are the
+-- jar's binqiLevel/luckyValue; fail_count, upgrade_time, lingqu_time
+-- and update_time drive the pity window and the daily lucky reset.
 CREATE TABLE IF NOT EXISTS role_guangyi (
   role_id INTEGER PRIMARY KEY,
   peidai_id INTEGER DEFAULT 0,
@@ -285,6 +287,10 @@ CREATE TABLE IF NOT EXISTS role_guangyi (
   lucky INTEGER DEFAULT 0,
   ispeidai INTEGER DEFAULT 0,
   attr_dan TEXT DEFAULT '{}',
+  fail_count INTEGER DEFAULT 0,
+  upgrade_time INTEGER DEFAULT 0,
+  lingqu_time INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Qibing progression (RoleQizhanbinqi subset: binqi_level is the ridden
@@ -1041,6 +1047,17 @@ class Store:
                 if column not in zuoqi_cols:
                     self.db.execute(
                         f'ALTER TABLE role_zuoqi ADD COLUMN {column} {declaration}')
+            gy_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_guangyi)')}
+            for column, declaration in (
+                    ('fail_count', 'INTEGER DEFAULT 0'),
+                    ('upgrade_time', 'INTEGER DEFAULT 0'),
+                    ('lingqu_time', 'INTEGER DEFAULT 0'),
+                    ('update_time', 'INTEGER DEFAULT 0')):
+                if column not in gy_cols:
+                    self.db.execute(
+                        f'ALTER TABLE role_guangyi ADD COLUMN {column}'
+                        f' {declaration}')
             rc_pk = [row['name'] for row in self.db.execute(
                 'PRAGMA table_info(task_richang)') if row['pk']]
             if rc_pk != ['role_id']:
@@ -1677,13 +1694,15 @@ class Store:
         """Wing row for a role, or None."""
         return self._get_simple_row(
             'role_guangyi', role_id,
-            'peidai_id, level, lucky, ispeidai, attr_dan')
+            'peidai_id, level, lucky, ispeidai, attr_dan, fail_count,'
+            ' upgrade_time, lingqu_time, update_time')
 
     def save_role_guangyi(self, role_id, **fields):
         """Upsert a role's wing row."""
         return self._save_simple_row(
             'role_guangyi', role_id,
-            {'peidai_id', 'level', 'lucky', 'ispeidai', 'attr_dan'},
+            {'peidai_id', 'level', 'lucky', 'ispeidai', 'attr_dan',
+             'fail_count', 'upgrade_time', 'lingqu_time', 'update_time'},
             fields)
 
     def get_role_qibing(self, role_id):

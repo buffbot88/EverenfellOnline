@@ -3758,6 +3758,158 @@ class GameConfig:
             self._guangyi = rows
         return self._guangyi
 
+    def guangyi_config(self, level):
+        """GuangYiConfig fields for a wing level, or None.
+
+        Port of GuangYiConfigExportServiceImpl.createEntity over the
+        level's row: needthingsid/value -> decrGoods, jinjieneedcoin ->
+        decrMoney (0 on every shipped row), mintims/maxtimes the pity
+        window, odds, addmin/maxblessing -> min/maxAddLucky, maxblessing
+        -> luckyUpperLimit, luckyclear, needleaderlv -> needLevel, cost
+        -> gold (buyGuangYi's YB price), xlimit/perxlimit -> the yihun/
+        yiling dan caps, mutex1..6 -> the skill slots the level opens.
+        """
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            return None
+        row = None
+        for candidate in self.guangyi_table():
+            try:
+                if int(candidate.get('rideweapon')) == level:
+                    row = candidate
+                    break
+            except (TypeError, ValueError):
+                continue
+        if row is None:
+            return None
+        goods_id = str(row.get('needthingsid') or '')
+        decr_goods = {}
+        if goods_id:
+            decr_goods[goods_id] = config_int(row.get('needthingsvalue'))
+        try:
+            odds = float(row.get('odds') or 0)
+        except (TypeError, ValueError):
+            odds = 0.0
+        skills = set()
+        for index in range(1, 7):
+            try:
+                if float(row.get('mutex%d' % index) or 0) > 0:
+                    skills.add(index)
+            except (TypeError, ValueError):
+                continue
+        return {'name': str(row.get('name') or ''),
+                'need_level': config_int(row.get('needleaderlv')),
+                'decr_goods': decr_goods,
+                'decr_money': config_int(row.get('jinjieneedcoin')),
+                'gold': config_int(row.get('cost')),
+                'min_times': config_int(row.get('mintims')),
+                'max_times': config_int(row.get('maxtimes')),
+                'odds': odds,
+                'min_lucky': config_int(row.get('addminblessing')),
+                'max_lucky': config_int(row.get('addmaxblessing')),
+                'lucky_cap': config_int(row.get('maxblessing')),
+                'lucky_clear': config_int(row.get('luckyclear')) != 0,
+                'notice': config_int(row.get('notice')) != 0,
+                'max_dan': {'yihun': config_int(row.get('xlimit')),
+                            'yiling': config_int(row.get('perxlimit'))},
+                'skill_open': skills}
+
+    def guangyi_max_level(self):
+        """Highest configured wing level (rideweapon key space)."""
+        levels = []
+        for row in self.guangyi_table():
+            try:
+                levels.append(int(row.get('rideweapon')))
+            except (TypeError, ValueError):
+                continue
+        return max(levels) if levels else 0
+
+    def guangyi_attribute_map(self, level):
+        """GuangYiConfig.attributeMap: the level row's plain stat cells.
+
+        Port of ConfigAttributeParser.attribute2Map(row) (no prefix); {}
+        when the level has no row, like a null config.
+        """
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            return {}
+        row = None
+        for candidate in self.guangyi_table():
+            try:
+                if int(candidate.get('rideweapon')) == level:
+                    row = candidate
+                    break
+            except (TypeError, ValueError):
+                continue
+        if row is None:
+            return {}
+        return {name: _number(row.get(name))
+                for name in MEIREN_ATTRIBUTE_NAMES
+                if _number(row.get(name))}
+
+    def guangyi_dan_attribute_map(self, level, dans):
+        """replaceGuangYiAttribute's dan half: {goods: count} -> bag.
+
+        Skill-50 pills (yihun) add their goods attributeMap once per
+        count; skill-51 pills (yiling) scale the wing level's own bag by
+        zqAttributePer (sxbfb) per count, like MapUtil.multipleAttribute.
+        """
+        bag = {}
+        base = self.guangyi_attribute_map(level)
+        for goods_id, count in (dans or {}).items():
+            try:
+                count = int(count)
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                continue
+            grow = self._goods_table().get(str(goods_id))
+            if grow is None:
+                continue
+            skill = config_int(grow.get('skill'))
+            if skill == 50:
+                for name, value in self.goods_zuoqi_attribute_map(
+                        goods_id).items():
+                    bag[name] = bag.get(name, 0.0) + value * count
+            elif skill == 51:
+                try:
+                    per = float(grow.get('sxbfb') or 0)
+                except (TypeError, ValueError):
+                    per = 0.0
+                for name, value in base.items():
+                    bag[name] = bag.get(name, 0.0) + value * per * count
+        return bag
+
+    def guangyi_attribute_bag(self, level, dans):
+        """replaceGuangYiAttribute: level bag plus its dan contributions."""
+        bag = dict(self.guangyi_attribute_map(level))
+        for name, value in self.guangyi_dan_attribute_map(level, dans).items():
+            bag[name] = bag.get(name, 0.0) + value
+        return bag
+
+    def guangyi_fight(self, level):
+        """getGuangYiZhanli: getFight over the level's attribute bag."""
+        return self.fight_value(self.guangyi_attribute_map(level))
+
+    def guangyi_dan_fight(self, level, dans):
+        """getGuangYiAttDanZhanli: getFight over the dan contributions."""
+        if not dans:
+            return 0
+        return self.fight_value(
+            self.guangyi_dan_attribute_map(level, dans))
+
+    def guangyi_skill_open(self, level, index):
+        """isOpenSkillSlot: the level's mutex cell for slot 10050+index."""
+        cfg = self.guangyi_config(level)
+        if cfg is None:
+            return False
+        try:
+            return int(index) in cfg['skill_open']
+        except (TypeError, ValueError):
+            return False
+
     def qibing_table(self):
         """qizhanbingqi.jat rows keyed by rideweapon level; cached."""
         if self._qibing is None:

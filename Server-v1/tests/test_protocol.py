@@ -2552,30 +2552,27 @@ class TestLiveRewardInfos2(unittest.TestCase):
                          ['104000', [tid, [tid]]])
 
     def test_guangyi_buy_and_wear(self):
+        # buyGuangYi charges the row-1 `cost` in YB, then propJiHuo(1)
+        # pushes [1, level, lucky]; qiehuan answers [1, worn, wearing].
         store, rid, s, cfg = self.live()
         self.assertEqual(amf3.decode(s.guangyi_info([102000, None])[4:]),
                          ['102000', None])
-        first = cfg.guangyi_table()[0]
-        need_id = str(first.get('needthingsid') or '')
-        need_n = int(first.get('needthingsvalue') or 0)
-        store.insert_role_bag_slot(
-            rid, {'slot_num': 1, 'goods_id': need_id, 'count': need_n,
-                  'bind': 1})
+        store.update_character_state(rid, lingshi=1000)
         self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
-                         ['102002', [1, 1]])
+                         ['102002', [1, 1, 0]])
         self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
-                         ['102002', [0]])
+                         ['102002', [0, 102001]])
         env = amf3.decode(s.guangyi_info([102000, None])[4:])
         self.assertEqual(env[0], '102000')
         self.assertEqual(env[1][:4], [1, 1, 0, 1])
         self.assertEqual(env[1][4], [])
         self.assertEqual(amf3.decode(s.guangyi_wear(
-            [102003, [1]])[4:]), ['102003', [1, 1]])
+            [102003, [1]])[4:]), ['102003', [1, 1, 1]])
 
-    def test_guangyi_buy_short_bag_fails(self):
+    def test_guangyi_buy_short_yb_fails(self):
         store, rid, s, cfg = self.live()
         self.assertEqual(amf3.decode(s.guangyi_buy([102002, None])[4:]),
-                         ['102002', [0]])
+                         ['102002', [0, 1002]])
 
     def test_baixian_info_and_free_worship(self):
         store, rid, s, cfg = self.live()

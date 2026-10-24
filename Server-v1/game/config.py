@@ -136,6 +136,153 @@ def load_task_main_table(path):
     return rows
 
 
+def load_chongwu_table(path):
+    """Rows of sys_config/chongwubiao.jat keyed 'id-jieshu'.
+
+    Mirrors ChongWuBiaoConfigExportServiceImpl.createChongWuBiaoConfig:
+    skillids split on ':', need/items are goods maps, value1 is the
+    role-level gate, value2 the activation cost.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chongwu rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('id') is None:
+            continue
+        try:
+            jieshu = int(row.get('jieshu') or 0)
+        except (TypeError, ValueError):
+            continue
+        pid = str(row['id'])
+        try:
+            skills = [s for s in str(row.get('skillid') or '').split(':')
+                      if s]
+        except (TypeError, ValueError):
+            skills = []
+        table[f'{pid}-{jieshu}'] = {
+            'pet_id': pid,
+            'jieshu': jieshu,
+            'max_lv': config_int(row.get('maxlv')),
+            'jinjie': str(row.get('jinjie') or '').lower() == 'true',
+            'skillids': skills,
+            'fuskillid': str(row.get('fuskillid') or ''),
+            'name': str(row.get('name') or ''),
+            'energy_time': config_int(row.get('nengliangtiem')),
+            'fushen_time': config_int(row.get('fushentime')),
+            'fushen_shuxing': _safe_float(row.get('fushenshuxing')),
+            'need_things': parse_goods_map(row.get('needthingsid')),
+            'shengjie_shuxing': _safe_float(row.get('shengjieshuxing')),
+            'min_times': config_int(row.get('mintims')),
+            'max_times': config_int(row.get('maxtimes')),
+            'odds': _safe_float(row.get('odds')),
+            'add_min': config_int(row.get('addminblessing')),
+            'add_max': config_int(row.get('addmaxblessing')),
+            'notice': str(row.get('notice') or '').lower() == 'true',
+            'lucky_clear':
+                str(row.get('luckyclear') or '').lower() == 'true',
+            'max_blessing': config_int(row.get('maxblessing')),
+            'need_lv': config_int(row.get('value1')),
+            'items': parse_goods_map(row.get('value2')),
+        }
+    return table
+
+
+def load_chongwu_shengji_table(path):
+    """Rows of sys_config/chongwushengjibiao.jat keyed 'id-level'.
+
+    Mirrors createChongWuShengJiBiaoConfig: thingid is the level-up
+    cost, attribute is the flat ConfigAttributeParser bag.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chongwu shengji rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('id') is None:
+            continue
+        try:
+            level = int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            continue
+        pid = str(row['id'])
+        table[f'{pid}-{level}'] = {
+            'pet_id': pid,
+            'level': level,
+            'need_item': parse_goods_map(row.get('thingid')),
+            'need_exp': config_int(row.get('needexp')),
+            'exp': config_int(row.get('exp')),
+            'attribute': {name: _number(row.get(name))
+                          for name in MEIREN_ATTRIBUTE_NAMES
+                          if _number(row.get(name))},
+            'shanghai': _safe_float(row.get('shanghai')),
+        }
+    return table
+
+
+def load_chongwu_tujian_table(path):
+    """Rows of sys_config/chongwutujianbiao.jat keyed by id.
+
+    Mirrors createChongWuTuJianBiaoConfig: chongwuid is ';'-separated,
+    attribute the flat ConfigAttributeParser bag.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chongwu tujian rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('id') is None:
+            continue
+        try:
+            pids = [p for p in str(row.get('chongwuid') or '').split(';')
+                    if p]
+        except (TypeError, ValueError):
+            pids = []
+        table[str(row['id'])] = {
+            'id': str(row['id']),
+            'pet_ids': pids,
+            'attribute': {name: _number(row.get(name))
+                          for name in MEIREN_ATTRIBUTE_NAMES
+                          if _number(row.get(name))},
+        }
+    return table
+
+
+def load_chongwu_shouhu_table(path):
+    """Rows of sys_config/chongwuzshouhubiao.jat keyed by int level.
+
+    Mirrors createChongWuzShouHuBiaoConfig (load by Integer zhenfaId):
+    thingid is the upgrade cost, needthingsid the jinjie cost.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of chongwu shouhu rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('level') is None:
+            continue
+        try:
+            level = int(row.get('level'))
+        except (TypeError, ValueError):
+            continue
+        table[level] = {
+            'level': level,
+            'upgrade_item': parse_goods_map(row.get('thingid')),
+            'is_jinjie':
+                str(row.get('jinjie') or '').lower() == 'true',
+            'odds': _safe_float(row.get('odds')),
+            'exp': config_int(row.get('exp')),
+            'max_level': config_int(row.get('maxlevel')),
+            'max_times': config_int(row.get('maxtimes')),
+            'need_exp': config_int(row.get('needexp')),
+            'min_times': config_int(row.get('mintims')),
+            'jinjie_need': parse_goods_map(row.get('needthingsid')),
+            'notice': str(row.get('notice') or '').lower() == 'true',
+            'zhenfa_xiaoguo': _safe_float(row.get('zhenfaxiaoguo')),
+        }
+    return table
+
+
 def load_taofa_table(path):
     """Return {taofaid: row} from sys_config/taskTaoFaRenWu.jat (the taofa quest list)."""
     rows = _load(path)
@@ -1140,6 +1287,10 @@ class GameConfig:
         self._guildfuben_boss = None
         self._hunjie = None
         self._hunjieqianghua = None
+        self._chongwu = None
+        self._chongwu_shengji = None
+        self._chongwu_tujian = None
+        self._chongwu_shouhu = None
         self._xishu = None
         self._dazuo = None
         self._vip = None
@@ -4525,6 +4676,77 @@ class GameConfig:
             return None
         try:
             return entry['details'].get(int(tier))
+        except (TypeError, ValueError):
+            return None
+
+    def _chongwu_load(self, name, loader, attr):
+        """Shared ChongWu table bootstrap; {} when the file is absent."""
+        if getattr(self, attr) is None:
+            path = os.path.join(self.config_dir, 'sys_config', name)
+            try:
+                setattr(self, attr,
+                        loader(path) if os.path.isfile(path) else {})
+            except ValueError as e:
+                log.error('bad %s: %s', name, e)
+                setattr(self, attr, {})
+        return getattr(self, attr)
+
+    def chongwu_table(self):
+        """chongwubiao.jat keyed 'id-jieshu'; {} when the file is absent."""
+        return self._chongwu_load(
+            'chongwubiao.jat', load_chongwu_table, '_chongwu')
+
+    def chongwu_row(self, pet_id, jieshu):
+        """ChongWuBiaoConfig for a pet at a rank (load(id, jieshu))."""
+        try:
+            return self.chongwu_table().get(
+                f'{pet_id}-{int(jieshu)}')
+        except (TypeError, ValueError):
+            return None
+
+    def chongwu_shengji_table(self):
+        """chongwushengjibiao.jat keyed 'id-level'; {} when absent."""
+        return self._chongwu_load(
+            'chongwushengjibiao.jat', load_chongwu_shengji_table,
+            '_chongwu_shengji')
+
+    def chongwu_shengji_row(self, pet_id, level):
+        """ChongWuShengJiBiaoConfig for a pet at a level."""
+        try:
+            return self.chongwu_shengji_table().get(
+                f'{pet_id}-{int(level)}')
+        except (TypeError, ValueError):
+            return None
+
+    def chongwu_tujian_table(self):
+        """chongwutujianbiao.jat keyed by id; {} when absent."""
+        return self._chongwu_load(
+            'chongwutujianbiao.jat', load_chongwu_tujian_table,
+            '_chongwu_tujian')
+
+    def chongwu_tujian_ids(self, owned):
+        """Activated tujian ids: every listed pet is owned (getTuJianIds)."""
+        owned = set(str(p) for p in owned or [])
+        out = []
+        for tid, row in self.chongwu_tujian_table().items():
+            try:
+                need = [str(p) for p in row.get('pet_ids') or []]
+            except (TypeError, ValueError):
+                continue
+            if need and all(p in owned for p in need):
+                out.append(str(tid))
+        return out
+
+    def chongwu_shouhu_table(self):
+        """chongwuzshouhubiao.jat keyed by int level; {} when absent."""
+        return self._chongwu_load(
+            'chongwuzshouhubiao.jat', load_chongwu_shouhu_table,
+            '_chongwu_shouhu')
+
+    def chongwu_shouhu_row(self, zhenfa_id):
+        """ChongWuzShouHuBiaoConfig for a zhenfa id string."""
+        try:
+            return self.chongwu_shouhu_table().get(int(zhenfa_id))
         except (TypeError, ValueError):
             return None
 

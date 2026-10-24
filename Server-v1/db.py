@@ -1834,6 +1834,17 @@ class Store:
                 (str(role_id),)).fetchall()
             return [dict(row) for row in rows]
 
+    def get_role_pet(self, role_id, pet_id):
+        """One full RolePet row for (role, pet), or None (getRolePet)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, role_id, pet_id, pet_lv, pet_lv_exp, pet_rank,'
+                ' pet_rank_exp, pet_rank_fail, pet_rank_update_time,'
+                ' create_time FROM role_pet'
+                ' WHERE role_id=? AND pet_id=?',
+                (str(role_id), str(pet_id))).fetchone()
+            return dict(row) if row else None
+
     def save_role_pet(self, role_id, pet_id, pet_lv=None, pet_lv_exp=None,
                       pet_rank=None, pet_rank_exp=None, pet_rank_fail=None,
                       pet_rank_update_time=None, create_time=None,

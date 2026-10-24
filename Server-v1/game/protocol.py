@@ -52,6 +52,7 @@ from . import loot as loot_lib
 from .ground_items import can_pick_up as _ground_can_pick_up
 from .team import now_ms as team_now_ms
 from . import combat as combat_lib
+from . import pet as pet_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
 from .ratelimit import TokenBucket
@@ -408,18 +409,34 @@ CMD_MEIREN_CHANMIAN = 82003
 # upgradePet, 136003 petJinJie, 136004 upgradeZhenFa, 136005 upDownZhen,
 # 136006 chuZhan, 136008 chuanChen, 136009 jinJieZhenFa). 136007 has no
 # handler jar-wide (dead route, like 58016); 136010/136011 are pushes.
-# 136001/136002/136003/136004/136008/136009 need the ChongWu(Biao/
-# ShengJi/ZhenFa) config tables, which do not ship in the reference
-# config tree, so they stay unported. PetErrorCode.CODE_13600x is the
-# command id itself.
+# 136001/136002/136003/136004/136008/136009 read the ChongWu(Biao/
+# ShengJi/TuJian/ShouHu) config tables, which do not ship in the
+# reference config tree: the loaders stay graceful ({} when absent) and
+# the handlers stay silent exactly where Java would NPE on the missing
+# row. PetErrorCode.CODE_13600x is the command id itself.
 CMD_PET_INFO = 136000
+CMD_PET_ACTIVATE = 136001
+CMD_PET_UPGRADE = 136002
+CMD_PET_JINJIE = 136003
+CMD_PET_ZHENFA_UPGRADE = 136004
 CMD_PET_UPDOWN = 136005
 CMD_PET_CHUZHAN = 136006
+CMD_PET_CHUANCHEN = 136008
+CMD_PET_ZHENFA_JINJIE = 136009
 CMD_PET_ZHENFA_PUSH = 136010
 CMD_PET_CHUZHAN_PUSH = 136011
+PET_ERR_LEVEL_NOT_ENOUGH = 1000
+PET_ERR_ACTIVATE_DUP = 136000
+PET_ERR_UPGRADE_MAXED = 136001
+PET_ERR_JINJIE_NONE = 136002
+PET_ERR_ZHENFA_JINJIE_FIRST = 136003
+PET_ERR_ZHENFA_JINJIE_GATE = 136004
 PET_ERR_NO_PET = 136005
 PET_ERR_DEPLOYED = 136006
+PET_ERR_CHUANCHEN_GATE = 136007
+PET_ERR_JINJIE_NOTICE = 136009
 PET_ERR_CHUZHAN_DUP = 136010
+PET_ERR_ZHENFA_MAXED = 136011
 # Inbound email claim routes (EmailModuleInit.getInCmd: 63003/63006/63007/
 # 63008; 63005/63009 are server pushes). EmailErrorCode clinit values:
 # 60001 missing mail, 60002 no attachment, 60005/60006 empty JB/YB
@@ -1204,6 +1221,7 @@ class Session:
                  get_role_meiren=None, save_role_meiren=None,
                  get_role_baoshi=None, save_role_baoshi=None,
                  get_role_zuoqi=None, save_role_zuoqi=None,
+                 get_role_pet=None,
                  get_role_pets=None, save_role_pet=None,
                  get_role_pet_zhenfa=None, save_role_pet_zhenfa=None,
                  get_zuoqi_fanhuan=None, save_zuoqi_fanhuan=None,
@@ -1345,6 +1363,7 @@ class Session:
         self.save_role_skill = save_role_skill or (lambda *a, **k: False)
         self.get_role_zuoqi = get_role_zuoqi or (lambda role_id: None)
         self.save_role_zuoqi = save_role_zuoqi or (lambda *a, **k: False)
+        self.get_role_pet = get_role_pet or (lambda *a: None)
         self.get_role_pets = get_role_pets or (lambda role_id: [])
         self.save_role_pet = save_role_pet or (lambda *a, **k: False)
         self.get_role_pet_zhenfa = \
@@ -2130,6 +2149,18 @@ class Session:
             return self.pet_updown(msg)
         if cmd_num == 136006:
             return self.pet_chuzhan(msg)
+        if cmd_num == CMD_PET_ACTIVATE:
+            return self.pet_activate(msg)
+        if cmd_num == CMD_PET_UPGRADE:
+            return self.pet_upgrade(msg)
+        if cmd_num == CMD_PET_JINJIE:
+            return self.pet_jinjie(msg)
+        if cmd_num == CMD_PET_ZHENFA_UPGRADE:
+            return self.pet_zhenfa_upgrade(msg)
+        if cmd_num == CMD_PET_CHUANCHEN:
+            return self.pet_chuanchen(msg)
+        if cmd_num == CMD_PET_ZHENFA_JINJIE:
+            return self.pet_zhenfa_jinjie(msg)
         if cmd_num == CMD_BAOSHI_INFO:
             return self.baoshi_info()
         if cmd_num == CMD_BAOSHI_JIHUO:
@@ -4399,6 +4430,10 @@ class Session:
                 self._marry_on_enter(str((role or {}).get('id')))
             except Exception:
                 pass
+            try:
+                self._pet_on_enter(str((role or {}).get('id')))
+            except Exception:
+                pass
             task_frames = []
             try:
                 task_frames = self._task_on_enter(_wire_id(role)) or []
@@ -4570,6 +4605,7 @@ class Session:
             bags.append(self.config.zuoqi_effect_attribute_map(
                 mount.get('zuoqi_rank'), role.get('level'),
                 self._zuoqi_att_map(mount)))
+        bags.append(self._pet_attribute_bag(role))
         return [b for b in bags if b]
 
     def role_effect_slots(self, role):
@@ -20775,6 +20811,7 @@ class Session:
         role, rid = self._task_role()
         if role is None:
             return None
+        self._pet_clear_count(rid)
         try:
             pets = self.get_role_pets(rid) or []
         except Exception:
@@ -20952,6 +20989,545 @@ class Session:
         self._pet_save_zhenfa(rid, row, pet_chuzhan_id=pet_id)
         out.append(frame(amf3_encode(['136006', [1]])))
         return out
+
+    @staticmethod
+    def _pet_int(value, default=0):
+        """Tolerant int for pet state and config cells."""
+        try:
+            return int(value if value is not None else default)
+        except (TypeError, ValueError):
+            return default
+
+    def _pet_row(self, rid, pet_id):
+        """Full RolePet row (PetServiceImpl.getRolePet), or None."""
+        try:
+            row = self.get_role_pet(rid, pet_id)
+        except Exception:
+            return None
+        return dict(row) if row else None
+
+    def _pet_save_row(self, row):
+        """Persist a full RolePet row (cacheUpdate overwrites all columns)."""
+        try:
+            self.save_role_pet(
+                row.get('role_id', row.get('user_role_id')),
+                row.get('pet_id'),
+                pet_lv=self._pet_int(row.get('pet_lv'), 1),
+                pet_lv_exp=self._pet_int(row.get('pet_lv_exp')),
+                pet_rank=self._pet_int(row.get('pet_rank'), 1),
+                pet_rank_exp=self._pet_int(row.get('pet_rank_exp')),
+                pet_rank_fail=self._pet_int(row.get('pet_rank_fail')),
+                pet_rank_update_time=row.get('pet_rank_update_time'),
+                create_time=row.get('create_time'))
+            return True
+        except Exception:
+            return False
+
+    def _pet_take_goods(self, rid, needs):
+        """BagExportService.decrGoodses over a {goodsId: count} map.
+
+        Best-effort mirror of _task_consume's slot-asc walk; callers run
+        checkDecrGoods first via _task_bag_has, exactly like Java.
+        """
+        if not needs:
+            return True
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return False
+        try:
+            for goods_id, need in needs.items():
+                try:
+                    left = int(need or 0)
+                except (TypeError, ValueError):
+                    continue
+                if left <= 0:
+                    continue
+                ordered = sorted(slots,
+                                 key=lambda s: s.get('slot_num') or 0)
+                for slot in ordered:
+                    if left <= 0:
+                        break
+                    if str(slot.get('goods_id')) != str(goods_id):
+                        continue
+                    try:
+                        have = int(slot.get('count') or 0)
+                    except (TypeError, ValueError):
+                        have = 0
+                    take = min(have, left)
+                    if take <= 0:
+                        continue
+                    left -= take
+                    rest = have - take
+                    try:
+                        if rest > 0:
+                            self.update_role_bag_slot(
+                                rid, slot.get('slot_num'), count=rest)
+                        else:
+                            self.delete_role_bag_slot(
+                                rid, slot.get('slot_num'))
+                    except Exception:
+                        break
+                    slot['count'] = rest
+            return True
+        except Exception:
+            return False
+
+    def _pet_request_pet(self, msg):
+        """Bare-String pet id for 136001/136002/136003 (getData cast)."""
+        try:
+            pet_id = str(self.safe(msg, 1, ''))
+        except Exception:
+            return None
+        return pet_id or None
+
+    def pet_activate(self, msg):
+        """Command 136001: activatePet spends the rank-1 cost row.
+
+        Port of PetServiceImpl.activatePet: the pet's jieshu-1 ChongWuBiao
+        row gates the role level ([0, 1000]) and the items cost ([0,
+        1005]); an owned pet answers [0, 136000]. Success inserts the
+        RolePet (propActivatePet shape, lv/rank 1) and answers [1, petId].
+        Events ride no bus, like the other ported upgrade flows. A
+        missing pet config row is silent (Java NPEs on the load miss).
+        """
+        role, rid = self._task_role()
+        if role is None or self.config is None:
+            return None
+        pet_id = self._pet_request_pet(msg)
+        if pet_id is None:
+            return None
+        biao = self.config.chongwu_row(pet_id, pet_lib.FIRST_JIESHU)
+        if biao is None:
+            return None
+        if self._pet_row(rid, pet_id) is not None:
+            return frame(amf3_encode(['136001', [0, PET_ERR_ACTIVATE_DUP]]))
+        if self._task_role_level(role) < self._pet_int(biao.get('need_lv')):
+            return frame(amf3_encode(
+                ['136001', [0, PET_ERR_LEVEL_NOT_ENOUGH]]))
+        needs = biao.get('items') or {}
+        if not self._task_bag_has(rid, needs):
+            return frame(amf3_encode(['136001', [0, GENERAL_GOODS]]))
+        self._pet_take_goods(rid, needs)
+        fresh = pet_lib.fresh_pet(rid, pet_id, self._world_now_ms())
+        try:
+            self.save_role_pet(
+                rid, pet_id, pet_lv=fresh['pet_lv'],
+                pet_lv_exp=fresh['pet_lv_exp'], pet_rank=fresh['pet_rank'],
+                pet_rank_exp=fresh['pet_rank_exp'],
+                pet_rank_fail=fresh['pet_rank_fail'],
+                pet_rank_update_time=fresh['pet_rank_update_time'],
+                create_time=fresh['create_time'])
+        except Exception:
+            return None
+        return frame(amf3_encode(['136001', [1, pet_id]]))
+
+    def pet_upgrade(self, msg):
+        """Command 136002: upgradePet feeds level exp, leveling once.
+
+        Port of PetServiceImpl.upgradePet: maxlv at or below the pet level
+        answers [0, 136001]; the shengji needItem cost answers [0, 1005]
+        short. lvExp grows by exp and a single level-up fires on overflow
+        (cfg level + 1, exp reset, overflow discarded). The zhenfa write
+        mirrors Java exactly, including its quirk of storing
+        petUpgradeCount + 1 into upgradeExp. The reply is [1, petId, lv,
+        exp]. A missing pet or config row is silent (Java NPEs there).
+        """
+        role, rid = self._task_role()
+        if role is None or self.config is None:
+            return None
+        pet_id = self._pet_request_pet(msg)
+        if pet_id is None:
+            return None
+        pet = self._pet_row(rid, pet_id)
+        biao = (self.config.chongwu_row(pet_id, (pet or {}).get('pet_rank'))
+                if pet is not None else None)
+        if pet is None or biao is None:
+            return None
+        level = self._pet_int(pet.get('pet_lv'), 1)
+        if self._pet_int(biao.get('max_lv')) <= level:
+            return frame(amf3_encode(['136002', [0, PET_ERR_UPGRADE_MAXED]]))
+        shengji = self.config.chongwu_shengji_row(pet_id, level)
+        if shengji is None:
+            return None
+        needs = shengji.get('need_item') or {}
+        if not self._task_bag_has(rid, needs):
+            return frame(amf3_encode(['136002', [0, GENERAL_GOODS]]))
+        self._pet_take_goods(rid, needs)
+        exp = (self._pet_int(pet.get('pet_lv_exp'))
+               + self._pet_int(shengji.get('exp')))
+        if exp >= self._pet_int(shengji.get('need_exp')):
+            level = self._pet_int(shengji.get('level')) + 1
+            exp = 0
+        pet['pet_lv'], pet['pet_lv_exp'] = level, exp
+        self._pet_save_row(pet)
+        try:
+            zhenfa = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            zhenfa = None
+        if zhenfa is not None:
+            zhenfa = dict(zhenfa)
+            zhenfa['upgrade_exp'] = (self._pet_int(
+                zhenfa.get('pet_upgrade_count')) + 1)
+            zhenfa['pet_upgrade_time'] = self._world_now_ms()
+            self._pet_save_zhenfa(rid, zhenfa)
+        return frame(amf3_encode(['136002', [1, pet_id, level, exp]]))
+
+    def pet_jinjie(self, msg):
+        """Command 136003: petJinJie spends needThings for a rank attempt.
+
+        Port of PetServiceImpl.petJinJie: a non-jinjie rank answers [0,
+        136002], a short bag [0, 1005]. Success promotes to jieshu + 1
+        with the pity cleared ([1, petId, rank, rankExp]); failure accrues
+        a random blessing ([-1, petId, rank, rankExp]), promoting anyway
+        past maxblessing. A noticing rank also emits 11101 [136009,
+        [roleName, petName, jieshu + 1]] ahead of the reply.
+        """
+        role, rid = self._task_role()
+        if role is None or self.config is None:
+            return None
+        pet_id = self._pet_request_pet(msg)
+        if pet_id is None:
+            return None
+        pet = self._pet_row(rid, pet_id)
+        biao = (self.config.chongwu_row(pet_id, (pet or {}).get('pet_rank'))
+                if pet is not None else None)
+        if pet is None or biao is None:
+            return None
+        if not biao.get('jinjie'):
+            return frame(amf3_encode(['136003', [0, PET_ERR_JINJIE_NONE]]))
+        needs = biao.get('need_things') or {}
+        if not self._task_bag_has(rid, needs):
+            return frame(amf3_encode(['136003', [0, GENERAL_GOODS]]))
+        self._pet_take_goods(rid, needs)
+        if pet_lib.pet_jinjie_success(pet.get('pet_rank_fail'), biao):
+            return self._pet_jinjie_succ(rid, role, pet, biao)
+        return self._pet_jinjie_fail(rid, role, pet, biao)
+
+    def _pet_jinjie_succ(self, rid, role, pet, biao):
+        """petJinJie succ: rank = jieshu + 1, pity cleared, notice first."""
+        new_rank = self._pet_int(biao.get('jieshu')) + 1
+        pet['pet_rank'] = new_rank
+        pet['pet_rank_exp'] = 0
+        pet['pet_rank_fail'] = 0
+        self._pet_save_row(pet)
+        out = []
+        if biao.get('notice'):
+            out.append(frame(amf3_encode(
+                [str(CMD_NOTICE_ALL),
+                 [PET_ERR_JINJIE_NOTICE,
+                  [str((role or {}).get('name')),
+                   str(biao.get('name')), new_rank]]])))
+        out.append(frame(amf3_encode(
+            [str(CMD_PET_JINJIE),
+             [1, str(pet.get('pet_id')), new_rank, 0]])))
+        return out if len(out) > 1 else out[0]
+
+    def _pet_jinjie_fail(self, rid, role, pet, biao):
+        """petJinJie fail: blessing accrues; maxblessing promotes (succ)."""
+        exp = (self._pet_int(pet.get('pet_rank_exp'))
+               + pet_lib.random_blessing(biao.get('add_min'),
+                                         biao.get('add_max')))
+        pet['pet_rank_exp'] = exp
+        if exp >= self._pet_int(biao.get('max_blessing')):
+            return self._pet_jinjie_succ(rid, role, pet, biao)
+        pet['pet_rank_fail'] = self._pet_int(pet.get('pet_rank_fail')) + 1
+        self._pet_save_row(pet)
+        return frame(amf3_encode(
+            [str(CMD_PET_JINJIE),
+             [-1, str(pet.get('pet_id')),
+              self._pet_int(pet.get('pet_rank')), exp]]))
+
+    def pet_zhenfa_upgrade(self, msg):
+        """Command 136004: upgradeZhenFa feeds the formation's exp.
+
+        Port of PetServiceImpl.upgradeZhenFa: a jinjie-flagged zhenfa at
+        full exp must jinjie first ([0, 136003]); past maxlevel answers
+        [0, 136011] and a short bag [0, 1005]. Overflow levels the zhenfa
+        (id + 1, exp reset) unless it is a jinjie node. The reply is [1,
+        zhenfaId, upgradeExp].
+        """
+        _role, rid = self._task_role()
+        if rid is None or self.config is None:
+            return None
+        try:
+            zhenfa = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            zhenfa = None
+        if zhenfa is None:
+            return None
+        shouhu = self.config.chongwu_shouhu_row(zhenfa.get('zhenfa_id'))
+        if shouhu is None:
+            return None
+        upgrade_exp = self._pet_int(zhenfa.get('upgrade_exp'))
+        need_exp = self._pet_int(shouhu.get('need_exp'))
+        if shouhu.get('is_jinjie') and upgrade_exp >= need_exp:
+            return frame(amf3_encode(
+                ['136004', [0, PET_ERR_ZHENFA_JINJIE_FIRST]]))
+        try:
+            zhenfa_level = int(str(zhenfa.get('zhenfa_id')))
+        except (TypeError, ValueError):
+            return None
+        if self._pet_int(shouhu.get('max_level')) <= zhenfa_level:
+            return frame(amf3_encode(['136004', [0, PET_ERR_ZHENFA_MAXED]]))
+        needs = shouhu.get('upgrade_item') or {}
+        if not self._task_bag_has(rid, needs):
+            return frame(amf3_encode(['136004', [0, GENERAL_GOODS]]))
+        self._pet_take_goods(rid, needs)
+        upgrade_exp += self._pet_int(shouhu.get('exp'))
+        zhenfa_id = zhenfa.get('zhenfa_id')
+        if upgrade_exp >= need_exp and not shouhu.get('is_jinjie'):
+            zhenfa_id = str(self._pet_int(shouhu.get('level')) + 1)
+            upgrade_exp = 0
+        zhenfa = dict(zhenfa)
+        zhenfa['zhenfa_id'] = zhenfa_id
+        zhenfa['upgrade_exp'] = upgrade_exp
+        self._pet_save_zhenfa(rid, zhenfa)
+        return frame(amf3_encode(['136004', [1, zhenfa_id, upgrade_exp]]))
+
+    def pet_chuanchen(self, msg):
+        """Command 136008: chuanChen merges one pet into another.
+
+        Port of PetServiceImpl.chuanChen: data is [gainer, consumed]; a
+        missing pet answers [0, 136005], and a consumed pet at or above
+        the gainer in both level and rank answers [0, 136007]. The gainer
+        takes the consumed pet's level, rank and both exps (normalized
+        against the shengji/biao rows like Java, without its +1s), the
+        consumed pet resets to lv/rank 1, and the reply is [1].
+        """
+        _role, rid = self._task_role()
+        if rid is None or self.config is None:
+            return None
+        try:
+            data = self.safe(msg, 1, []) or []
+            gain_id, feed_id = str(data[0]), str(data[1])
+        except (TypeError, ValueError, IndexError):
+            return None
+        if not gain_id or not feed_id:
+            return None
+        gain = self._pet_row(rid, gain_id)
+        feed = self._pet_row(rid, feed_id)
+        if gain is None or feed is None:
+            return frame(amf3_encode(['136008', [0, PET_ERR_NO_PET]]))
+        gain_lv = self._pet_int(gain.get('pet_lv'), 1)
+        gain_rank = self._pet_int(gain.get('pet_rank'), 1)
+        feed_lv = self._pet_int(feed.get('pet_lv'), 1)
+        feed_rank = self._pet_int(feed.get('pet_rank'), 1)
+        if feed_lv >= gain_lv and feed_rank >= gain_rank:
+            return frame(amf3_encode(['136008', [0, PET_ERR_CHUANCHEN_GATE]]))
+        gain['pet_lv'] = feed_lv
+        gain['pet_rank'] = feed_rank
+        gain['pet_lv_exp'] = (self._pet_int(gain.get('pet_lv_exp'))
+                              + self._pet_int(feed.get('pet_lv_exp')))
+        gain['pet_rank_exp'] = (self._pet_int(gain.get('pet_rank_exp'))
+                                + self._pet_int(feed.get('pet_rank_exp')))
+        shengji = self.config.chongwu_shengji_row(gain_id, feed_lv)
+        if (shengji is not None and gain['pet_lv_exp'] >= self._pet_int(
+                shengji.get('need_exp'))):
+            gain['pet_lv'] = self._pet_int(shengji.get('level'))
+            gain['pet_lv_exp'] = 0
+        biao = self.config.chongwu_row(gain_id, gain['pet_rank'])
+        if (biao is not None and gain['pet_rank_exp'] >= self._pet_int(
+                biao.get('max_blessing'))):
+            gain['pet_rank'] = self._pet_int(biao.get('jieshu'))
+            gain['pet_rank_exp'] = 0
+            gain['pet_rank_fail'] = 0
+        self._pet_save_row(gain)
+        reset = pet_lib.reset_pet(feed)
+        try:
+            self.save_role_pet(
+                reset.get('role_id', reset.get('user_role_id')),
+                reset.get('pet_id'),
+                pet_lv=reset.get('pet_lv'),
+                pet_lv_exp=reset.get('pet_lv_exp'),
+                pet_rank=reset.get('pet_rank'),
+                pet_rank_exp=reset.get('pet_rank_exp'),
+                pet_rank_fail=reset.get('pet_rank_fail'),
+                pet_rank_update_time=reset.get('pet_rank_update_time'),
+                create_time=reset.get('create_time'))
+        except Exception:
+            return None
+        return frame(amf3_encode(['136008', [1]]))
+
+    def pet_zhenfa_jinjie(self, msg):
+        """Command 136009: jinJieZhenFa attempts the formation breakthrough.
+
+        Port of PetServiceImpl.jinJieZhenFa: below the exp gate answers
+        [0, 136004], a short bag [0, 1005]. Success levels the zhenfa
+        (fail cleared, jinjie stamp now, jinjieData[newId] = 1) and
+        answers [1, zhenfaId]; failure bumps the fail count and answers
+        [-1, zhenfaId]. The pity ceiling here is strict (fail > maxtimes
+        forces success), unlike the pet rank's >=.
+        """
+        _role, rid = self._task_role()
+        if rid is None or self.config is None:
+            return None
+        try:
+            zhenfa = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            zhenfa = None
+        if zhenfa is None:
+            return None
+        shouhu = self.config.chongwu_shouhu_row(zhenfa.get('zhenfa_id'))
+        if shouhu is None:
+            return None
+        upgrade_exp = self._pet_int(zhenfa.get('upgrade_exp'))
+        if not (shouhu.get('is_jinjie')
+                and upgrade_exp >= self._pet_int(shouhu.get('need_exp'))):
+            return frame(amf3_encode(
+                ['136009', [0, PET_ERR_ZHENFA_JINJIE_GATE]]))
+        needs = shouhu.get('jinjie_need') or {}
+        if not self._task_bag_has(rid, needs):
+            return frame(amf3_encode(['136009', [0, GENERAL_GOODS]]))
+        self._pet_take_goods(rid, needs)
+        zhenfa = dict(zhenfa)
+        if pet_lib.zhenfa_jinjie_success(zhenfa.get('jinjie_fail_count'),
+                                        shouhu):
+            new_id = str(self._pet_int(shouhu.get('level')) + 1)
+            zhenfa['zhenfa_id'] = new_id
+            zhenfa['jinjie_fail_count'] = 0
+            zhenfa['jinjie_time'] = self._world_now_ms()
+            try:
+                data = json.loads(zhenfa.get('jinjie_data') or '{}')
+            except (TypeError, ValueError):
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            data[new_id] = 1
+            zhenfa['jinjie_data'] = json.dumps(data)
+            self._pet_save_zhenfa(rid, zhenfa)
+            return frame(amf3_encode(['136009', [1, new_id]]))
+        zhenfa['jinjie_fail_count'] = (self._pet_int(
+            zhenfa.get('jinjie_fail_count')) + 1)
+        self._pet_save_zhenfa(rid, zhenfa)
+        return frame(amf3_encode(['136009', [-1, zhenfa.get('zhenfa_id')]]))
+
+    def _pet_clear_count(self, rid):
+        """PetServiceImpl.clearCount: daily upgrade-count and lucky resets.
+
+        Runs on login (online) and on every 136000 panel open: a stale
+        petUpgradeTime zeroes the count and stamps now; each owned pet
+        whose rank row is lucky-clearing and whose pity stamp is stale
+        loses its rank exp and fail count. Missing rows stay silent.
+        """
+        from . import marry as marry_lib
+        if not rid:
+            return
+        try:
+            row = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            row = None
+        if row is None:
+            return
+        now = self._world_now_ms()
+        if not marry_lib.is_today(row.get('pet_upgrade_time'), now):
+            row = dict(row)
+            row['pet_upgrade_count'] = 0
+            row['pet_upgrade_time'] = now
+            self._pet_save_zhenfa(rid, row)
+        try:
+            pets = self.get_role_pets(rid) or []
+        except Exception:
+            pets = []
+        for entry in pets:
+            pet_id = str((entry or {}).get('pet_id') or '')
+            if not pet_id:
+                continue
+            full = self._pet_row(rid, pet_id)
+            if full is None:
+                continue
+            biao = (self.config.chongwu_row(pet_id, full.get('pet_rank'))
+                    if self.config is not None else None)
+            if biao is None or not biao.get('lucky_clear'):
+                continue
+            if marry_lib.is_today(full.get('pet_rank_update_time'), now):
+                continue
+            full['pet_rank_exp'] = 0
+            full['pet_rank_fail'] = 0
+            self._pet_save_row(full)
+
+    def _pet_on_enter(self, rid):
+        """PetonlineEvent + online(): seed the formation, then clearCount."""
+        if not rid:
+            return
+        try:
+            row = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            row = None
+        if row is None:
+            now = self._world_now_ms()
+            try:
+                self.save_role_pet_zhenfa(
+                    rid, zhenfa_id=pet_lib.FIRST_ZHENFA_ID,
+                    pet_chuzhan_id=None, upgrade_exp=0,
+                    jinjie_fail_count=0, jinjie_time=now, jinjie_data='{}',
+                    zhenfa_pet='{}', pet_upgrade_count=0,
+                    pet_upgrade_time=now)
+            except Exception:
+                pass
+        self._pet_clear_count(rid)
+
+    def _pet_attribute_bag(self, role):
+        """RoleFactoryHelper.replacePetAttribute's PETBAOBAO bag.
+
+        Deployed formation pets contribute their shengji attribute bag
+        scaled by the zhenfa's zhenfaxiaoguo factor, then every fully
+        owned tujian row adds its bag (getTuJianIds). A missing formation
+        or shouhu row yields no bag, like Java's load miss.
+        """
+        if self.config is None or role is None:
+            return {}
+        try:
+            rid = str(role.get('id'))
+        except Exception:
+            return {}
+        if not rid:
+            return {}
+        try:
+            zhenfa = self.get_role_pet_zhenfa(rid)
+        except Exception:
+            zhenfa = None
+        if zhenfa is None:
+            return {}
+        shouhu = self.config.chongwu_shouhu_row(zhenfa.get('zhenfa_id'))
+        if shouhu is None:
+            return {}
+        try:
+            factor = float(shouhu.get('zhenfa_xiaoguo') or 0)
+        except (TypeError, ValueError):
+            factor = 0.0
+        entries = self._pet_zhenfa_map(zhenfa.get('zhenfa_pet')) or {}
+        try:
+            owned = [str(p.get('pet_id'))
+                     for p in (self.get_role_pets(rid) or [])]
+        except Exception:
+            owned = []
+        total = {}
+        for raw in entries.values():
+            pet_id = str(raw) if raw is not None else ''
+            if not pet_id:
+                continue
+            prow = self._pet_row(rid, pet_id)
+            if prow is None:
+                continue
+            cfg = self.config.chongwu_shengji_row(pet_id,
+                                                  prow.get('pet_lv'))
+            if cfg is None:
+                continue
+            for key, value in (cfg.get('attribute') or {}).items():
+                try:
+                    total[key] = (total.get(key, 0.0)
+                                + float(value) * factor)
+                except (TypeError, ValueError):
+                    continue
+        for tid in self.config.chongwu_tujian_ids(owned):
+            trow = self.config.chongwu_tujian_table().get(str(tid)) or {}
+            for key, value in (trow.get('attribute') or {}).items():
+                try:
+                    total[key] = total.get(key, 0.0) + float(value)
+                except (TypeError, ValueError):
+                    continue
+        return total
 
     def meiren_panel(self):
         """Command 82000: owned [[type, level, heti]] or null when empty."""

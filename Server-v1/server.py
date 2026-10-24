@@ -394,6 +394,7 @@ def main():
     tcpd.get_role_qibing = store.get_role_qibing
     tcpd.save_role_qibing = store.save_role_qibing
     tcpd.get_role_pets = store.get_role_pets
+    tcpd.get_role_pet = store.get_role_pet
     tcpd.save_role_pet = store.save_role_pet
     tcpd.get_role_pet_zhenfa = store.get_role_pet_zhenfa
     tcpd.save_role_pet_zhenfa = store.save_role_pet_zhenfa

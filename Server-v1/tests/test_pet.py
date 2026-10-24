@@ -4,14 +4,16 @@ Evidence: @EasyMapping on PetAction (136000 getPetInfo, 136005
 upDownZhen, 136006 chuZhan, 136008 chuanChen, 136009 jinJieZhenFa;
 136007 has no handler jar-wide) and PetServiceImpl._downZhen/upZhen/
 chuZhan bytecode. 136000 answers [pets, [zhenfaId, upgradeExp, entries],
-chuzhanId, upgradeCount]; 136005 [petId, slot, 1] deploys ([0, 136005]
+chuzhanId, upgradeCount] after running clearCount (stale upgrade stamps
+zero the count first); 136005 [petId, slot, 1] deploys ([0, 136005]
 unknown pet, [0, 136006] already deployed) while other flags remove
 the slot, both emitting the 136010 [[pos, petId]] push and answering
 [1, ...]; 136006 [deploys/recalls the expedition pet ([0, 136005]
 unknown, [0, 136010] already deployed), strips it from formation
 first, pushes 136011 [[old, 2]] / [[new, 1]] / [[old, 2], [new, 1]]
-and answers [1]. 136001/136002/136003/136004/136008/136009 need
-the ChongWu config tables, which do not ship, so they stay unported.
+and answers [1]. 136001/136002/136003/136004/136008/136009 (the
+lifecycle slice) are covered in test_pet_lifecycle.py over fixture
+ChongWu tables, since the reference tree does not ship them.
 
 136000 detail: [0] is one [petId, lv, rank, lvExp, rankExp] per RolePet
 (null when the role owns none); [1] is [zhenfaId, upgradeExp,
@@ -25,6 +27,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -83,7 +86,8 @@ class PetInfoTest(unittest.TestCase):
             self.role_id, zhenfa_id='1', pet_chuzhan_id='petA',
             upgrade_exp=7,
             zhenfa_pet=json.dumps({'1': 'petA', '3': 'petB'}),
-            pet_upgrade_count=2)
+            pet_upgrade_count=2,
+            pet_upgrade_time=int(time.time() * 1000))
         self.assertEqual(
             self.info(),
             ['136000', [[['petA', 12, 2, 300, 40], ['petB', 1, 0, 0, 0]],

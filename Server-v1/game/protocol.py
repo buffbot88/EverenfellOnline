@@ -14437,10 +14437,7 @@ class Session:
         if online is None:
             online = self._guild_online(rid)
         member = dict(member or {})
-        try:
-            position = int(member.get('position') or 0)
-        except (TypeError, ValueError):
-            position = 0
+        position = self._guild_pos(member)
         try:
             gongxian = int(member.get('gongxian') or 0)
         except (TypeError, ValueError):
@@ -14516,13 +14513,20 @@ class Session:
                 int(guild.get('guild_setting') or 0), False,
                 guild.get('create_time') or 0, False, 0]
 
+    @staticmethod
+    def _guild_pos(member):
+        """Position int of a member row (or raw value); default member."""
+        pos = member.get('position') if isinstance(member, dict) else member
+        if pos is None:
+            return GUILD_POS_MEMBER
+        try:
+            return int(pos)
+        except (TypeError, ValueError):
+            return GUILD_POS_MEMBER
+
     def _guild_perm(self, member, key):
         """GongHuiZhiWei permission flag for a member's position."""
-        try:
-            position = int((member or {}).get('position')
-                           if isinstance(member, dict) else member)
-        except (TypeError, ValueError):
-            return 0
+        position = self._guild_pos(member)
         if self.config is None:
             return 0
         try:
@@ -14783,7 +14787,7 @@ class Session:
         admins = [m for m in members
                   if str(m.get('role_id')) != str(rid) and
                   self._guild_online(m.get('role_id')) and
-                  int(m.get('position') or 3) <= GUILD_POS_ADMIN]
+                  self._guild_pos(m) <= GUILD_POS_ADMIN]
         if not admins:
             return self._guild_err(
                 CMD_GUILD_APPLY, GUILD_ERR_ADMIN_OFFLINE)
@@ -14817,9 +14821,9 @@ class Session:
             return None
         gid = str(caller.get('guild_id') or '')
         if not self._guild_perm(caller, 'recruit'):
-            self._guild_push(rid, GUILD_PUSH_APPLY,
-                              [0, GUILD_ERR_NO_POSITION])
-            return None
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_APPLY,
+                [0, GUILD_ERR_NO_POSITION])) or None
         try:
             pending = self.has_guild_apply(gid, target)
         except Exception:
@@ -14833,14 +14837,14 @@ class Session:
             except Exception:
                 guild = None
             if guild is None:
-                self._guild_push(rid, GUILD_PUSH_APPLY,
-                                  [0, GUILD_ERR_EXIT_STATE])
-                return None
+                return tuple(self._guild_push(
+                    rid, GUILD_PUSH_APPLY,
+                    [0, GUILD_ERR_EXIT_STATE])) or None
             try:
                 if self.get_guild_member(target) is not None:
-                    self._guild_push(target, GUILD_PUSH_APPLY,
-                                      [0, GUILD_ERR_HAS_GUILD])
-                    return None
+                    frames.extend(self._guild_push(
+                        target, GUILD_PUSH_APPLY, [0, GUILD_ERR_HAS_GUILD]))
+                    return tuple(frames) if frames else None
             except Exception:
                 pass
             try:
@@ -14987,6 +14991,678 @@ class Session:
             frames.extend(self._guild_broadcast(
                 gid, GUILD_PUSH_INVITE_REPLY, [0, 470050]))
         return tuple(frames) if frames else None
+
+    def _guild_goods_max(self, guild, goods_id):
+        """Per-goods contribution cap from the banner row gm cells."""
+        if self.config is None:
+            return 0
+        try:
+            row = self.config.guild_banner_config(guild.get('banner_id'),
+                                                  guild.get('banner_level'))
+        except Exception:
+            row = None
+        row = row or {}
+        for slot in (1, 2, 3, 4):
+            if str(row.get(f'gm{slot}id') or '') == str(goods_id):
+                try:
+                    return int(row.get(f'gm{slot}value') or 0)
+                except (TypeError, ValueError):
+                    return 0
+        return 0
+
+    def _guild_gongxian_entry(self, row):
+        """GuildGongxianOutput 6-slot ledger card."""
+        row = row or {}
+        return [str(row.get('role_id') or ''), row.get('money') or 0,
+                row.get('qinglong_count') or 0, row.get('baihu_count') or 0,
+                row.get('zhuque_count') or 0, row.get('xuanwu_count') or 0]
+
+    def guild_exit(self, msg):
+        """Command 53005: leave or kick, reply [1] plus 53005 fan-out."""
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        target = self.safe(msg, 1, None)
+        target = str(target) if target else None
+        if target is None or target == str(rid):
+            return self._guild_self_exit(rid, caller, gid)
+        return self._guild_kick(rid, caller, gid, target)
+
+    def _guild_self_exit(self, rid, caller, gid):
+        try:
+            members = self.get_guild_members(gid) or []
+        except Exception:
+            members = []
+        others = [m for m in members if str(m.get('role_id')) != str(rid)]
+        position = self._guild_pos(caller)
+        if position == GUILD_POS_MASTER and others:
+            others.sort(key=lambda m: (self._guild_pos(m),
+                                       int(m.get('create_time') or 0)))
+            successor = others[0]
+            sid = str(successor.get('role_id'))
+            try:
+                self.save_guild_member(sid, gid, GUILD_POS_MASTER)
+            except Exception:
+                return None
+            try:
+                guild = self.get_guild(gid) or {}
+                guild = dict(guild)
+                guild['user_role_id'] = sid
+                if str(guild.get('vice_user_role_id') or '') == sid:
+                    guild['vice_user_role_id'] = ''
+                guild['update_time'] = int(time.time() * 1000)
+                self.save_guild(guild)
+            except Exception:
+                pass
+            try:
+                self.delete_guild_member(rid)
+            except Exception:
+                pass
+            try:
+                self.delete_guild_gongxian(rid)
+            except Exception:
+                pass
+            ok = self._guild_ok(CMD_GUILD_EXIT, 1)
+            return (ok,) + tuple(self._guild_broadcast(
+                gid, GUILD_PUSH_EXIT, [str(rid), sid]))
+        if position == GUILD_POS_MASTER:
+            try:
+                members = self.get_guild_members(gid) or []
+            except Exception:
+                members = []
+            try:
+                self.delete_guild(gid)
+            except Exception:
+                return None
+            out = [self._guild_ok(CMD_GUILD_EXIT, 1)]
+            for m in members:
+                out.extend(self._guild_push(m.get('role_id'),
+                                            GUILD_PUSH_DISBAND, [1]))
+            return tuple(out)
+        if position == GUILD_POS_VICE:
+            try:
+                guild = self.get_guild(gid) or {}
+                guild = dict(guild)
+                if str(guild.get('vice_user_role_id') or '') == str(rid):
+                    guild['vice_user_role_id'] = ''
+                    guild['update_time'] = int(time.time() * 1000)
+                    self.save_guild(guild)
+            except Exception:
+                pass
+        try:
+            self.delete_guild_member(rid)
+        except Exception:
+            return None
+        try:
+            self.delete_guild_gongxian(rid)
+        except Exception:
+            pass
+        ok = self._guild_ok(CMD_GUILD_EXIT, 1)
+        return (ok,) + tuple(self._guild_broadcast(
+            gid, GUILD_PUSH_EXIT, [str(rid)]))
+
+    def _guild_kick(self, rid, caller, gid, target):
+        try:
+            victim = self.get_guild_member(target)
+        except Exception:
+            victim = None
+        if victim is None or str(victim.get('guild_id') or '') != gid:
+            return self._guild_err(CMD_GUILD_EXIT, GUILD_ERR_NOT_IN)
+        actor_pos = self._guild_pos(caller)
+        victim_pos = self._guild_pos(victim)
+        if victim_pos == GUILD_POS_MASTER:
+            return self._guild_err(CMD_GUILD_EXIT, GUILD_ERR_NO_TICHU)
+        need = {GUILD_POS_VICE: 'expel1', GUILD_POS_ADMIN: 'expel2',
+                GUILD_POS_MEMBER: 'expel3'}.get(victim_pos)
+        if actor_pos >= victim_pos or not self._guild_perm(caller, need):
+            return self._guild_err(CMD_GUILD_EXIT, GUILD_ERR_NO_EXIT)
+        try:
+            self.delete_guild_member(target)
+        except Exception:
+            return None
+        try:
+            self.delete_guild_gongxian(target)
+        except Exception:
+            pass
+        if victim_pos == GUILD_POS_VICE:
+            try:
+                guild = self.get_guild(gid) or {}
+                guild = dict(guild)
+                if str(guild.get('vice_user_role_id') or '') == target:
+                    guild['vice_user_role_id'] = ''
+                    guild['update_time'] = int(time.time() * 1000)
+                    self.save_guild(guild)
+            except Exception:
+                pass
+        self._guild_push(target, GUILD_PUSH_EXIT, [target])
+        ok = self._guild_ok(CMD_GUILD_EXIT, 1)
+        return (ok,) + tuple(self._guild_broadcast(
+            gid, GUILD_PUSH_EXIT, [target], exclude=target))
+
+    def guild_by_role(self):
+        """Command 53006: caller's guild VO, null when guildless."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            member = self.get_guild_member(rid)
+        except Exception:
+            member = None
+        if member is None:
+            return frame(amf3_encode([str(CMD_GUILD_BY_ROLE), None]))
+        try:
+            guild = self.get_guild(str(member.get('guild_id') or ''))
+        except Exception:
+            guild = None
+        if guild is None:
+            return frame(amf3_encode([str(CMD_GUILD_BY_ROLE), None]))
+        return frame(amf3_encode([str(CMD_GUILD_BY_ROLE),
+                                  self._guild_vo(guild)]))
+
+    def guild_info_detail(self):
+        """Command 53007: [guild VO, log entries]."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            member = self.get_guild_member(rid)
+        except Exception:
+            member = None
+        if member is None:
+            return None
+        try:
+            guild = self.get_guild(str(member.get('guild_id') or ''))
+        except Exception:
+            guild = None
+        if guild is None:
+            return None
+        try:
+            infos = self.list_guild_info(str(guild.get('id') or '')) or []
+        except Exception:
+            infos = []
+        cards = [[row.get('create_time') or 0, row.get('msg') or '']
+                 for row in infos[-100:]]
+        return frame(amf3_encode([str(CMD_GUILD_INFO),
+                                  [self._guild_vo(guild), cards]]))
+
+    def guild_list(self):
+        """Command 53008: simple cards for every guild."""
+        try:
+            guilds = self.list_guilds() or []
+        except Exception:
+            guilds = []
+        return frame(amf3_encode([str(CMD_GUILD_LIST),
+                                  [self._guild_simple_vo(g)
+                                   for g in guilds]]))
+
+    def guild_disband(self):
+        """Command 53009: disband (void, pushes 53009 to members)."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        if not self._guild_perm(caller, 'dissolve'):
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_DISBAND,
+                [0, GUILD_ERR_DISBAND_PERM])) or None
+        try:
+            members = self.get_guild_members(gid) or []
+        except Exception:
+            members = []
+        try:
+            self.delete_guild(gid)
+        except Exception:
+            return None
+        frames = []
+        for m in members:
+            frames.extend(self._guild_push(m.get('role_id'),
+                                          GUILD_PUSH_DISBAND, [1]))
+        return tuple(frames) if frames else None
+
+    def guild_setting(self, msg):
+        """Command 53013: join-setting update (void, pushes 53013)."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        data = self.safe(msg, 1, None)
+        try:
+            setting = int(data)
+        except (TypeError, ValueError):
+            return None
+        if setting not in (0, 1):
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        if not self._guild_perm(caller, 'set'):
+            return tuple(self._guild_push(rid, GUILD_PUSH_SETTING,
+                                          [0, GUILD_ERR_SETTING_PERM])) or None
+        try:
+            guild = self.get_guild(gid) or {}
+            guild = dict(guild)
+            guild['guild_setting'] = setting
+            guild['update_time'] = int(time.time() * 1000)
+            self.save_guild(guild)
+        except Exception:
+            return None
+        return tuple(self._guild_broadcast(
+            gid, GUILD_PUSH_SETTING, [1, setting])) or None
+
+    def guild_message(self, msg):
+        """Command 53014: notice update, reply [1] plus 53014 fan-out."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        text = self.safe(msg, 1, None)
+        if not isinstance(text, str):
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        if not self._guild_perm(caller, 'notice'):
+            return self._guild_err(CMD_GUILD_MESSAGE,
+                                   GUILD_ERR_MESSAGE_PERM)
+        if len(text) > 100:
+            return self._guild_err(CMD_GUILD_MESSAGE, GUILD_ERR_MSG_LEN)
+        if text and not check_guild_notice(text):
+            return self._guild_err(CMD_GUILD_MESSAGE, 470057)
+        try:
+            guild = self.get_guild(gid) or {}
+            guild = dict(guild)
+            guild['guild_message'] = text
+            guild['update_time'] = int(time.time() * 1000)
+            self.save_guild(guild)
+        except Exception:
+            return None
+        ok = self._guild_ok(CMD_GUILD_MESSAGE, 1)
+        return (ok,) + tuple(self._guild_broadcast(
+            gid, GUILD_PUSH_MESSAGE, [1, text]))
+
+    def guild_position(self, msg):
+        """Command 53015: appoint/demote (void, pushes 53015)."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        target = str(data[0]) if data and data[0] else None
+        try:
+            new_pos = int(data[1]) if len(data) > 1 else None
+        except (TypeError, ValueError):
+            new_pos = None
+        if not target or new_pos not in (0, 1, 2, 3):
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        try:
+            victim = self.get_guild_member(target)
+        except Exception:
+            victim = None
+        if victim is None or str(victim.get('guild_id') or '') != gid:
+            return None
+        actor_pos = self._guild_pos(caller)
+        victim_pos = self._guild_pos(victim)
+        if victim_pos == new_pos:
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_POSITION,
+                [1, target, new_pos])) or None
+        if new_pos == GUILD_POS_MASTER:
+            if actor_pos != GUILD_POS_MASTER or \
+                    not self._guild_perm(caller, 'appoint0'):
+                return tuple(self._guild_push(
+                    rid, GUILD_PUSH_POSITION,
+                    [0, GUILD_ERR_NO_POSITION])) or None
+            try:
+                self.save_guild_member(target, gid, GUILD_POS_MASTER)
+                self.save_guild_member(rid, gid, GUILD_POS_VICE)
+                guild = self.get_guild(gid) or {}
+                guild = dict(guild)
+                guild['user_role_id'] = target
+                guild['vice_user_role_id'] = str(rid)
+                guild['update_time'] = int(time.time() * 1000)
+                self.save_guild(guild)
+            except Exception:
+                return None
+            frames = self._guild_broadcast(
+                gid, GUILD_PUSH_POSITION, [1, target, GUILD_POS_MASTER])
+            frames.extend(self._guild_broadcast(
+                gid, GUILD_PUSH_POSITION, [1, str(rid), GUILD_POS_VICE]))
+            return tuple(frames) or None
+        if new_pos == GUILD_POS_VICE:
+            if not self._guild_perm(caller, 'appoint1'):
+                return tuple(self._guild_push(
+                    rid, GUILD_PUSH_POSITION,
+                    [0, GUILD_ERR_NO_POSITION])) or None
+            try:
+                if self.count_guild_position(gid, GUILD_POS_VICE) >= 1 and \
+                        victim_pos != GUILD_POS_VICE:
+                    return tuple(self._guild_push(
+                        rid, GUILD_PUSH_POSITION, [0, 470054])) or None
+            except Exception:
+                pass
+        elif new_pos == GUILD_POS_ADMIN:
+            if not self._guild_perm(caller, 'appoint2'):
+                return tuple(self._guild_push(
+                    rid, GUILD_PUSH_POSITION,
+                    [0, GUILD_ERR_NO_POSITION])) or None
+            try:
+                if self.count_guild_position(gid, GUILD_POS_ADMIN) >= 3 and \
+                        victim_pos != GUILD_POS_ADMIN:
+                    return tuple(self._guild_push(
+                        rid, GUILD_PUSH_POSITION, [0, 470053])) or None
+            except Exception:
+                pass
+        else:
+            if actor_pos >= victim_pos:
+                return tuple(self._guild_push(
+                    rid, GUILD_PUSH_POSITION,
+                    [0, GUILD_ERR_NO_POSITION])) or None
+        try:
+            self.save_guild_member(target, gid, new_pos)
+        except Exception:
+            return None
+        try:
+            guild = self.get_guild(gid) or {}
+            guild = dict(guild)
+            changed = False
+            if new_pos == GUILD_POS_VICE:
+                guild['vice_user_role_id'] = target
+                changed = True
+            if victim_pos == GUILD_POS_VICE and \
+                    str(guild.get('vice_user_role_id') or '') == target:
+                guild['vice_user_role_id'] = ''
+                changed = True
+            if changed:
+                guild['update_time'] = int(time.time() * 1000)
+                self.save_guild(guild)
+        except Exception:
+            pass
+        return tuple(self._guild_broadcast(
+            gid, GUILD_PUSH_POSITION, [1, target, new_pos])) or None
+
+    def guild_contrib_money(self, msg):
+        """Command 53016: donate YXB (void, pushes 53016 + 53029)."""
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, None)
+        try:
+            amount = int(data)
+        except (TypeError, ValueError):
+            return None
+        if amount <= 0:
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        try:
+            guild = self.get_guild(gid) or {}
+        except Exception:
+            guild = {}
+        if not guild:
+            return None
+        try:
+            have = int(role.get('tongqian') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        if have < amount:
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_CONTRIB,
+                [0, GUILD_ERR_JB_SHORT])) or None
+        max_money = self.config.guild_banner_max_money(
+            guild.get('banner_id'), guild.get('banner_level')) \
+            if self.config is not None else 0
+        try:
+            money = int(guild.get('money') or 0)
+        except (TypeError, ValueError):
+            money = 0
+        if max_money and money + amount > max_money:
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_CONTRIB,
+                [0, GUILD_ERR_MONEY_LIMIT])) or None
+        try:
+            self.save_role_state(rid, tongqian=have - amount)
+        except Exception:
+            return None
+        try:
+            guild = dict(guild)
+            guild['money'] = money + amount
+            guild['update_time'] = int(time.time() * 1000)
+            self.save_guild(guild)
+        except Exception:
+            pass
+        try:
+            self.add_guild_gongxian(rid, amount)
+        except Exception:
+            pass
+        try:
+            self.save_guild_gongxian(
+                {'guild_id': gid, 'role_id': str(rid), 'money': amount,
+                 'qinglong_count': 0, 'baihu_count': 0, 'zhuque_count': 0,
+                 'xuanwu_count': 0, 'create_time': int(time.time() * 1000),
+                 'update_time': int(time.time() * 1000)})
+        except Exception:
+            pass
+        frames = self._guild_broadcast(
+            gid, GUILD_PUSH_CONTRIB, [1, money + amount])
+        frames.extend(self._guild_push(
+            rid, GUILD_PUSH_INFO, self._guild_gongxian_cards(rid, gid)))
+        return tuple(frames) or None
+
+    def guild_contrib_goods(self, msg):
+        """Command 53017: donate spirit goods (void, pushes 53017 + 53029)."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        goods_id = str(data[0]) if data and data[0] else None
+        try:
+            count = int(data[1]) if len(data) > 1 else 0
+        except (TypeError, ValueError):
+            count = 0
+        if not goods_id or count <= 0:
+            return None
+        if goods_id not in ('lingql', 'lingbh', 'lingzq', 'lingxw'):
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        try:
+            guild = self.get_guild(gid) or {}
+        except Exception:
+            guild = {}
+        if not guild:
+            return None
+        if self._guild_bag_count(rid, goods_id) < count:
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_CONTRIB_GOODS, [0, 470038])) or None
+        cap = self._guild_goods_max(guild, goods_id)
+        col = {'lingql': 'qinglong_count', 'lingbh': 'baihu_count',
+               'lingzq': 'zhuque_count', 'lingxw': 'xuanwu_count'}[goods_id]
+        try:
+            have = int(guild.get(col) or 0)
+        except (TypeError, ValueError):
+            have = 0
+        if cap and have + count > cap:
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_CONTRIB_GOODS,
+                [0, GUILD_ERR_GOODS_TOP])) or None
+        if not self._guild_bag_decr(rid, goods_id, count):
+            return tuple(self._guild_push(
+                rid, GUILD_PUSH_CONTRIB_GOODS, [0, 470038])) or None
+        try:
+            guild = dict(guild)
+            guild[col] = have + count
+            guild['update_time'] = int(time.time() * 1000)
+            self.save_guild(guild)
+        except Exception:
+            pass
+        try:
+            self.add_guild_gongxian(rid, count)
+        except Exception:
+            pass
+        entry = {'guild_id': gid, 'role_id': str(rid), 'money': 0,
+                 'qinglong_count': 0, 'baihu_count': 0, 'zhuque_count': 0,
+                 'xuanwu_count': 0,
+                 'create_time': int(time.time() * 1000),
+                 'update_time': int(time.time() * 1000)}
+        entry[col] = count
+        try:
+            self.save_guild_gongxian(entry)
+        except Exception:
+            pass
+        frames = self._guild_broadcast(
+            gid, GUILD_PUSH_CONTRIB_GOODS, [1, goods_id, have + count])
+        frames.extend(self._guild_push(
+            rid, GUILD_PUSH_INFO, self._guild_gongxian_cards(rid, gid)))
+        return tuple(frames) or None
+
+    def _guild_gongxian_cards(self, rid, gid):
+        """53029 payload: [spirit goods, caller's ledger cards]."""
+        try:
+            guild = self.get_guild(gid) or {}
+        except Exception:
+            guild = {}
+        try:
+            entries = self.list_guild_gongxian(gid) or []
+        except Exception:
+            entries = []
+        mine = [self._guild_gongxian_entry(e) for e in entries
+                if str(e.get('role_id')) == str(rid)]
+        return [self._guild_ling_goods(guild), mine]
+
+    def guild_by_guild(self, msg):
+        """Command 53024: guild VO by id, null when missing."""
+        gid = self.safe(msg, 1, None)
+        if not gid:
+            return frame(amf3_encode([str(CMD_GUILD_BY_GUILD), None]))
+        try:
+            guild = self.get_guild(str(gid))
+        except Exception:
+            guild = None
+        if guild is None:
+            return frame(amf3_encode([str(CMD_GUILD_BY_GUILD), None]))
+        return frame(amf3_encode([str(CMD_GUILD_BY_GUILD),
+                                  self._guild_vo(guild)]))
+
+    def guild_banners(self):
+        """Command 53028: [upgrade costs, name costs] for the banner."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            member = self.get_guild_member(rid)
+        except Exception:
+            member = None
+        if member is None:
+            return self._guild_err(CMD_GUILD_BANNERS, GUILD_ERR_NOT_IN)
+        try:
+            guild = self.get_guild(str(member.get('guild_id') or '')) or {}
+        except Exception:
+            guild = {}
+        row = self.config.guild_banner_config(
+            guild.get('banner_id'), guild.get('banner_level')) \
+            if self.config is not None else None
+        row = row or {}
+        upgrade_map = {str(row.get(f'sj{slot}id') or ''): row.get(
+            f'sj{slot}value') for slot in (1, 2, 3, 4)}
+        name_map = {str(row.get(f'zx{slot}id') or ''): row.get(
+            f'zx{slot}value') for slot in (1, 2, 3, 4)}
+        try:
+            upgrade_money = int(float(row.get('qzmoneyvalue') or 0))
+        except (TypeError, ValueError):
+            upgrade_money = 0
+        try:
+            name_money = int(float(row.get('zxmoneyvalue') or 0))
+        except (TypeError, ValueError):
+            name_money = 0
+        upgrade = [upgrade_money] + [int(upgrade_map.get(k) or 0)
+                                     for k in ('lingql', 'lingbh', 'lingzq',
+                                               'lingxw')]
+        name = [name_money] + [int(name_map.get(k) or 0)
+                               for k in ('lingql', 'lingbh', 'lingzq',
+                                         'lingxw')]
+        return frame(amf3_encode([str(CMD_GUILD_BANNERS), [upgrade, name]]))
+
+    def guild_gongxian(self):
+        """Command 53029: [spirit goods, caller's ledger cards]."""
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            member = self.get_guild_member(rid)
+        except Exception:
+            member = None
+        if member is None:
+            return frame(amf3_encode(
+                [str(CMD_GUILD_GONGXIAN),
+                 [[[k, 0] for k in ('lingql', 'lingbh', 'lingzq',
+                                    'lingxw')], []]]))
+        return frame(amf3_encode([str(CMD_GUILD_GONGXIAN),
+                                  self._guild_gongxian_cards(
+                                      rid, str(member.get('guild_id') or ''))]))
+
+    def guild_search(self, msg):
+        """Command 53030: simple cards for guilds matching a name."""
+        text = self.safe(msg, 1, None)
+        if not text:
+            return frame(amf3_encode([str(CMD_GUILD_SEARCH), []]))
+        try:
+            guilds = self.search_guilds(str(text)) or []
+        except Exception:
+            guilds = []
+        return frame(amf3_encode([str(CMD_GUILD_SEARCH),
+                                  [self._guild_simple_vo(g)
+                                   for g in guilds]]))
+
+    def guild_by_id(self, msg):
+        """Command 53051: guild VO by id, silent when missing."""
+        gid = self.safe(msg, 1, None)
+        if not gid:
+            return None
+        try:
+            guild = self.get_guild(str(gid))
+        except Exception:
+            guild = None
+        if guild is None:
+            return None
+        return frame(amf3_encode([str(CMD_GUILD_BY_ID),
+                                  self._guild_vo(guild)]))
 
     # Battle-formation (pozhen 48001-48011). Evidence: PoZhenAction (11
     # inbound; 48011 getGoods is a void grant), RolePozhenServiceImpl plus

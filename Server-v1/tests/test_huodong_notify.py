@@ -78,6 +78,8 @@ class HuodongNotifyTest(unittest.TestCase):
             server_start_ms=0,
             get_role_zuoqi=self.store.get_role_zuoqi,
             save_role_zuoqi=self.store.save_role_zuoqi,
+            get_role_qibing=self.store.get_role_qibing,
+            save_role_qibing=self.store.save_role_qibing,
             get_role_baoshi=self.store.get_role_baoshi,
             save_role_baoshi=self.store.save_role_baoshi,
             get_role_guangyi=self.store.get_role_guangyi,
@@ -278,20 +280,28 @@ class HuodongNotifyTest(unittest.TestCase):
         got = [decode(bytes(f)[4:]) for f in frames]
         self.assertNotIn(['70520', ['v-near', 1]], got)
 
-    # -- qibing (service pending) -----------------------------------------
-    def test_qibing_crossing_helper_only(self):
-        # No producer exists yet (87000-87002 unported, the metric
-        # reads the injected default), so the helper is pinned
-        # directly: a genuine 1 -> 3 crossing over con 2 fires once,
-        # a repeated check stays silent.
+    # -- qibing progression (qibingJinjie, ct-30) --------------------------
+    def test_qibing_crossing_via_upgrade_producer(self):
+        # Pity-ready rank: fail_count past the band ceiling forces
+        # the 1 -> 2 crossing over con 2, queuing 70520 once.
         sess = self.make_sess(
             config=self.synth(30, 'q-near', 2, 80))
-        role = self.role()
-        got = sess._zonghe_notify_frames(role, self.rid, 30, 1, 3)
-        self.assertEqual([decode(bytes(f)[4:]) for f in got],
-                         [['70520', ['q-near', 1]]])
+        self.store.save_role_vip(self.rid, vip_level=1)
+        self.feed(sess, 87002, None)
+        self.store.insert_role_bag_slot(
+            self.rid, {'slot_num': 10, 'goods_id': 'qibing001',
+                       'count': 2, 'bind': 0})
+        self.store.save_role_qibing(
+            self.rid, fail_count=43, lucky_value=0)
+        got = self.feed(sess, 87001, False)
         self.assertEqual(
-            sess._zonghe_notify_frames(role, self.rid, 30, 3, 3), [])
+            self.store.get_role_qibing(self.rid)['binqi_level'], 2)
+        self.assertEqual(self.pushes(got), [['70520', ['q-near', 1]]])
+        # The level holds at 2 with no fresh pills: nothing re-fires.
+        self.store.save_role_qibing(self.rid, fail_count=43)
+        again = self.feed(sess, 87001, False)
+        self.assertEqual(again, [['87001', [0, 1005, None]]])
+        self.assertEqual(self.pushes(again), [])
 
     # -- edges -------------------------------------------------------------
     def test_no_live_category_is_silent(self):

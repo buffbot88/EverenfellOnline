@@ -708,14 +708,12 @@ class ZongheTransactionTest(unittest.TestCase):
         self.role = dict(self.store.list_roles('hero', 'fu1304')[0])
 
     def make_sess(self, kaifu_ms, config=None, charge=None,
-                  lifetime=None, qibing=None):
+                  lifetime=None):
         extra = {}
         if charge is not None:
             extra['charge_total_in_time'] = lambda r, s, e: charge
         if lifetime is not None:
             extra['charge_total'] = lambda r: lifetime
-        if qibing is not None:
-            extra['qibing_level'] = lambda r: qibing
         return Session(
             conn_id=1, check_sign=lambda *a: False,
             get_roles=lambda u, s: [dict(r) for r in
@@ -723,6 +721,8 @@ class ZongheTransactionTest(unittest.TestCase):
             server_start_ms=kaifu_ms,
             get_role_zuoqi=self.store.get_role_zuoqi,
             save_role_zuoqi=self.store.save_role_zuoqi,
+            get_role_qibing=self.store.get_role_qibing,
+            save_role_qibing=self.store.save_role_qibing,
             get_role_baoshi=self.store.get_role_baoshi,
             save_role_baoshi=self.store.save_role_baoshi,
             get_role_guangyi=self.store.get_role_guangyi,
@@ -1312,14 +1312,16 @@ class ZongheTransactionTest(unittest.TestCase):
         self.assertEqual(self.bag(), {'duihuan2': 15})
 
     def test_qibing_short_is_792001(self):
-        # The qibing service is unported: the metric reads 0.
+        # No progression row: the level reads 0 against con 3.
         body = self.claim([30, self.QB_ACT], self.QB_NOW)
         self.assertEqual(body, ['70551', [0, 792001]])
         self.assertEqual(self.bag(), {})
 
     def test_qibing_success_persists_and_restart(self):
-        self.sess = self.make_sess(PROD_KAIFU, qibing=3)
-        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        self.store.save_role_qibing(self.rid, binqi_level=3,
+                                    fail_count=0, lucky_value=0,
+                                    upgrade_time=0, lingqu_time=0,
+                                    update_time=0)
         body = self.claim([30, self.QB_ACT], self.QB_NOW)
         self.assertEqual(body, ['70551', [1, self.QB_ACT, None, 2,
                                           1, 1, 1, 1]])
@@ -1330,7 +1332,7 @@ class ZongheTransactionTest(unittest.TestCase):
         self.store.close()
         self.store = Store(self.db_path)
         self.addCleanup(self.store.close)
-        self.sess = self.make_sess(PROD_KAIFU, qibing=3)
+        self.sess = self.make_sess(PROD_KAIFU)
         self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
         self.assertEqual(self.claim([30, self.QB_ACT], self.QB_NOW),
                          ['70551', [0, 792006]])

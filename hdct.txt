@@ -1,0 +1,574 @@
+Compiled from "CompositiveActivityClientType.java"
+public final class com.xianling.bus.huodong.constants.CompositiveActivityClientType extends java.lang.Enum<com.xianling.bus.huodong.constants.CompositiveActivityClientType> {
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RECHARGE;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType YB_CONSUME;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType VIP_EXTRA;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType DISCOUNT_MALL;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType MONSTER_WANTED;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType FINAL;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType VIP_MALL;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType GOODS_CHANGE;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType ZUOQI;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK1;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK2;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK3;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK4;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK5;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK6;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType RANK7;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType YBRECHARGERANK;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType YBCONSUMERANK;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType FIRSTRECHARGE;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType BAOSHI_LEVEL;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType KING_MINE;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType QIBING_RANK;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType CHIBANG_RANK;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType VIP_LEVEL;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType XIAOFEI;
+
+  public static final com.xianling.bus.huodong.constants.CompositiveActivityClientType XIAOFEIFANLI;
+
+  private java.lang.Integer intType;
+
+  private static final com.xianling.bus.huodong.constants.CompositiveActivityClientType[] $VALUES;
+
+  public static com.xianling.bus.huodong.constants.CompositiveActivityClientType[] values();
+    Code:
+       0: getstatic     #1                  // Field $VALUES:[Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+       3: invokevirtual #2                  // Method "[Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;".clone:()Ljava/lang/Object;
+       6: checkcast     #3                  // class "[Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;"
+       9: areturn
+
+  public static com.xianling.bus.huodong.constants.CompositiveActivityClientType valueOf(java.lang.String);
+    Code:
+       0: ldc_w         #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+       3: aload_0
+       4: invokestatic  #5                  // Method java/lang/Enum.valueOf:(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Enum;
+       7: checkcast     #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      10: areturn
+
+  private com.xianling.bus.huodong.constants.CompositiveActivityClientType(java.lang.Integer);
+    Code:
+       0: aload_0
+       1: aload_1
+       2: iload_2
+       3: invokespecial #6                  // Method java/lang/Enum."<init>":(Ljava/lang/String;I)V
+       6: aload_0
+       7: aload_3
+       8: putfield      #7                  // Field intType:Ljava/lang/Integer;
+      11: return
+
+  public java.lang.Integer getIntType();
+    Code:
+       0: aload_0
+       1: getfield      #7                  // Field intType:Ljava/lang/Integer;
+       4: areturn
+
+  public static boolean isRankType(com.xianling.bus.huodong.constants.CompositiveActivityClientType);
+    Code:
+       0: aload_0
+       1: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+       4: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+       7: bipush        11
+       9: if_icmplt     28
+      12: aload_0
+      13: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+      16: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+      19: bipush        17
+      21: if_icmpgt     28
+      24: iconst_1
+      25: goto          29
+      28: iconst_0
+      29: ireturn
+
+  public static boolean isFirstRechargeType(com.xianling.bus.huodong.constants.CompositiveActivityClientType);
+    Code:
+       0: aload_0
+       1: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+       4: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+       7: bipush        21
+       9: if_icmpne     16
+      12: iconst_1
+      13: goto          17
+      16: iconst_0
+      17: ireturn
+
+  public static boolean isXaoFeiType(com.xianling.bus.huodong.constants.CompositiveActivityClientType);
+    Code:
+       0: aload_0
+       1: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+       4: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+       7: bipush        34
+       9: if_icmpne     16
+      12: iconst_1
+      13: goto          17
+      16: iconst_0
+      17: ireturn
+
+  public static boolean isYbRankType(com.xianling.bus.huodong.constants.CompositiveActivityClientType);
+    Code:
+       0: aload_0
+       1: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+       4: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+       7: bipush        19
+       9: if_icmpeq     24
+      12: aload_0
+      13: invokevirtual #8                  // Method getIntType:()Ljava/lang/Integer;
+      16: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+      19: bipush        20
+      21: if_icmpne     28
+      24: iconst_1
+      25: goto          29
+      28: iconst_0
+      29: ireturn
+
+  public static com.xianling.bus.huodong.constants.CompositiveActivityClientType convert(java.lang.Integer);
+    Code:
+       0: aload_0
+       1: invokevirtual #9                  // Method java/lang/Integer.intValue:()I
+       4: tableswitch   { // 1 to 35
+                     1: 160
+                     2: 264
+                     3: 164
+                     4: 168
+                     5: 172
+                     6: 176
+                     7: 180
+                     8: 184
+                     9: 188
+                    10: 192
+                    11: 196
+                    12: 200
+                    13: 204
+                    14: 208
+                    15: 212
+                    16: 216
+                    17: 220
+                    18: 264
+                    19: 224
+                    20: 228
+                    21: 232
+                    22: 236
+                    23: 240
+                    24: 264
+                    25: 264
+                    26: 264
+                    27: 264
+                    28: 264
+                    29: 264
+                    30: 244
+                    31: 248
+                    32: 252
+                    33: 264
+                    34: 256
+                    35: 260
+               default: 264
+          }
+     160: getstatic     #10                 // Field RECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     163: areturn
+     164: getstatic     #11                 // Field YB_CONSUME:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     167: areturn
+     168: getstatic     #12                 // Field VIP_EXTRA:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     171: areturn
+     172: getstatic     #13                 // Field DISCOUNT_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     175: areturn
+     176: getstatic     #14                 // Field MONSTER_WANTED:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     179: areturn
+     180: getstatic     #15                 // Field FINAL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     183: areturn
+     184: getstatic     #16                 // Field VIP_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     187: areturn
+     188: getstatic     #17                 // Field GOODS_CHANGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     191: areturn
+     192: getstatic     #18                 // Field ZUOQI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     195: areturn
+     196: getstatic     #19                 // Field RANK1:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     199: areturn
+     200: getstatic     #20                 // Field RANK2:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     203: areturn
+     204: getstatic     #21                 // Field RANK3:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     207: areturn
+     208: getstatic     #22                 // Field RANK4:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     211: areturn
+     212: getstatic     #23                 // Field RANK5:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     215: areturn
+     216: getstatic     #24                 // Field RANK6:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     219: areturn
+     220: getstatic     #25                 // Field RANK7:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     223: areturn
+     224: getstatic     #26                 // Field YBRECHARGERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     227: areturn
+     228: getstatic     #27                 // Field YBCONSUMERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     231: areturn
+     232: getstatic     #28                 // Field FIRSTRECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     235: areturn
+     236: getstatic     #29                 // Field BAOSHI_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     239: areturn
+     240: getstatic     #30                 // Field KING_MINE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     243: areturn
+     244: getstatic     #31                 // Field QIBING_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     247: areturn
+     248: getstatic     #32                 // Field CHIBANG_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     251: areturn
+     252: getstatic     #33                 // Field VIP_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     255: areturn
+     256: getstatic     #34                 // Field XIAOFEI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     259: areturn
+     260: getstatic     #35                 // Field XIAOFEIFANLI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     263: areturn
+     264: new           #36                 // class java/lang/RuntimeException
+     267: dup
+     268: new           #37                 // class java/lang/StringBuilder
+     271: dup
+     272: invokespecial #38                 // Method java/lang/StringBuilder."<init>":()V
+     275: ldc           #39                 // String convert to CompositiveActivityClientType error for intType:
+     277: invokevirtual #40                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+     280: aload_0
+     281: invokevirtual #41                 // Method java/lang/StringBuilder.append:(Ljava/lang/Object;)Ljava/lang/StringBuilder;
+     284: invokevirtual #42                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+     287: invokespecial #43                 // Method java/lang/RuntimeException."<init>":(Ljava/lang/String;)V
+     290: athrow
+
+  static {};
+    Code:
+       0: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+       3: dup
+       4: ldc           #44                 // String RECHARGE
+       6: iconst_0
+       7: iconst_1
+       8: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      11: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+      14: putstatic     #10                 // Field RECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+      17: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      20: dup
+      21: ldc           #47                 // String YB_CONSUME
+      23: iconst_1
+      24: iconst_3
+      25: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      28: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+      31: putstatic     #11                 // Field YB_CONSUME:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+      34: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      37: dup
+      38: ldc           #48                 // String VIP_EXTRA
+      40: iconst_2
+      41: iconst_4
+      42: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      45: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+      48: putstatic     #12                 // Field VIP_EXTRA:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+      51: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      54: dup
+      55: ldc           #49                 // String DISCOUNT_MALL
+      57: iconst_3
+      58: iconst_5
+      59: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      62: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+      65: putstatic     #13                 // Field DISCOUNT_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+      68: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      71: dup
+      72: ldc           #50                 // String MONSTER_WANTED
+      74: iconst_4
+      75: bipush        6
+      77: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      80: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+      83: putstatic     #14                 // Field MONSTER_WANTED:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+      86: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+      89: dup
+      90: ldc           #51                 // String FINAL
+      92: iconst_5
+      93: bipush        7
+      95: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+      98: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     101: putstatic     #15                 // Field FINAL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     104: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     107: dup
+     108: ldc           #52                 // String VIP_MALL
+     110: bipush        6
+     112: bipush        8
+     114: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     117: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     120: putstatic     #16                 // Field VIP_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     123: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     126: dup
+     127: ldc           #53                 // String GOODS_CHANGE
+     129: bipush        7
+     131: bipush        9
+     133: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     136: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     139: putstatic     #17                 // Field GOODS_CHANGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     142: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     145: dup
+     146: ldc           #54                 // String ZUOQI
+     148: bipush        8
+     150: bipush        10
+     152: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     155: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     158: putstatic     #18                 // Field ZUOQI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     161: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     164: dup
+     165: ldc           #55                 // String RANK1
+     167: bipush        9
+     169: bipush        11
+     171: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     174: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     177: putstatic     #19                 // Field RANK1:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     180: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     183: dup
+     184: ldc           #56                 // String RANK2
+     186: bipush        10
+     188: bipush        12
+     190: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     193: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     196: putstatic     #20                 // Field RANK2:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     199: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     202: dup
+     203: ldc           #57                 // String RANK3
+     205: bipush        11
+     207: bipush        13
+     209: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     212: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     215: putstatic     #21                 // Field RANK3:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     218: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     221: dup
+     222: ldc           #58                 // String RANK4
+     224: bipush        12
+     226: bipush        14
+     228: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     231: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     234: putstatic     #22                 // Field RANK4:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     237: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     240: dup
+     241: ldc           #59                 // String RANK5
+     243: bipush        13
+     245: bipush        15
+     247: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     250: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     253: putstatic     #23                 // Field RANK5:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     256: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     259: dup
+     260: ldc           #60                 // String RANK6
+     262: bipush        14
+     264: bipush        16
+     266: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     269: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     272: putstatic     #24                 // Field RANK6:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     275: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     278: dup
+     279: ldc           #61                 // String RANK7
+     281: bipush        15
+     283: bipush        17
+     285: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     288: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     291: putstatic     #25                 // Field RANK7:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     294: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     297: dup
+     298: ldc           #62                 // String YBRECHARGERANK
+     300: bipush        16
+     302: bipush        19
+     304: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     307: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     310: putstatic     #26                 // Field YBRECHARGERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     313: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     316: dup
+     317: ldc           #63                 // String YBCONSUMERANK
+     319: bipush        17
+     321: bipush        20
+     323: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     326: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     329: putstatic     #27                 // Field YBCONSUMERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     332: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     335: dup
+     336: ldc           #64                 // String FIRSTRECHARGE
+     338: bipush        18
+     340: bipush        21
+     342: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     345: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     348: putstatic     #28                 // Field FIRSTRECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     351: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     354: dup
+     355: ldc           #65                 // String BAOSHI_LEVEL
+     357: bipush        19
+     359: bipush        22
+     361: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     364: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     367: putstatic     #29                 // Field BAOSHI_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     370: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     373: dup
+     374: ldc           #66                 // String KING_MINE
+     376: bipush        20
+     378: bipush        23
+     380: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     383: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     386: putstatic     #30                 // Field KING_MINE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     389: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     392: dup
+     393: ldc           #67                 // String QIBING_RANK
+     395: bipush        21
+     397: bipush        30
+     399: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     402: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     405: putstatic     #31                 // Field QIBING_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     408: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     411: dup
+     412: ldc           #68                 // String CHIBANG_RANK
+     414: bipush        22
+     416: bipush        31
+     418: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     421: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     424: putstatic     #32                 // Field CHIBANG_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     427: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     430: dup
+     431: ldc           #69                 // String VIP_LEVEL
+     433: bipush        23
+     435: bipush        32
+     437: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     440: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     443: putstatic     #33                 // Field VIP_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     446: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     449: dup
+     450: ldc           #70                 // String XIAOFEI
+     452: bipush        24
+     454: bipush        34
+     456: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     459: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     462: putstatic     #34                 // Field XIAOFEI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     465: new           #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     468: dup
+     469: ldc           #71                 // String XIAOFEIFANLI
+     471: bipush        25
+     473: bipush        35
+     475: invokestatic  #45                 // Method java/lang/Integer.valueOf:(I)Ljava/lang/Integer;
+     478: invokespecial #46                 // Method "<init>":(Ljava/lang/String;ILjava/lang/Integer;)V
+     481: putstatic     #35                 // Field XIAOFEIFANLI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     484: bipush        26
+     486: anewarray     #4                  // class com/xianling/bus/huodong/constants/CompositiveActivityClientType
+     489: dup
+     490: iconst_0
+     491: getstatic     #10                 // Field RECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     494: aastore
+     495: dup
+     496: iconst_1
+     497: getstatic     #11                 // Field YB_CONSUME:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     500: aastore
+     501: dup
+     502: iconst_2
+     503: getstatic     #12                 // Field VIP_EXTRA:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     506: aastore
+     507: dup
+     508: iconst_3
+     509: getstatic     #13                 // Field DISCOUNT_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     512: aastore
+     513: dup
+     514: iconst_4
+     515: getstatic     #14                 // Field MONSTER_WANTED:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     518: aastore
+     519: dup
+     520: iconst_5
+     521: getstatic     #15                 // Field FINAL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     524: aastore
+     525: dup
+     526: bipush        6
+     528: getstatic     #16                 // Field VIP_MALL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     531: aastore
+     532: dup
+     533: bipush        7
+     535: getstatic     #17                 // Field GOODS_CHANGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     538: aastore
+     539: dup
+     540: bipush        8
+     542: getstatic     #18                 // Field ZUOQI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     545: aastore
+     546: dup
+     547: bipush        9
+     549: getstatic     #19                 // Field RANK1:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     552: aastore
+     553: dup
+     554: bipush        10
+     556: getstatic     #20                 // Field RANK2:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     559: aastore
+     560: dup
+     561: bipush        11
+     563: getstatic     #21                 // Field RANK3:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     566: aastore
+     567: dup
+     568: bipush        12
+     570: getstatic     #22                 // Field RANK4:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     573: aastore
+     574: dup
+     575: bipush        13
+     577: getstatic     #23                 // Field RANK5:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     580: aastore
+     581: dup
+     582: bipush        14
+     584: getstatic     #24                 // Field RANK6:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     587: aastore
+     588: dup
+     589: bipush        15
+     591: getstatic     #25                 // Field RANK7:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     594: aastore
+     595: dup
+     596: bipush        16
+     598: getstatic     #26                 // Field YBRECHARGERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     601: aastore
+     602: dup
+     603: bipush        17
+     605: getstatic     #27                 // Field YBCONSUMERANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     608: aastore
+     609: dup
+     610: bipush        18
+     612: getstatic     #28                 // Field FIRSTRECHARGE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     615: aastore
+     616: dup
+     617: bipush        19
+     619: getstatic     #29                 // Field BAOSHI_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     622: aastore
+     623: dup
+     624: bipush        20
+     626: getstatic     #30                 // Field KING_MINE:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     629: aastore
+     630: dup
+     631: bipush        21
+     633: getstatic     #31                 // Field QIBING_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     636: aastore
+     637: dup
+     638: bipush        22
+     640: getstatic     #32                 // Field CHIBANG_RANK:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     643: aastore
+     644: dup
+     645: bipush        23
+     647: getstatic     #33                 // Field VIP_LEVEL:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     650: aastore
+     651: dup
+     652: bipush        24
+     654: getstatic     #34                 // Field XIAOFEI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     657: aastore
+     658: dup
+     659: bipush        25
+     661: getstatic     #35                 // Field XIAOFEIFANLI:Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     664: aastore
+     665: putstatic     #1                  // Field $VALUES:[Lcom/xianling/bus/huodong/constants/CompositiveActivityClientType;
+     668: return
+}

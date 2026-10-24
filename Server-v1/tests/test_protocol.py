@@ -1957,7 +1957,7 @@ class TestLoadingStubs(unittest.TestCase):
         self.assertEqual(self.decode(74000), ['74000', [[1, 0]]])
         self.assertEqual(self.decode(86000), ['86000', [[0, 0, [], 0, None]]])
         self.assertEqual(self.decode(85000), ['85000', [None]])
-        self.assertEqual(self.decode(87000), ['87000', [None]])
+        # 87000 left the stub table: qibing_data answers the live panel.
         self.assertEqual(self.decode(90000), ['90000', [[0, [['1', '0'], ['11', 2130]], []]]])
         self.assertEqual(self.decode(92015), ['92015', [[None, [], None]]])
         self.assertEqual(self.decode(93000), ['93000', [None]])

@@ -122,6 +122,8 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_role_baoshi=self.server.save_role_baoshi,
             get_role_zuoqi=self.server.get_role_zuoqi,
             save_role_zuoqi=self.server.save_role_zuoqi,
+            get_role_qibing=self.server.get_role_qibing,
+            save_role_qibing=self.server.save_role_qibing,
             get_role_pets=self.server.get_role_pets,
             save_role_pet=self.server.save_role_pet,
             get_role_pet_zhenfa=self.server.get_role_pet_zhenfa,
@@ -344,6 +346,8 @@ def main():
     tcpd.save_role_baoshi = store.save_role_baoshi
     tcpd.get_role_zuoqi = store.get_role_zuoqi
     tcpd.save_role_zuoqi = store.save_role_zuoqi
+    tcpd.get_role_qibing = store.get_role_qibing
+    tcpd.save_role_qibing = store.save_role_qibing
     tcpd.get_role_pets = store.get_role_pets
     tcpd.save_role_pet = store.save_role_pet
     tcpd.get_role_pet_zhenfa = store.get_role_pet_zhenfa

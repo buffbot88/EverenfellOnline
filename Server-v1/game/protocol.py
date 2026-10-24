@@ -361,6 +361,16 @@ CMD_ZUOQI_LONGLING = 33012
 # values): 520004 rank short, 520011 per-goods cap hit.
 ZUOQI_RANK_CODE = 520004
 ZUOQI_ATT_CAP_CODE = 520011
+CMD_QIBING_DATA = 87000
+CMD_QIBING_UPGRADE = 87001
+CMD_QIBING_GET = 87002
+# Qibing progression codes (dntg_start.jar clinit values): 87102 rides
+# the 11101 world broadcast on upgrade success; the 87001 gates answer
+# GeneralErrorCode 1001 (role level short, like the max-level dead end)
+# and getbinqi answers 1013 (VipConfig.isQibing false) without a row.
+QIBING_NOTICE_CODE = 87102
+QIBING_ERR_LEVEL = 1001
+QIBING_ERR_VIP = 1013
 # addMeiRen's 82001 push (CreateMeirenOutPut.getMeiRen), emitted by 33006.
 CMD_MEIREN_ADD = 82001
 # Inbound meiren routes (MeirenModuleInit.getInCmd: 82000-82003 only).
@@ -1065,7 +1075,8 @@ class Session:
                  recharge_check_order_repeat=None,
                  recharge_grant_save_tx=None, recharge_finish_tx=None,
                  yb_consume_tx=None,
-                 qibing_level=None,
+                 get_role_qibing=None,
+                 save_role_qibing=None,
                  get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
@@ -1308,7 +1319,9 @@ class Session:
         # Atomic YB debit + pay_yb accounting (decrYb). None keeps
         # the legacy blind debit; server.py wires the Store tx.
         self.yb_consume_tx = yb_consume_tx
-        self.qibing_level = qibing_level or (lambda role_id: 0)
+        self.get_role_qibing = get_role_qibing or (lambda role_id: None)
+        self.save_role_qibing = save_role_qibing or \
+            (lambda *a, **k: False)
         self.get_role_pozhen = get_role_pozhen or (lambda r: None)
         self.save_role_pozhen = save_role_pozhen or \
             (lambda *a, **k: False)
@@ -1946,6 +1959,12 @@ class Session:
             return self.guangyi_buy(msg)
         if cmd_num == 102003:
             return self.guangyi_wear(msg)
+        if cmd_num == CMD_QIBING_DATA:
+            return self.qibing_data(msg)
+        if cmd_num == CMD_QIBING_UPGRADE:
+            return self.qibing_upgrade(msg)
+        if cmd_num == CMD_QIBING_GET:
+            return self.qibing_getbinqi(msg)
         if cmd_num == 71000:
             return self.baixian_info(msg)
         if cmd_num == 71001:
@@ -2038,7 +2057,7 @@ class Session:
             return self.friend_fight(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
-                        86000, 85000, 87000, 91002, 90000,
+                        86000, 85000, 91002, 90000,
                         92015, 93000, 94002, 94100, 95000, 97001,
                         114000, 113000,
                         120100, 124001):
@@ -3805,7 +3824,6 @@ class Session:
             74000: [[1, 0]],
             86000: [[0, 0, [], 0, None]],
             85000: [None],
-            87000: [None],
             91002: [['1', 0.0, '1', [], [['35', False, 0], ['36', 1, 0], ['33', 0, 0], ['34', 0, 0], ['39', 0, 0], ['37', 450], ['38', 0.0, 0.0, 0.0], ['43', False, 0], ['42', None], ['41', 0, 0], ['40', 0, 0], ['67', False, 0], ['66', 0, 0], ['69', False], ['68', 0, 0], ['22', 0, 0], ['23', False, 0], ['24', 0.0, 0], ['25', 1, 0], ['26', 34, 30], ['27', 0.0, 0.0], ['28', 0.0, 0.0, 0.0], ['29', 0, 0], ['3', 0.0, 0.0, 0.0], ['2', 34, 30], ['1', 0], ['7', 0, 0], ['30', 0, 0], ['6', 0, 0], ['5', 0.0, 0.0, 0.0], ['32', 0, 0], ['4', 0.0], ['31', 0.0], ['70', 450], ['71', 0, 0], ['9', False, 0], ['72', 0, 0], ['8', 0, 0], ['59', 0, 0], ['58', 0, 0], ['57', 0, 0], ['56', 0, 0], ['19', 0, 0], ['55', 0.0, 0], ['17', 0, 0], ['18', 0, 0], ['15', 0.0, 0.0, 0.0], ['16', 0, 0], ['13', 0.0, 0.0], ['14', 0.0, 0.0], ['11', False, 0], ['12', False], ['21', 0.0, 0.0, 0.0], ['20', 450], ['64', 0, 0], ['65', 0.0, 0.0], ['62', 450], ['63', 0, 0], ['60', 0, 0], ['61', 0, 0], ['49', 0.0, 0.0], ['48', 0, 0], ['45', 0, 0], ['44', 0.0, 0.0, 0.0], ['47', 0, 0], ['46', 0.0, 0], ['10', 1, 0], ['51', 0.0, 0.0], ['52', 450], ['53', 0, 0], ['54', 0.0, 0.0, 0.0], ['50', None]]]],
             90000: [[0, [['1', '0'], ['11', 2130]], []]],
             92015: [[None, [], None]],
@@ -6589,6 +6607,7 @@ class Session:
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
+        qibing, qibing_dan = 0, 0
         skill_pair = [0, 0]
         shenjiang_slot = [0, 0, 0]
         if role is not None and self.config is not None:
@@ -6638,6 +6657,21 @@ class Session:
             except Exception:
                 buffs = []
             dan = self.config.dan_fight(buffs)
+            # ZhanDouLiServiceImpl.getQiZhanBinQiFight/getQiBingAttri-
+            # buteFigjh: the live level's bag plus the dan map's fight.
+            # An unset or trial-expired level contributes nothing, like
+            # the jar's null/'-1' early returns.
+            try:
+                qbrow = self.get_role_qibing(role.get('id')) or {}
+            except Exception:
+                qbrow = {}
+            live = self.config.qibing_live_id(qbrow)
+            qibing = self.config.qibing_fight(live)
+            try:
+                qibing_dan = self.config.qibing_dan_fight(
+                    live, self._qibing_dans(qbrow))
+            except Exception:
+                qibing_dan = 0
             try:
                 vip_row = self.get_role_vip(role.get('id'))
             except Exception:
@@ -6651,7 +6685,8 @@ class Session:
         return frame(amf3_encode(['12010', [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
-            [0, 0], vip, shenjiang_slot, pozhen, 0, dan, [0, 0], xianjie,
+            [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
+            [qibing, qibing_dan], xianjie,
             0, 0, 0, 0, [0, 0, 0], 0, 0, 0, 0, 0, 0, [0, 0], 0]]))
 
     def equip_info(self):
@@ -16261,15 +16296,18 @@ class Session:
         return total
 
     def _zonghe_qibing_level(self, rid):
-        """Qizhanbinqi level for ct-30 (getQizhanBinLevel).
+        """Qibing level for ct-30 (getQizhanBinLevel).
 
-        The qibing progression service is unported, so the
-        injected callable reads 0 and tests inject a covering
-        level to exercise the grant path.
+        The persisted progression row (0 when never granted); expiry
+        does not hide it, matching the jar's raw binqiLevel read.
         """
         try:
-            return max(0, int(self.qibing_level(rid) or 0))
+            row = self.get_role_qibing(rid)
         except Exception:
+            row = None
+        try:
+            return max(0, int((row or {}).get('binqi_level') or 0))
+        except (TypeError, ValueError):
             return 0
 
     def _zonghe_chibang_level(self, rid):
@@ -21362,6 +21400,271 @@ class Session:
         except Exception:
             pass
         return frame(amf3_encode(['102003', [1, gid]]))
+
+    def _qibing_row(self, rid):
+        """Role's qibing row as a dict, or None when never granted."""
+        try:
+            row = self.get_role_qibing(rid)
+        except Exception:
+            row = None
+        return dict(row) if row is not None else None
+
+    def _qibing_save(self, rid, row):
+        """Persist a qibing row dict under its role id."""
+        try:
+            self.save_role_qibing(
+                rid, binqi_level=row.get('binqi_level'),
+                fail_count=row.get('fail_count'),
+                lucky_value=row.get('lucky_value'),
+                upgrade_time=row.get('upgrade_time'),
+                lingqu_time=row.get('lingqu_time'),
+                update_time=row.get('update_time'),
+                attribute_dan=row.get('attribute_dan'))
+        except Exception:
+            pass
+
+    def _qibing_dans(self, row):
+        """Attribute-dan map from the row's JSON, {} when unset or bad."""
+        text = (row or {}).get('attribute_dan')
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        dans = {}
+        for key, value in data.items():
+            try:
+                dans[str(key)] = int(value)
+            except (TypeError, ValueError):
+                continue
+        return dans
+
+    def _qibing_clear(self, rid, row):
+        """clear: a stale-day row loses pity when its band clears.
+
+        Port of clear(roleId, entity): update_time is left alone (the
+        jar rewrites it only on upgrade attempts), so a second read
+        the same day stays a no-op like the jar's.
+        """
+        now = int(time.time() * 1000)
+        try:
+            updated = int(row.get('update_time') or 0)
+        except (TypeError, ValueError):
+            updated = 0
+        if self._same_day_ms(now, updated):
+            return
+        cfg = self.config.qibing_config(row.get('binqi_level')) \
+            if self.config is not None else None
+        if cfg is not None and cfg['lucky_clear']:
+            row['lucky_value'] = 0
+            row['fail_count'] = 0
+            self._qibing_save(rid, row)
+
+    @staticmethod
+    def _qibing_random_int(low, high):
+        """Lottery.randomInt: low when equal, else low + nextInt(high-low)."""
+        try:
+            low, high = int(low), int(high)
+        except (TypeError, ValueError):
+            return 0
+        if low == high:
+            return low
+        if high < low:
+            return low
+        return low + random.randrange(high - low)
+
+    def _qibing_is_success(self, fails, cfg):
+        """isSuccess: pity floor/ceiling around the band odds."""
+        try:
+            fails = int(fails)
+        except (TypeError, ValueError):
+            return False
+        if fails < cfg['min_times']:
+            return False
+        if fails > cfg['max_times']:
+            return True
+        return self._lottery_success(cfg['odds'])
+
+    def qibing_data(self, msg):
+        """Command 87000: [level, lucky, trialMs, [], [[dan, n]...]].
+
+        Ports getData: a missing row answers null (insertQb owns
+        creation); the trial expiry is the level-1 lingquTime plus its
+        guoqi hours, 0 above level 1. Events ride no bus.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        row = self._qibing_row(rid)
+        if row is None:
+            return frame(amf3_encode([str(CMD_QIBING_DATA), None]))
+        self._qibing_clear(rid, row)
+        try:
+            level = int(row.get('binqi_level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        try:
+            lucky = int(row.get('lucky_value') or 0)
+        except (TypeError, ValueError):
+            lucky = 0
+        if level != 1:
+            expiry = 0
+        else:
+            cfg = self.config.qibing_config(1)
+            hours = cfg['guoqi_hours'] if cfg else 0
+            try:
+                taken = int(row.get('lingqu_time') or 0)
+            except (TypeError, ValueError):
+                taken = 0
+            expiry = taken + hours * 3600 * 1000
+        dans = [[dan_id, count]
+                for dan_id, count in self._qibing_dans(row).items()]
+        return frame(amf3_encode(
+            [str(CMD_QIBING_DATA), [level, lucky, expiry, [], dans]]))
+
+    def qibing_upgrade(self, msg):
+        """Command 87001: bless/advance the qibing (upgrade).
+
+        C> is the Boolean auto-buy flag (other shapes stay silent like
+        the action's early return). Gates answer [0, error], consumed
+        materials [0, code, null], success [1, level, 0] with the
+        11101 [87102, ...] notice ahead of it, failure [-1, level,
+        lucky]. A fresh level queues 70520 behind the reply; events
+        ride no bus, like the other ported upgrade flows.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, None)
+        if not isinstance(data, bool):
+            return None
+        row = self._qibing_row(rid)
+        if row is None:
+            return frame(amf3_encode([str(CMD_QIBING_UPGRADE), None]))
+        self._qibing_clear(rid, row)
+        try:
+            level = int(row.get('binqi_level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        cfg = self.config.qibing_config(level)
+        nxt = self.config.qibing_config(level + 1)
+        if cfg is None or nxt is None:
+            return frame(amf3_encode(
+                [str(CMD_QIBING_UPGRADE), [0, QIBING_ERR_LEVEL]]))
+        if self._task_role_level(role) < cfg['need_level']:
+            return frame(amf3_encode(
+                [str(CMD_QIBING_UPGRADE), [0, QIBING_ERR_LEVEL]]))
+        if not self._bag_money_check(role, 'YXB', cfg['decr_money']):
+            return frame(amf3_encode(
+                [str(CMD_QIBING_UPGRADE), [0, GENERAL_JB]]))
+        # Same BagServiceImpl.checkGoodsJinJieDanMoneyEnough body the
+        # baoshi flow ports: substitutes at the current level, mall
+        # money for the rest when auto-buy holds.
+        decr, mall_money = self._baoshi_material_plan(
+            rid, role, cfg['decr_goods'], level, data, GENERAL_GOODS)
+        if decr is None:
+            return frame(amf3_encode(
+                [str(CMD_QIBING_UPGRADE), [0, mall_money, None]]))
+        self._baoshi_consume(rid, role, decr, mall_money)
+        if cfg['decr_money']:
+            self._bag_money_decr(rid, 'YXB', cfg['decr_money'])
+        try:
+            fails = int(row.get('fail_count') or 0)
+            lucky = int(row.get('lucky_value') or 0)
+        except (TypeError, ValueError):
+            fails, lucky = 0, 0
+        success = self._qibing_is_success(fails, cfg)
+        if not success:
+            add = self._qibing_random_int(
+                cfg['min_lucky'], cfg['max_lucky'])
+            total = lucky + add
+            if total >= cfg['lucky_cap']:
+                row['lucky_value'] = cfg['lucky_cap']
+                success = True
+            else:
+                row['lucky_value'] = total
+        now = int(time.time() * 1000)
+        if success:
+            new_level = level + 1
+            row.update(binqi_level=new_level, upgrade_time=now,
+                       update_time=now, lucky_value=0, fail_count=0)
+            self._qibing_save(rid, row)
+            # qibingJinjie's fan-in: a fresh level may newly cross a
+            # qibing threshold, queuing 70520 behind the reply.
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(role, rid, 30, level,
+                                               new_level))
+            except Exception:
+                pass
+            frames = [frame(amf3_encode(
+                [str(CMD_NOTICE_ALL),
+                 [QIBING_NOTICE_CODE,
+                  [str(role.get('name')), new_level, nxt['name']]]]))]
+            frames.append(frame(amf3_encode(
+                [str(CMD_QIBING_UPGRADE), [1, new_level, 0]])))
+            return tuple(frames)
+        row['update_time'] = now
+        row['fail_count'] = fails + 1
+        self._qibing_save(rid, row)
+        try:
+            lucky_now = int(row.get('lucky_value') or 0)
+        except (TypeError, ValueError):
+            lucky_now = 0
+        return frame(amf3_encode(
+            [str(CMD_QIBING_UPGRADE), [-1, level, lucky_now]]))
+
+    def qibing_getbinqi(self, msg=None):
+        """Command 87002: claim the VIP trial qibing (getbinqi).
+
+        Ports getbinqi/insertQb: below the VipConfig.isQibing level the
+        gate answers [0, 1013]; the first claim inserts the level-1
+        row (rideweapon of band 1) and pushes [1, level, lucky] ahead
+        of the null reply, like the jar's send2One pair. Later claims
+        stay silent with a lone null. The lingqu schedule has no port
+        timer behind it: expiry is lazy (getBinQiId), which reads the
+        same. The 0 -> 1 grant queues 70520 like the zuoqi claim.
+        """
+        if self.config is None:
+            return None
+        role, rid = self._task_role()
+        if role is None:
+            return None
+        try:
+            vip_row = self.get_role_vip(rid) or {}
+            vip_level = int(vip_row.get('vip_level') or 0)
+        except (TypeError, ValueError):
+            vip_level = 0
+        if not self.config.vip_qibing(vip_level):
+            return frame(amf3_encode(
+                [str(CMD_QIBING_GET), [0, QIBING_ERR_VIP]]))
+        if self._qibing_row(rid) is not None:
+            return frame(amf3_encode([str(CMD_QIBING_GET), None]))
+        cfg = self.config.qibing_config(1)
+        if cfg is None:
+            return None
+        now = int(time.time() * 1000)
+        row = {'binqi_level': cfg['rideweapon'] or 1, 'fail_count': 0,
+               'lucky_value': 0, 'upgrade_time': now, 'lingqu_time': now,
+               'update_time': now, 'attribute_dan': None}
+        self._qibing_save(rid, row)
+        try:
+            self._huodong_pushes.extend(
+                self._zonghe_notify_frames(role, rid, 30, 0,
+                                           row['binqi_level']))
+        except Exception:
+            pass
+        return (frame(amf3_encode(
+            [str(CMD_QIBING_GET),
+             [1, row['binqi_level'], row['lucky_value']]])),
+            frame(amf3_encode([str(CMD_QIBING_GET), None])))
 
     def baixian_info(self, msg):
         """71000: RoleBaixianServiceImpl.getInfo [[id,count]..., cost]."""

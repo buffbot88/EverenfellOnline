@@ -287,6 +287,24 @@ CREATE TABLE IF NOT EXISTS role_guangyi (
   attr_dan TEXT DEFAULT '{}',
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
+-- Qibing progression (RoleQizhanbinqi subset: binqi_level is the ridden
+-- level, fail_count/lucky_value the upgrade pity, upgrade_time the last
+-- success, lingqu_time the trial grant for the level-1 guoqi window,
+-- update_time the ms stamp clear() resets the pity against, and
+-- attribute_dan the {danId: count} JSON map; log_update_time is a log
+-- column with no wire effect, so it is not copied). Stored under the
+-- role id like the zuoqi row (Java keys userRoleId, the same id).
+CREATE TABLE IF NOT EXISTS role_qizhanbinqi (
+  role_id INTEGER PRIMARY KEY,
+  binqi_level INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  lucky_value INTEGER DEFAULT 0,
+  upgrade_time INTEGER DEFAULT 0,
+  lingqu_time INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0,
+  attribute_dan TEXT,
+  FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
 -- Immortal-worship counts (RoleBaiXian.baiXianInfo subset: JSON {god: n}
 -- plus the last worship day; todayChuli resets daily like Java).
 CREATE TABLE IF NOT EXISTS role_baixian (
@@ -1561,6 +1579,21 @@ class Store:
         return self._save_simple_row(
             'role_guangyi', role_id,
             {'peidai_id', 'level', 'lucky', 'ispeidai', 'attr_dan'},
+            fields)
+
+    def get_role_qibing(self, role_id):
+        """Qibing progression row for a role, or None."""
+        return self._get_simple_row(
+            'role_qizhanbinqi', role_id,
+            'binqi_level, fail_count, lucky_value, upgrade_time,'
+            ' lingqu_time, update_time, attribute_dan')
+
+    def save_role_qibing(self, role_id, **fields):
+        """Upsert a role's qibing progression row."""
+        return self._save_simple_row(
+            'role_qizhanbinqi', role_id,
+            {'binqi_level', 'fail_count', 'lucky_value', 'upgrade_time',
+             'lingqu_time', 'update_time', 'attribute_dan'},
             fields)
 
     def get_role_baixian(self, role_id):

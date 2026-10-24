@@ -984,6 +984,50 @@ def load_zuoji_table(path):
     return table
 
 
+def load_qibing_table(path):
+    """Rows of sys_config/qizhanbingqi.jat keyed by rideweapon level.
+
+    Java keys QiZhanBinQiConfig by the rideweapon cell
+    (QiZhanBinQiConfigExportServiceImpl bytecode); every row carries one
+    upgrade band's costs, odds, pity and stat cells.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of qizhanbingqi rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('rideweapon') is None:
+            continue
+        try:
+            level = int(row['rideweapon'])
+        except (TypeError, ValueError):
+            continue
+        table[level] = row
+    return table
+
+
+def load_qibing_table(path):
+    """Rows of sys_config/qizhanbingqi.jat keyed by rideweapon level.
+
+    Java keys QiZhanBinQiConfig by the rideweapon cell
+    (QiZhanBinQiConfigExportServiceImpl bytecode); every row carries one
+    upgrade band's costs, odds, pity and stat cells.
+    """
+    rows = _load(path)
+    if not isinstance(rows, list):
+        raise ValueError(f'{path}: expected a list of qizhanbingqi rows')
+    table = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get('rideweapon') is None:
+            continue
+        try:
+            level = int(row['rideweapon'])
+        except (TypeError, ValueError):
+            continue
+        table[level] = row
+    return table
+
+
 def load_shenjiang_table(path):
     """Tier rows of sys_config/ShenJiangBiao.jat grouped by shenjiang id.
 
@@ -1180,6 +1224,7 @@ class GameConfig:
         self._yingyin = None
         self._touxian = None
         self._guangyi = None
+        self._qibing = None
         self._baixian = None
         self._baixian_huafei = None
         self._zhuihui = None
@@ -3475,6 +3520,178 @@ class GameConfig:
             self._guangyi = rows
         return self._guangyi
 
+    def qibing_table(self):
+        """qizhanbingqi.jat rows keyed by rideweapon level; cached."""
+        if self._qibing is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'qizhanbingqi.jat')
+            try:
+                self._qibing = load_qibing_table(path) \
+                    if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad qibing table: %s', e)
+                self._qibing = {}
+        return self._qibing
+
+    def qibing_config(self, level):
+        """QiZhanBinQiConfig fields for a qibing level, or None.
+
+        Port of the config export impl over the level's row: costs from
+        needthingsid/value (jinjieneedcoin is 0 on every shipped row) and
+        the mintims/maxtims pity window, odds, addmin/maxblessing pity
+        range, maxblessing lucky cap, luckyclear flag, guoqi trial hours
+        and rideweapon grant level.
+        """
+        try:
+            row = self.qibing_table().get(int(level))
+        except (TypeError, ValueError):
+            return None
+        if row is None:
+            return None
+        goods_id = str(row.get('needthingsid') or '')
+        decr_goods = {}
+        if goods_id:
+            decr_goods[goods_id] = config_int(row.get('needthingsvalue'))
+        try:
+            odds = float(row.get('odds') or 0)
+        except (TypeError, ValueError):
+            odds = 0.0
+        return {'name': str(row.get('name') or ''),
+                'need_level': config_int(row.get('needleaderlv')),
+                'decr_goods': decr_goods,
+                'decr_money': config_int(row.get('jinjieneedcoin')),
+                'min_times': config_int(row.get('mintims')),
+                'max_times': config_int(row.get('maxtimes')),
+                'odds': odds,
+                'min_lucky': config_int(row.get('addminblessing')),
+                'max_lucky': config_int(row.get('addmaxblessing')),
+                'lucky_cap': config_int(row.get('maxblessing')),
+                'lucky_clear': config_int(row.get('luckyclear')) != 0,
+                'guoqi_hours': config_int(row.get('guoqi')),
+                'rideweapon': config_int(row.get('rideweapon')),
+                'max_dan_hun': config_int(row.get('xlimit')),
+                'max_dan_ling': config_int(row.get('perxlimit'))}
+
+    def qibing_max_level(self):
+        """Highest configured qibing level (rideweapon key space)."""
+        levels = list(self.qibing_table())
+        return max(levels) if levels else 0
+
+    def qibing_attribute_map(self, level):
+        """QiZhanBinQiConfig.attributeMap for a qibing level.
+
+        Port of ConfigAttributeParser.attribute2Map(row): the full
+        MEIREN bag over the level row's stat cells; {} when the level
+        has no row. No refine pass runs here (unlike the zuoqi base
+        bag); velocity's xishu factor is 0.0 either way.
+        """
+        try:
+            row = self.qibing_table().get(int(level))
+        except (TypeError, ValueError):
+            return {}
+        if row is None:
+            return {}
+        return {name: _number(row.get(name))
+                for name in MEIREN_ATTRIBUTE_NAMES
+                if _number(row.get(name))}
+
+    def qibing_live_id(self, row, now_ms=None):
+        """getBinQiId: live level id, '-1' past the trial, None unset.
+
+        Level 1 is a guoqi-hours trial from lingquTime; above 1 never
+        expires. The trial is lazy like the jar: no row is rewritten at
+        expiry, readers just stop crediting it.
+        """
+        if not row:
+            return None
+        try:
+            level = int(row.get('binqi_level') or 0)
+        except (TypeError, ValueError):
+            return None
+        if level != 1:
+            return str(level)
+        cfg = self.qibing_config(1)
+        hours = cfg['guoqi_hours'] if cfg else 0
+        if not hours:
+            return '1'
+        try:
+            taken = int(row.get('lingqu_time') or 0)
+        except (TypeError, ValueError):
+            taken = 0
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        try:
+            now_ms = int(now_ms)
+        except (TypeError, ValueError):
+            return '1'
+        if taken + hours * 3600 * 1000 < now_ms:
+            return '-1'
+        return '1'
+
+    def qibing_fight(self, level_id):
+        """getQiZhanBinQiFight: getFight over the live level's bag.
+
+        Null, '-1' and unconfigured ids are 0 like the jar's early
+        returns.
+        """
+        if level_id is None or str(level_id) == '-1':
+            return 0
+        try:
+            level = int(level_id)
+        except (TypeError, ValueError):
+            return 0
+        return self.fight_value(self.qibing_attribute_map(level))
+
+    def qibing_dan_fight(self, level_id, dans):
+        """getQiBingAttributeFigjh over a role's attribute-dan map.
+
+        A missing map is 0. Skill-45 (binhun) pills add their zuoqi
+        goods bag once per owned pill; skill-46 (bingling) pills scale
+        the live level bag by sxbfb per owned pill, one pass. Unknown
+        goods and other skills add nothing; a missing level row is 0
+        (the jar would NPE, which the port refuses to invent).
+        """
+        if not dans:
+            return 0
+        try:
+            level = int(level_id)
+        except (TypeError, ValueError):
+            return 0
+        level_map = self.qibing_attribute_map(level)
+        if not level_map:
+            return 0
+        table = self._goods_table()
+        acc = {}
+        for goods_id, bought in (dans or {}).items():
+            try:
+                owned = int(bought)
+            except (TypeError, ValueError):
+                continue
+            if owned <= 0:
+                continue
+            grow = table.get(str(goods_id))
+            if grow is None:
+                continue
+            try:
+                skill = int(grow.get('skill') or 0)
+            except (TypeError, ValueError):
+                continue
+            if skill == 45:
+                goods_map = self.goods_zuoqi_attribute_map(goods_id)
+                for _ in range(owned):
+                    for name, value in goods_map.items():
+                        acc[name] = acc.get(name, 0.0) + value
+            elif skill == 46:
+                try:
+                    per = float(grow.get('sxbfb') or 0)
+                except (TypeError, ValueError):
+                    per = 0.0
+                factor = per * owned
+                if factor != 0:
+                    for name, value in level_map.items():
+                        acc[name] = acc.get(name, 0.0) + value * factor
+        return self.fight_value(acc)
+
     def baixian_table(self):
         """BaiXian.jat rows ordered by `order`; cached."""
         if self._baixian is None:
@@ -4137,6 +4354,14 @@ class GameConfig:
             return int(row.get('jiebiao') or 0) if row else 0
         except (TypeError, ValueError):
             return 0
+
+    def vip_qibing(self, vip_level):
+        """VipConfig.isQibing (qibing cell) for a level; False when absent."""
+        try:
+            row = self.vip_table().get(int(vip_level or 0))
+            return bool(config_int(row.get('qibing'))) if row else False
+        except (TypeError, ValueError):
+            return False
 
     def husong_first_id(self):
         """First MeiQi id of husong.jat (getFirstMeiQiId); None when absent."""

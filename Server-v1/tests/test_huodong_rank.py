@@ -62,10 +62,7 @@ class HuodongRankTest(unittest.TestCase):
         self.sess = self.make_sess(PROD_KAIFU)
         self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
 
-    def make_sess(self, kaifu_ms, config=None, qibing=None):
-        extra = {}
-        if qibing is not None:
-            extra['qibing_level'] = lambda r: qibing
+    def make_sess(self, kaifu_ms, config=None):
         return Session(
             conn_id=1, check_sign=lambda *a: False,
             get_roles=lambda u, s: [dict(r) for r in
@@ -73,13 +70,14 @@ class HuodongRankTest(unittest.TestCase):
             server_start_ms=kaifu_ms,
             get_role_zuoqi=self.store.get_role_zuoqi,
             save_role_zuoqi=self.store.save_role_zuoqi,
+            get_role_qibing=self.store.get_role_qibing,
+            save_role_qibing=self.store.save_role_qibing,
             get_role_baoshi=self.store.get_role_baoshi,
             save_role_baoshi=self.store.save_role_baoshi,
             get_role_guangyi=self.store.get_role_guangyi,
             save_role_guangyi=self.store.save_role_guangyi,
             get_role_vip=self.store.get_role_vip,
             save_role_vip=self.store.save_role_vip,
-            **extra,
             save_role_state=self.store.update_character_state,
             get_role_huodong=self.store.get_role_huodong,
             save_role_huodong=self.store.save_role_huodong,
@@ -178,7 +176,7 @@ class HuodongRankTest(unittest.TestCase):
         rows = self.rank(70580, [22], BS_NOW)[1][5]
         self.assertEqual([r[7] for r in rows], [1, 0, 0, 0, 0])
 
-    def test_qibing_default_zero_and_injected_metric(self):
+    def test_qibing_default_zero_and_real_row_metric(self):
         body = self.rank(70580, [30], QB_NOW)
         self.assertEqual(body[0], '70580')
         self.assertEqual(body[1][:5],
@@ -189,11 +187,13 @@ class HuodongRankTest(unittest.TestCase):
         self.assertEqual([r[7] for r in rows], [0] * 6)
         self.assertEqual([rows[0][0], rows[0][1], rows[0][11]],
                          ['20140226-6qc002-3', 2, 'q2.png'])
-        # The qibing service is unported: the port injects the
-        # level (default 0) until 87000-87002 land.
-        sess = self.make_sess(PROD_KAIFU, qibing=3)
-        sess.authed_user, sess.server_id = 'hero', 'fu1304'
-        out = sess.huodong_qibing_rank([70580, [30]], now_ms=QB_NOW)
+        # The metric is the persisted progression row (getQizhanBinLevel).
+        self.store.save_role_qibing(self.rid, binqi_level=3,
+                                    fail_count=0, lucky_value=0,
+                                    upgrade_time=0, lingqu_time=0,
+                                    update_time=0)
+        out = self.sess.huodong_qibing_rank([70580, [30]],
+                                             now_ms=QB_NOW)
         states = decode(bytes(out)[4:])[1][5]
         self.assertEqual([r[7] for r in states], [1, 1, 0, 0, 0, 0])
 

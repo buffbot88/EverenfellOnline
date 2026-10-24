@@ -1709,6 +1709,10 @@ class Session:
         # events during feed handling; _feed_unlocked drains them
         # behind the triggering command's reply (the port's send2One).
         self._huodong_pushes = []
+        # ZhanDouLi dirty flag: a producer that changed fight inputs marks
+        # it, and _fight_refresh_frames() pushes one coalesced 12010 at the
+        # end of the request (Java's ZDL:* changeFight -> inner 12010).
+        self._fight_dirty = False
         # Meditation: role id -> {'daZuo': bool, 'target': role id or None}, and
         # state changes queued by other connections, run under this tick.
         self._dazuo = {}
@@ -1768,6 +1772,7 @@ class Session:
             if self._huodong_pushes:
                 out.extend(self._huodong_pushes)
                 del self._huodong_pushes[:]
+            out.extend(self._fight_refresh_frames())
         return out
 
     def handle(self, payload: bytes):
@@ -6254,6 +6259,7 @@ class Session:
         with self.outbox_lock:
             pending, self.outbox = self.outbox, []
         frames.extend(pending)
+        frames.extend(self._fight_refresh_frames())
         return tuple(frames) if frames else None
 
     def push_frames(self, frames):
@@ -7025,6 +7031,47 @@ class Session:
         values = [rank, 0, 0, remain_free, 0, 0, 0, None, None, 0, 1]
         return frame(amf3_encode(['12011', values]))
 
+    def _fight_changed(self):
+        """Mark a ZhanDouLi change: one coalesced 12010 push per request.
+
+        Java's producers publish an event whose ZhanDouLi action calls
+        changeFight for each affected bucket, and every changeFight ends
+        with an inner 12010 that getRoleFight turns into a client push
+        (BusMsgQueue$ClientMsg.flush -> send2One). Several buckets can
+        change in one request (a level-up fires SKILL_FIGHTCHANGE,
+        ROLELEVEL_FIGHTCHANGE and ZUOQI_FIGHT), so the port marks a flag
+        and sends the final wrapper once, after the command's own frames.
+        """
+        self._fight_dirty = True
+
+    def _fight_refresh_frames(self):
+        """Drain the fight-change flag into a 12010 push for this role.
+
+        Self-only, like send2One in Java's getRoleFight; the wrapper is
+        rebuilt from the live rows so a coalesced refresh carries the
+        final values. No role or config answers nothing (the client's
+        own 12010 query still works).
+        """
+        if not self._fight_dirty:
+            return []
+        self._fight_dirty = False
+        if self.config is None:
+            return []
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            roles = []
+        role = roles[0] if roles else None
+        if role is None:
+            return []
+        try:
+            return [self._fighting_frame(role)]
+        except Exception:
+            log.warning('conn %d: fight refresh failed', self.conn_id,
+                        exc_info=True)
+            return []
+
     def fighting_info(self):
         """Command 12010: ZhanDouLiWrapper.getFightObject's Object[25].
 
@@ -7046,6 +7093,10 @@ class Session:
         """
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
         role = roles[0] if roles else None
+        return self._fighting_frame(role)
+
+    def _fighting_frame(self, role):
+        """The 12010 frame for one role (shared by the query and the push)."""
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
@@ -7381,7 +7432,9 @@ class Session:
         try:
             self.save_role_equip(rid, out)
         except Exception:
-            pass
+            return
+        # equip_change / equip_jianding -> ZDL:EQUIP_FIGHTCHANGE.
+        self._fight_changed()
 
     @staticmethod
     def _vo_enhanced_blob(item, new_qh, star_bit):
@@ -7462,7 +7515,9 @@ class Session:
         try:
             self.save_role_equip(rid, rows)
         except Exception:
-            pass
+            return
+        # equip_change -> ZDL:EQUIP_FIGHTCHANGE + ZDL:ZUOQI_EQUIP_FIGHT.
+        self._fight_changed()
 
     @staticmethod
     def _equip_without(items, slot):
@@ -7873,6 +7928,10 @@ class Session:
                   (it.get('slot_num') == row.get('slot_num') and
                    it.get('goods_id') == row.get('goods_id')) else it
                   for it in items])
+        if ok:
+            # equip_jinjie -> ZDL:EQUIP_FIGHTCHANGE (a failed attempt only
+            # bumps jjfailcount, which no fight slot reads).
+            self._fight_changed()
         role = self._equip_role()
         frames = []
         if ok:
@@ -8717,6 +8776,8 @@ class Session:
             fields['tody_prop_value'] = tody - moved
             fields['prop_value'] = prop + moved
         self.save_role_vip(rid, **fields)
+        # vip_Level_upgrade -> ZDL:VIP_FIGHT.
+        self._fight_changed()
         return [frame(amf3_encode([str(CMD_VIP_LEVEL_UP), level]))]
 
     def vip_upgrade_level(self, role, charge_total, now_ms=None):
@@ -9468,6 +9529,8 @@ class Session:
             self.save_role_skill(rid, category, level + 1)
         except Exception:
             pass
+        # SkillUpgradeEvent -> ZDL:SKILL_FIGHTCHANGE.
+        self._fight_changed()
         return frame(amf3_encode(
             [str(CMD_SKILL_UPGRADE), [1, category, level + 1]]))
 
@@ -10672,6 +10735,8 @@ class Session:
                   if b.get('attribute_id') != goods_id]
         merged.append({'attribute_id': goods_id, 'count': total})
         self.save_role_attr_buffs(rid, merged)
+        # attributebuff_change -> ZDL:SHUXINDAN.
+        self._fight_changed()
         log.info('conn %d: dan %r change event skipped (no bus)',
                  self.conn_id, goods_id)
         return ([frame(amf3_encode(
@@ -10766,6 +10831,8 @@ class Session:
         counts[goods_id] = total
         mount['attribute_goods_id'] = json.dumps(counts)
         self._zuoqi_save(rid, mount)
+        # zuoqi_useprop_longHun -> ZDL:LINGLONGLINGHUN.
+        self._fight_changed()
         return ('ok', total)
 
     def _prop_qibing_dan(self, role, rid, row, grow, typ):
@@ -10807,6 +10874,8 @@ class Session:
         counts[goods_id] = total
         qbrow['attribute_dan'] = json.dumps(counts)
         self._qibing_save(rid, qbrow)
+        # BingHun/BingLing pill -> ZDL:BINHUN.
+        self._fight_changed()
         return ([], True)
 
     def _prop_lihe(self, role, rid, row, grow):
@@ -12415,6 +12484,9 @@ class Session:
             combat_lib.exp_notice(total, fields.get('level', old_level))))]
         if gained:
             frames.extend(self._role_level_frames(role, rid, old_level))
+            # role_level_upgrade -> ZDL:SKILL_FIGHTCHANGE +
+            # ZDL:ROLELEVEL_FIGHTCHANGE + ZDL:ZUOQI_FIGHT.
+            self._fight_changed()
         return total, fields.get('level', old_level), gained, frames
 
     def _role_level_frames(self, role, rid, old_level=0):
@@ -12553,6 +12625,8 @@ class Session:
             self.save_role_skill(rid, token, 1)
         except Exception:
             return None
+        # AddSkillEvent -> ZDL:SKILL_FIGHTCHANGE.
+        self._fight_changed()
         return info
 
     def _skill_level_learn(self, rid, level, job=None):
@@ -17311,6 +17385,8 @@ class Session:
         row['locations'] = self._pozhen_loc_str(loc)
         if not out:
             return None
+        # pozhen_tongguan: a cleared layer feeds ZDL:POZHENG_FIGHT.
+        self._fight_changed()
         return out, extra
 
     def _pozhen_sao_dang_online(self, role, rid, row):
@@ -17835,6 +17911,8 @@ class Session:
         if award is None:
             return None
         result, extra = award
+        # pozhen_tongguan: the cleared cell feeds ZDL:POZHENG_FIGHT.
+        self._fight_changed()
         inner = [[result[3], result[1], result[0], result[2]],
                  result[1], result[0], result[2],
                  row.get('can_use_count'), 0, nxt]
@@ -20465,6 +20543,8 @@ class Session:
         row.update(zuoqi_rank=self.ZUOQI_MIN_RANK,
                    zuoqi_cur_rank=self.ZUOQI_MIN_RANK, update_time=now)
         self._zuoqi_save(rid, row)
+        # The 0 -> 3 grant is a zuoqi_change.
+        self._fight_changed()
         try:
             self._huodong_pushes.extend(
                 self._zonghe_notify_frames(role, rid, 10, claim_old,
@@ -21792,9 +21872,13 @@ class Session:
     def _baoshi_save(self, rid, rows):
         """Persist role_baoshi rows; False keeps the reply silent."""
         try:
-            return bool(self.save_role_baoshi(rid, rows))
+            saved = bool(self.save_role_baoshi(rid, rows))
         except Exception:
             return False
+        if saved:
+            # baoshi_jihuo / baoshi_level_upgrade -> ZDL:BAOSHI_FIGHTCHANGE.
+            self._fight_changed()
+        return saved
 
     def _baoshi_request(self, msg):
         """BaoShiAction data: [part, grid] or [part, grid, isAuto]."""
@@ -22618,6 +22702,8 @@ class Session:
                        zuoqi_rank=rank + 1, zuoqi_cur_rank=rank + 1,
                        update_time=now)
             self._zuoqi_save(rid, row)
+            # zuoqi_change -> ZDL:ZUOQI_FIGHT.
+            self._fight_changed()
             # zuoqiJinjie's fan-in: a fresh rank may newly cross a
             # mount threshold, queuing 70520 behind the reply.
             try:
@@ -25056,6 +25142,8 @@ class Session:
             row.update(binqi_level=new_level, upgrade_time=now,
                        update_time=now, lucky_value=0, fail_count=0)
             self._qibing_save(rid, row)
+            # qizhanbinqi_upgrade -> ZDL:QIZHANBINQI.
+            self._fight_changed()
             # qibingJinjie's fan-in: a fresh level may newly cross a
             # qibing threshold, queuing 70520 behind the reply.
             try:
@@ -25115,6 +25203,8 @@ class Session:
                'lucky_value': 0, 'upgrade_time': now, 'lingqu_time': now,
                'update_time': now, 'attribute_dan': None}
         self._qibing_save(rid, row)
+        # The trial grant makes a live qibing: ZDL:QIZHANBINQI.
+        self._fight_changed()
         try:
             self._huodong_pushes.extend(
                 self._zonghe_notify_frames(role, rid, 30, 0,
@@ -25807,6 +25897,10 @@ class Session:
                                      skills=_json.dumps(skills))
         except Exception:
             pass
+        else:
+            # shenjiang_activate / shenjiang_jihuo_jxt ->
+            # ZDL:SHENGJIANG_SKILL_FIGHT.
+            self._fight_changed()
         return frame(amf3_encode([str(CMD_SHENJIANG_ACTIVATE), [1, sj_id]]))
 
     def shenjiang_skill_up(self, msg):
@@ -25879,6 +25973,9 @@ class Session:
                                      skills=_json.dumps(skills))
         except Exception:
             pass
+        else:
+            # shenjiang_skill_upgrade -> ZDL:SHENGJIANG_SKILLUPGRADE.
+            self._fight_changed()
         try:
             self.save_role_skill(rid, skill_id, level + 1)
         except Exception:

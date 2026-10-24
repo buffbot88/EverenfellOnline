@@ -151,9 +151,13 @@ class QibingTest(unittest.TestCase):
     def test_getbinqi_grants_pair_then_silent(self):
         before = int(time.time() * 1000)
         got = self.grant()
-        self.assertEqual(len(got), 2)
+        # The pair, then the qizhanbinqi_lingqu fight refresh (ZDL).
+        self.assertEqual(len(got), 3)
         self.assertEqual(got[0], ['87002', [1, 1, 0]])
         self.assertEqual(got[1], ['87002', None])
+        self.assertEqual(got[2][0], '12010')
+        self.assertEqual(got[2][1][10],
+                         [self.cfg.qibing_fight('1'), 0])
         row = self.store.get_role_qibing(self.rid)
         self.assertEqual((row['binqi_level'], row['fail_count'],
                           row['lucky_value'], row['attribute_dan']),
@@ -209,9 +213,13 @@ class QibingTest(unittest.TestCase):
         self.level1_row(fail_count=43)
         got = self.feed(87001, False)
         cfg2 = self.cfg.qibing_config(2)
-        self.assertEqual(got, [
+        self.assertEqual(got[:2], [
             ['11101', [87102, ['Wukong', 2, cfg2['name']]]],
             ['87001', [1, 2, 0]]])
+        # qizhanbinqi_upgrade -> ZDL:QIZHANBINQI, after the reply.
+        self.assertEqual(got[2][0], '12010')
+        self.assertEqual(got[2][1][10],
+                         [self.cfg.qibing_fight('2'), 0])
         row = self.store.get_role_qibing(self.rid)
         self.assertEqual((row['binqi_level'], row['fail_count'],
                           row['lucky_value']),
@@ -230,7 +238,7 @@ class QibingTest(unittest.TestCase):
         self.store.update_character_state(self.rid, lingshi=1000)
         self.level1_row(fail_count=43)
         got = self.feed(87001, True)
-        self.assertEqual([f[0] for f in got], ['11101', '87001'])
+        self.assertEqual([f[0] for f in got], ['11101', '87001', '12010'])
         self.assertEqual(got[1], ['87001', [1, 2, 0]])
         roles = self.store.list_roles('hero', 'fu1304')
         self.assertEqual(roles[0]['lingshi'], 1000 - 2 * 30)
@@ -302,7 +310,8 @@ class QibingTest(unittest.TestCase):
         self.stock(QIBING_COST)
         self.level1_row(fail_count=43)
         got = self.feed(87001, False)
-        self.assertEqual(got[-1], ['70520', ['q-near', 1]])
+        # 70520 rides the huodong queue, then the coalesced 12010.
+        self.assertEqual(got[-1][0], '12010')
         self.assertEqual([f for f in got if f[0] == '70520'],
                          [['70520', ['q-near', 1]]])
         # Level holds at 2: the repeat attempt spends nothing new.
@@ -350,6 +359,12 @@ class QibingTest(unittest.TestCase):
         self.pill(21, 'binghun')
         self.assertEqual(self.use('dan21'), [['30301', [1, 'dan21']]])
         self.assertIsNone(self.store.get_role_bag_slot(self.rid, 21))
+        # Direct handler call: drain the BingHun fight refresh here.
+        (refresh,) = [decode(f[4:]) for f in
+                      self.sess._fight_refresh_frames()]
+        self.assertEqual(refresh[0], '12010')
+        self.assertEqual(refresh[1][10][1],
+                         self.cfg.qibing_dan_fight('3', {'binghun': 1}))
         (data,) = self.feed(87000, None)
         self.assertEqual(data[1][4], [['binghun', 1]])
         body = self.feed(12010, None)[0][1]

@@ -195,7 +195,9 @@ class HuodongNotifyTest(unittest.TestCase):
                ]}
         sess = self.make_sess(config=_SynthTable(self.cfg, 10, cat))
         got = self.feed(sess, 33004, None)
-        self.assertEqual(got[-1], ['70520', ['m-near', 1]])
+        # The ct-10 push rides the huodong queue, then the mount's
+        # coalesced ZhanDouLi refresh.
+        self.assertEqual(got[-1][0], '12010')
         self.assertEqual(self.pushes(got), [['70520', ['m-near', 1]]])
         # A repeated check finds nothing new: the claim gate is
         # silent and the rank did not move.

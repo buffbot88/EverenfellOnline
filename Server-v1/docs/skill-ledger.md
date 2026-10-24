@@ -77,13 +77,10 @@ jar-wide. Per port convention events ride no bus, so they are skipped.
 
 ## Deferred / gaps
 
-- **12010 fight refresh push (cross-system).** `changeFightValue` ends
-  with an inner-bus `12010` that `getRoleFight` turns into a 12010 push
-  to the role, so Java re-sends the fight object after add_skill,
-  skill_upgrade and role_level_upgrade (as it does for equipment,
-  baoshi, zuoqi, ...). The port only answers the client's 12010 query;
-  no system pushes it yet. Implementing it belongs to a ZhanDouLi
-  refresh slice, not to one family.
+- ~~**12010 fight refresh push.**~~ Done in the ZhanDouLi slice:
+  `_skill_auto_learn` and `skill_upgrade` mark the shared fight-change
+  flag, so a learn or upgrade pushes one coalesced 12010 after the
+  command's own frames (see docs/zhandouli-ledger.md).
 - **Skill resets / replacement.** None exist in the jar: SkillServiceImpl
   has no delete/reset/forget entry and no inbound command consumes
   `role_skill` rows. Nothing to port.

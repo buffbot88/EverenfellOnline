@@ -1,11 +1,11 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (269 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (272 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 
 - total Java numeric command IDs: 497
-- implemented: 226
+- implemented: 229
 - implemented-untested: 8
 - partial: 0
 - dispatched-no-direct-handler: 0
@@ -14,7 +14,7 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - stub: 2
 - push-only: 24
 - known-unhandled: 0
-- missing: 232
+- missing: 229
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -49,7 +49,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | mingrentang | 0 | 0 | 0 | 0 | 5 | 5 |
 | stagecontroll | 3 | 1 | 0 | 0 | 4 | 8 |
 | equip | 11 | 0 | 0 | 0 | 4 | 15 |
-| qizhanbinqi | 0 | 0 | 0 | 0 | 4 | 4 |
 | shenmishop | 0 | 0 | 0 | 0 | 4 | 4 |
 | yuanshen | 0 | 0 | 0 | 0 | 4 | 4 |
 | zuwu | 1 | 0 | 0 | 0 | 4 | 5 |
@@ -85,6 +84,7 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | jiangli | 13 | 0 | 0 | 0 | 1 | 14 |
 | pozhen | 11 | 0 | 0 | 0 | 1 | 12 |
 | baoshi | 3 | 0 | 0 | 0 | 1 | 4 |
+| qizhanbinqi | 3 | 0 | 0 | 0 | 1 | 4 |
 | command | 1 | 0 | 0 | 0 | 1 | 2 |
 | goodsbuyback | 3 | 0 | 0 | 0 | 1 | 4 |
 | skill | 2 | 0 | 0 | 0 | 1 | 3 |
@@ -140,7 +140,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - bag (3): 30104 (GOODS_UPDATE), 30105 (GOODS_ADD), 301050 (GOODS_ADD_EXTEND)
 - equip (3): 30106 (GOODS_UPDATE), 31015 (QIANGHUA_NOTICE), 31016 (JINJIE_NOTICE)
 - shenjiang (3): 41005 (s_41005), 41022 (s_41022), 41024 (s_41024)
-- qizhanbinqi (3): 87000 (CMD_87000), 87001 (CMD_87001), 87002 (CMD_87002)
 - duihuangoods (3): 93000 (CMD_93000), 93001 (CMD_93001), 93003 (CMD_93003)
 - zuwu (3): 111001 (UPGRADE), 111002 (JINGJIE), 111003 (YIJIANG_UPGRADE)
 - shenmishop (3): 112000 (GET_CONFIG), 112001 (GET_THINGS), 112002 (BUY)

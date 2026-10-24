@@ -451,7 +451,7 @@ pushes (the port emits them since batch 14).
 
 | cmd | action entry | service read | metric source |
 | --- | ------------ | ------------ | ------------- |
-| 70580 | `getQibingRank(Message)`: roleId + Integer typeId → `getQibingRank(roleId, type)` | Zonghe category `convert(typeId)`; null → `[0, 792005]`; not live → `[2]`; empty map → `[0, 792005]`; per shown activity the 12-array below | `getSingleHuodongConditionVal(roleId, type)`: 30 → `IQiZhanBinQiExportService.getQizhanBinLevel` (unported — the port injects `qibing_level`, default 0); 22 → baoshi `getRoleBaosShilevelSum` (ported); 32 → vip `getRoleVipLevel` (ported); 31 → guangyi `getGuangYiLevel` (ported); else 0 |
+| 70580 | `getQibingRank(Message)`: roleId + Integer typeId → `getQibingRank(roleId, type)` | Zonghe category `convert(typeId)`; null → `[0, 792005]`; not live → `[2]`; empty map → `[0, 792005]`; per shown activity the 12-array below | `getSingleHuodongConditionVal(roleId, type)`: 30 → `IQiZhanBinQiExportService.getQizhanBinLevel` (ported — reads the live `role_qizhanbinqi` level, trial-aware); 22 → baoshi `getRoleBaosShilevelSum` (ported); 32 → vip `getRoleVipLevel` (ported); 31 → guangyi `getGuangYiLevel` (ported); else 0 |
 | 70508 | `getZuoqiRank(Message)`: roleId only → `getZuoqiRank(roleId)` | ZUOQI (10) category; same three edges as 70580 | `IRoleZuoQiExportService.getZuoQiRank(roleId)` (ported as `_zonghe_zuoqi_rank` off `role_zuoqi`) |
 
 Row shape (identical both commands, built inline — no separate
@@ -477,11 +477,11 @@ Fan-in that moves these displays: `decrYb`, `zuoqiJinjie`,
 queue `70520 [actId, 1]` when its metric crosses
 `con*(max+1)`; the port emits them since batch 14 (queued on
 the synchronous return path — the port's `send2One` — never
-the registry outbox). Qibing progression surface (still
-unported source for
-ct-30): `87000 getData` / `87001 upgrade(Boolean)` /
-`87002 getbinqi` / `schedule`; service impl and storage were
-not recovered, so `getQizhanBinLevel` stays injected.
+the registry outbox). Qibing progression is ported:
+`87000 getData` / `87001 upgrade(Boolean)` /
+`87002 getbinqi` over the `role_qizhanbinqi` row, so ct-30
+reads the live `getQizhanBinLevel`; only `schedule` (no reply)
+stays out, with trial expiry read lazily.
 
 - Zonghe service port for 70502/70505/70509/
   70530/70552-70554 (routing-only: all verbatim `send2One`
@@ -523,10 +523,10 @@ rank increases, old/new rank), `baoshi_jihuo` socketing and
 through the recharge grant fan-out). Queued on
 `_huodong_pushes`, drained by `feed` behind the triggering
 reply. No bus, no second event path. `getProp` (dead 70558,
-no item-count family in fu0) and `qibingJinjie` (87000-87002
-unported, no mutation path) have no producer yet — the helper
-covers ct-30 for when the qibing service lands, pinned
-helper-level. `tests/test_huodong_notify.py` (11) proves
+no item-count family in fu0) still has no producer;
+`qibingJinjie` upgrades and `getbinqi` grants queue ct-30
+crossings off the live level, pinned in
+`tests/test_qibing.py`. `tests/test_huodong_notify.py` (11) proves
 crossing-once, non-crossing silence and completed-state
 silence per family through the encrypted feed (VIP through its
 genuine recharge producer).

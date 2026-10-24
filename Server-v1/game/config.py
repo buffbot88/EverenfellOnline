@@ -1006,28 +1006,6 @@ def load_qibing_table(path):
     return table
 
 
-def load_qibing_table(path):
-    """Rows of sys_config/qizhanbingqi.jat keyed by rideweapon level.
-
-    Java keys QiZhanBinQiConfig by the rideweapon cell
-    (QiZhanBinQiConfigExportServiceImpl bytecode); every row carries one
-    upgrade band's costs, odds, pity and stat cells.
-    """
-    rows = _load(path)
-    if not isinstance(rows, list):
-        raise ValueError(f'{path}: expected a list of qizhanbingqi rows')
-    table = {}
-    for row in rows:
-        if not isinstance(row, dict) or row.get('rideweapon') is None:
-            continue
-        try:
-            level = int(row['rideweapon'])
-        except (TypeError, ValueError):
-            continue
-        table[level] = row
-    return table
-
-
 def load_shenjiang_table(path):
     """Tier rows of sys_config/ShenJiangBiao.jat grouped by shenjiang id.
 

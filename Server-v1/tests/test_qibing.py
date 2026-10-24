@@ -80,6 +80,8 @@ class QibingTest(unittest.TestCase):
             get_role_qibing=self.store.get_role_qibing,
             save_role_qibing=self.store.save_role_qibing,
             get_role_bag_slots=self.store.get_role_bag_slots,
+            get_role_bag_slot_by_bag_id=
+            self.store.get_role_bag_slot_by_bag_id,
             update_role_bag_slot=self.store.update_role_bag_slot,
             delete_role_bag_slot=self.store.delete_role_bag_slot,
             insert_role_bag_slot=self.store.insert_role_bag_slot,
@@ -321,6 +323,66 @@ class QibingTest(unittest.TestCase):
             self.rid, day_count=json.dumps({'q-done': 5}),
             max_count=json.dumps({'q-done': 5}))
         self.assertNotIn(['70520', ['q-done', 1]], self.grant())
+
+
+    # -- dan consumption (30301 skills 45/46 -> useAttributeDan) -----------
+    def use(self, guid):
+        out = self.sess.prop_use(guid)
+        if out is None:
+            return None
+        if isinstance(out, tuple):
+            return [decode(bytes(f)[4:]) for f in out]
+        return [decode(bytes(out)[4:])]
+
+    def pill(self, slot, goods, count=1):
+        self.store.insert_role_bag_slot(
+            self.rid, {'slot_num': slot, 'bag_id': f'dan{slot}',
+                       'goods_id': goods, 'count': count, 'bind': 0})
+
+    def test_dan_without_row_answers_87103(self):
+        self.pill(20, 'binghun')
+        self.assertEqual(self.use('dan20'), [['30301', [0, 87103]]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.rid, 20)['count'], 1)
+
+    def test_binhun_success_bumps_map_and_fight(self):
+        self.level1_row(binqi_level=3)
+        self.pill(21, 'binghun')
+        self.assertEqual(self.use('dan21'), [['30301', [1, 'dan21']]])
+        self.assertIsNone(self.store.get_role_bag_slot(self.rid, 21))
+        (data,) = self.feed(87000, None)
+        self.assertEqual(data[1][4], [['binghun', 1]])
+        body = self.feed(12010, None)[0][1]
+        self.assertEqual(body[10], [self.cfg.qibing_fight('3'),
+                                    self.cfg.qibing_dan_fight(
+                                        '3', {'binghun': 1})])
+
+    def test_bingling_cap_zero_answers_87104(self):
+        # Level 3 caps bingling at 0: the pill is kept.
+        self.level1_row(binqi_level=3)
+        self.pill(22, 'bingling')
+        self.assertEqual(self.use('dan22'), [['30301', [0, 87104]]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.rid, 22)['count'], 1)
+
+    def test_binhun_cap_full_answers_87104(self):
+        self.level1_row(binqi_level=3, attribute_dan=json.dumps(
+            {'binghun': 100}))
+        self.pill(23, 'binghun')
+        self.assertEqual(self.use('dan23'), [['30301', [0, 87104]]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.rid, 23)['count'], 1)
+
+    def test_bingling_success_at_level4(self):
+        self.level1_row(binqi_level=4)
+        self.pill(24, 'bingling', count=2)
+        self.assertEqual(self.use('dan24'), [['30301', [1, 'dan24']]])
+        self.assertEqual(
+            self.store.get_role_bag_slot(self.rid, 24)['count'], 1)
+        self.assertEqual(
+            json.loads(self.store.get_role_qibing(
+                self.rid)['attribute_dan']),
+            {'bingling': 1})
 
 
 if __name__ == '__main__':

@@ -526,7 +526,10 @@ reply. No bus, no second event path. `getProp` (dead 70558,
 no item-count family in fu0) still has no producer;
 `qibingJinjie` upgrades and `getbinqi` grants queue ct-30
 crossings off the live level, pinned in
-`tests/test_qibing.py`. `tests/test_huodong_notify.py` (11) proves
+`tests/test_qibing.py`. Dan consumption is live too: 30301 skills
+45/46 (binghun/bingling) port `useAttributeDan` (87103 norow,
+87104 over cap from the row-level xlimit/perxlimit), so the
+dan half of the 12010 fight recalculates through real play. `tests/test_huodong_notify.py` (11) proves
 crossing-once, non-crossing silence and completed-state
 silence per family through the encrypted feed (VIP through its
 genuine recharge producer).

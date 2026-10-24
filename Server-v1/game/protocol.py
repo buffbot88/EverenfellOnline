@@ -371,6 +371,8 @@ CMD_QIBING_GET = 87002
 QIBING_NOTICE_CODE = 87102
 QIBING_ERR_LEVEL = 1001
 QIBING_ERR_VIP = 1013
+QIBING_ERR_DAN_ROW = 87103
+QIBING_ERR_DAN_CAP = 87104
 # addMeiRen's 82001 push (CreateMeirenOutPut.getMeiRen), emitted by 33006.
 CMD_MEIREN_ADD = 82001
 # Inbound meiren routes (MeirenModuleInit.getInCmd: 82000-82003 only).
@@ -774,7 +776,7 @@ CMD_LIHE_PREVIEW = 30304
 BAG_ERR_BIND_NO_DISCARD = 430218
 # PropStageAction.consumeGoods reply id; the 30104/30105 ids below are
 # server pushes emitted by splitGoods (no inbound route exists for them).
-PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 33, 35, 36, 37])
+PROP_SKILL_USE = frozenset([1, 2, 3, 5, 11, 14, 33, 35, 36, 37, 45, 46])
 PROP_CONSUME_CATEGORIES = frozenset(
     ['14', '40', '11', '13', '16', '15', '17', '80'])
 PROP_HP_CD_MS = 1500
@@ -9977,11 +9979,10 @@ class Session:
 
         C> is the bag-row guid string (empty is silent). Unknown rows,
         goods, or skills are silent like Java's null paths; dead roles
-        are silent (isDead gate); check failures reply [0, code]. Only
-        skills 1/2/3/5/11/14/33/35/36/37 have portable effects so far
-        (3 is the taofa scroll hook, 33/35 the longhun/longling mount
-        pills); other known skills stay open and silent pending their
-        systems (documented).
+        are silent (isDead gate); check failures reply [0, code].        Only skills 1/2/3/5/11/14/33/35/36/37/45/46 have portable effects
+        so far (3 is the taofa scroll hook, 33/35 the longhun/longling
+        mount pills, 45/46 the binhun/bingling qibing pills); other known
+        skills stay open and silent pending their systems (documented).
         """
         guid = msg if isinstance(msg, str) else self.safe(msg, 1, None)
         if not guid or self.config is None:
@@ -10019,7 +10020,8 @@ class Session:
         # (their services consume internally, so the pipeline post-decrs),
         # and null for LongHun/LongLing (useLongHun/useLongLing decr
         # inside, so the pipeline never does).
-        prior = None if skill in (33, 35) else skill not in (1, 37, 11, 3)
+        prior = None if skill in (33, 35, 45, 46) \
+            else skill not in (1, 37, 11, 3)
         if prior and not self._prop_decr(rid, row):
             return None
         frames = self._prop_effect(role, rid, row, grow, skill)
@@ -10090,6 +10092,10 @@ class Session:
             return self._prop_longhun(role, rid, row, grow)
         if skill == 35:
             return self._prop_longling(role, rid, row, grow)
+        if skill == 45:
+            return self._prop_qibing_dan(role, rid, row, grow, 1)
+        if skill == 46:
+            return self._prop_qibing_dan(role, rid, row, grow, 2)
         if skill == 2:
             frames = self._prop_exp(role, rid, grow)
         elif skill == 5:
@@ -10321,6 +10327,47 @@ class Session:
         mount['attribute_goods_id'] = json.dumps(counts)
         self._zuoqi_save(rid, mount)
         return ('ok', total)
+
+    def _prop_qibing_dan(self, role, rid, row, grow, typ):
+        """Skill 45 BingHun / 46 BingLing pill: bump the dan count.
+
+        Port of QiZhanBinQiServiceImpl.useAttributeDan as called by
+        PropServiceImpl$BingHun/BingLing.useDaoJu (type 1/2): no qibing
+        row answers [0, 87103]; the row's own level config caps the
+        goods count (maxBinHun for 45 from xlimit, maxBinLing for 46
+        from perxlimit) and a full pill answers [0, 87104]. The decr
+        runs inside (consumePrior is false, so the pipeline never
+        decrs), the map is bumped and persisted; success has no push
+        and the pipeline appends the terminal [1, bagId]. Events ride
+        no bus, matching the other pill effects.
+        """
+        goods_id = str(row.get('goods_id') or '')
+        if not goods_id:
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, QIBING_ERR_DAN_ROW]]))], False)
+        qbrow = self._qibing_row(rid)
+        if qbrow is None:
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, QIBING_ERR_DAN_ROW]]))], False)
+        try:
+            level = int(qbrow.get('binqi_level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        cfg = self.config.qibing_config(level) \
+            if self.config is not None else None
+        if cfg is None:
+            return None
+        cap = cfg['max_dan_hun'] if typ == 1 else cfg['max_dan_ling']
+        counts = self._qibing_dans(qbrow)
+        if counts.get(goods_id, 0) + 1 > cap:
+            return ([frame(amf3_encode(
+                [str(CMD_PROP_USE), [0, QIBING_ERR_DAN_CAP]]))], False)
+        self._prop_decr(rid, row)
+        total = counts.get(goods_id, 0) + 1
+        counts[goods_id] = total
+        qbrow['attribute_dan'] = json.dumps(counts)
+        self._qibing_save(rid, qbrow)
+        return ([], True)
 
     def _prop_lihe(self, role, rid, row, grow):
         """LiHe: deterministic gift boxes; lottery/vip boxes stay open."""

@@ -680,13 +680,66 @@ CREATE TABLE IF NOT EXISTS recharge_record (
 );
 CREATE INDEX IF NOT EXISTS idx_recharge_record_role ON recharge_record(user_role_id);
 CREATE INDEX IF NOT EXISTS idx_recharge_record_order ON recharge_record(order_id);
--- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
--- silences every gonghui handler; addRoleGongxian accumulates gongxian).
+-- Guild system (Guild/Member/Gongxian/Info entities: guilds hold the
+-- banner/level/funds/message/setting/master columns, members the
+-- position (0 master, 1 vice, 2 admin, 3 member) and contribution
+-- totals, applies the pending join requests, gongxian the per-guild
+-- contribution ledger, info the guild event log).
+CREATE TABLE IF NOT EXISTS guild (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  banner_id INTEGER DEFAULT 0,
+  banner_level INTEGER DEFAULT 1,
+  banner_name TEXT DEFAULT '',
+  user_role_id TEXT DEFAULT '',
+  vice_user_role_id TEXT DEFAULT '',
+  guild_message TEXT DEFAULT '',
+  active_value INTEGER DEFAULT 0,
+  warn_value INTEGER DEFAULT 0,
+  guild_setting INTEGER DEFAULT 0,
+  money INTEGER DEFAULT 0,
+  qinglong_count INTEGER DEFAULT 0,
+  baihu_count INTEGER DEFAULT 0,
+  zhuque_count INTEGER DEFAULT 0,
+  xuanwu_count INTEGER DEFAULT 0,
+  fighting INTEGER DEFAULT 0,
+  create_time INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS guild_member (
   role_id INTEGER PRIMARY KEY,
   guild_id TEXT NOT NULL,
+  position INTEGER DEFAULT 3,
   gongxian INTEGER DEFAULT 0,
+  gongxian_sum INTEGER DEFAULT 0,
+  create_time INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0,
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS guild_apply (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id TEXT NOT NULL,
+  role_id INTEGER NOT NULL,
+  create_time INTEGER DEFAULT 0,
+  UNIQUE(guild_id, role_id)
+);
+CREATE TABLE IF NOT EXISTS guild_gongxian (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id TEXT NOT NULL,
+  role_id INTEGER NOT NULL,
+  money INTEGER DEFAULT 0,
+  qinglong_count INTEGER DEFAULT 0,
+  baihu_count INTEGER DEFAULT 0,
+  zhuque_count INTEGER DEFAULT 0,
+  xuanwu_count INTEGER DEFAULT 0,
+  create_time INTEGER DEFAULT 0,
+  update_time INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS guild_info (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guild_id TEXT NOT NULL,
+  msg TEXT DEFAULT '',
+  create_time INTEGER DEFAULT 0
 );
 -- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
 -- lists back to the client; the id is the legacy row guid).
@@ -916,6 +969,17 @@ class Store:
                 self.db.execute(
                     'ALTER TABLE role_juqingfuben'
                     ' ADD COLUMN pending_award TEXT')
+            member_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(guild_member)')}
+            for column, declaration in (
+                    ('position', 'INTEGER DEFAULT 3'),
+                    ('gongxian_sum', 'INTEGER DEFAULT 0'),
+                    ('create_time', 'INTEGER DEFAULT 0'),
+                    ('update_time', 'INTEGER DEFAULT 0')):
+                if column not in member_cols:
+                    self.db.execute(
+                        f'ALTER TABLE guild_member ADD COLUMN {column}'
+                        f' {declaration}')
             zuoqi_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_zuoqi)')}
             if 'lucky_value' not in zuoqi_cols:
@@ -3023,15 +3087,19 @@ class Store:
                 (str(role_id),)).fetchone()
             return row['guild_id'] if row else None
 
-    def save_guild_member(self, role_id, guild_id):
-        """Record guild membership (test/dev hook; GuildAction unported)."""
+    def save_guild_member(self, role_id, guild_id, position=3):
+        """Record guild membership (position defaults to member)."""
         with self.lock:
+            now = int(time.time() * 1000)
             self.db.execute(
-                'INSERT INTO guild_member(role_id, guild_id, gongxian)'
-                ' VALUES(?,?,0)'
+                'INSERT INTO guild_member(role_id, guild_id, position,'
+                ' gongxian, gongxian_sum, create_time, update_time)'
+                ' VALUES(?,?,?,?,?, ?, ?)'
                 ' ON CONFLICT(role_id) DO UPDATE'
-                ' SET guild_id=excluded.guild_id',
-                (str(role_id), str(guild_id)))
+                ' SET guild_id=excluded.guild_id, position=excluded.position,'
+                ' update_time=excluded.update_time',
+                (str(role_id), str(guild_id), int(position or 0), 0, 0,
+                 now, now))
             self.db.commit()
             return True
 
@@ -3039,18 +3107,220 @@ class Store:
         """Accumulate contribution (addRoleGongxian); returns the new total."""
         with self.atomic() as db:
             row = db.execute(
-                'SELECT gongxian FROM guild_member WHERE role_id=?',
+                'SELECT gongxian, gongxian_sum FROM guild_member WHERE role_id=?',
                 (str(role_id),)).fetchone()
             if row is None:
                 return None
             try:
                 total = int(row['gongxian'] or 0) + int(delta or 0)
+                grand = int(row['gongxian_sum'] or 0) + int(delta or 0)
             except (TypeError, ValueError):
                 total = int(delta or 0)
+                grand = int(delta or 0)
             db.execute(
-                'UPDATE guild_member SET gongxian=? WHERE role_id=?',
-                (total, str(role_id)))
+                'UPDATE guild_member SET gongxian=?, gongxian_sum=?,'
+                ' update_time=? WHERE role_id=?',
+                (total, grand, int(time.time() * 1000), str(role_id)))
             return total
+
+    def get_guild_member(self, role_id):
+        """Guild membership row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT role_id, guild_id, position, gongxian, gongxian_sum,'
+                ' create_time, update_time FROM guild_member WHERE role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def delete_guild_member(self, role_id):
+        """Remove a membership row; True when one existed."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM guild_member WHERE role_id=?', (str(role_id),))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    def get_guild_members(self, guild_id):
+        """Membership rows for a guild in join order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT role_id, guild_id, position, gongxian, gongxian_sum,'
+                ' create_time, update_time FROM guild_member WHERE guild_id=?'
+                ' ORDER BY rowid',
+                (str(guild_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def count_guild_position(self, guild_id, position):
+        """Members of a guild holding one position."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT COUNT(*) n FROM guild_member'
+                ' WHERE guild_id=? AND position=?',
+                (str(guild_id), int(position))).fetchone()
+            return int(row['n'] or 0)
+
+    def save_guild(self, row):
+        """Upsert a guild row dict keyed by id."""
+        cols = ('id', 'name', 'banner_id', 'banner_level', 'banner_name',
+                'user_role_id', 'vice_user_role_id', 'guild_message',
+                'active_value', 'warn_value', 'guild_setting', 'money',
+                'qinglong_count', 'baihu_count', 'zhuque_count',
+                'xuanwu_count', 'fighting', 'create_time', 'update_time')
+        with self.lock:
+            values = [row.get(c) for c in cols]
+            self.db.execute(
+                f'INSERT INTO guild({",".join(cols)})'
+                f' VALUES({",".join(["?"] * len(cols))})'
+                ' ON CONFLICT(id) DO UPDATE SET '
+                + ', '.join(f'{c}=excluded.{c}' for c in cols[1:]),
+                values)
+            self.db.commit()
+            return True
+
+    def get_guild(self, guild_id):
+        """Guild row by id, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT * FROM guild WHERE id=?',
+                (str(guild_id),)).fetchone()
+            return dict(row) if row else None
+
+    def find_guild_by_name(self, name):
+        """Guild row with an exact name, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT * FROM guild WHERE name=?',
+                (str(name),)).fetchone()
+            return dict(row) if row else None
+
+    def find_guild_by_banner_name(self, name):
+        """Guild row with an exact banner name, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT * FROM guild WHERE banner_name=?',
+                (str(name),)).fetchone()
+            return dict(row) if row else None
+
+    def list_guilds(self):
+        """All guild rows in creation order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT * FROM guild ORDER BY rowid').fetchall()
+            return [dict(row) for row in rows]
+
+    def search_guilds(self, text):
+        """Guild rows whose name contains text (LIKE, escaped)."""
+        with self.lock:
+            like = '%' + str(text or '').replace('\\', '\\\\')\
+                .replace('%', '\\%').replace('_', '\\_') + '%'
+            rows = self.db.execute(
+                "SELECT * FROM guild WHERE name LIKE ? ESCAPE '\\'"
+                ' ORDER BY rowid',
+                (like,)).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_guild(self, guild_id):
+        """Delete a guild and its members/applies/ledger/log rows."""
+        with self.atomic() as db:
+            for table in ('guild_member', 'guild_apply',
+                          'guild_gongxian', 'guild_info'):
+                db.execute(
+                    f'DELETE FROM {table} WHERE guild_id=?',
+                    (str(guild_id),))
+            db.execute('DELETE FROM guild WHERE id=?', (str(guild_id),))
+            return True
+
+    def add_guild_apply(self, guild_id, role_id):
+        """Record a join application; False when already applied."""
+        with self.lock:
+            try:
+                self.db.execute(
+                    'INSERT INTO guild_apply(guild_id, role_id, create_time)'
+                    ' VALUES(?,?,?)',
+                    (str(guild_id), str(role_id),
+                     int(time.time() * 1000)))
+            except sqlite3.IntegrityError:
+                return False
+            self.db.commit()
+            return True
+
+    def has_guild_apply(self, guild_id, role_id):
+        """True when a join application is pending."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id FROM guild_apply WHERE guild_id=? AND role_id=?',
+                (str(guild_id), str(role_id))).fetchone()
+            return row is not None
+
+    def list_guild_applies(self, guild_id):
+        """Pending join-application rows for a guild in request order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT guild_id, role_id, create_time FROM guild_apply'
+                ' WHERE guild_id=? ORDER BY rowid',
+                (str(guild_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_guild_apply(self, guild_id, role_id):
+        """Withdraw one join application."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM guild_apply WHERE guild_id=? AND role_id=?',
+                (str(guild_id), str(role_id)))
+            self.db.commit()
+            return True
+
+    def save_guild_gongxian(self, entry):
+        """Append a guild contribution ledger entry; returns its row id."""
+        cols = ('guild_id', 'role_id', 'money', 'qinglong_count',
+                'baihu_count', 'zhuque_count', 'xuanwu_count',
+                'create_time', 'update_time')
+        with self.lock:
+            cur = self.db.execute(
+                f'INSERT INTO guild_gongxian({",".join(cols)})'
+                f' VALUES({",".join(["?"] * len(cols))})',
+                [entry.get(c, 0) for c in cols])
+            self.db.commit()
+            return cur.lastrowid
+
+    def list_guild_gongxian(self, guild_id):
+        """Contribution ledger entries for a guild."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT guild_id, role_id, money, qinglong_count, baihu_count,'
+                ' zhuque_count, xuanwu_count, create_time, update_time'
+                ' FROM guild_gongxian WHERE guild_id=? ORDER BY rowid',
+                (str(guild_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def delete_guild_gongxian(self, role_id):
+        """Drop one role's contribution ledger rows (member exit)."""
+        with self.lock:
+            self.db.execute(
+                'DELETE FROM guild_gongxian WHERE role_id=?',
+                (str(role_id),))
+            self.db.commit()
+            return True
+
+    def add_guild_info(self, guild_id, msg):
+        """Append a guild log entry."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO guild_info(guild_id, msg, create_time)'
+                ' VALUES(?,?,?)',
+                (str(guild_id), str(msg or ''),
+                 int(time.time() * 1000)))
+            self.db.commit()
+            return True
+
+    def list_guild_info(self, guild_id):
+        """Guild log entries in write order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT guild_id, msg, create_time FROM guild_info'
+                ' WHERE guild_id=? ORDER BY rowid',
+                (str(guild_id),)).fetchall()
+            return [dict(row) for row in rows]
 
     def get_role_skillbook_slots(self, role_id, min_slot=10001,
                                  max_slot=10056):

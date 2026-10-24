@@ -489,6 +489,90 @@ TASK_ERR_GONGHUI_DONE = 81101
 TASK_ERR_GONGHUI_DIFF_MIN = 81102
 TASK_ERR_GONGHUI_THICK_MAX = 81103
 TASK_ERR_GONGHUI_YB_SHORT = 1003
+# Guild inbound routes (GuildAction EasyMapping): create/apply/invite/
+# exit/info/list/disband (53000-53009), setting/message/position/
+# contribute (53013-53017), by-guild-id (53024), banner/gongxian/search
+# (53028-53030) and by-id (53051). 53010-53012 (banner style/name/
+# upgrade), 53018-53021 (diplomacy/login), 53060/53061 (call) and
+# 11003 (chat) stay unported, like guildfuben.
+CMD_GUILD_CREATE = 53000
+CMD_GUILD_APPLY = 53001
+CMD_GUILD_APPLY_REPLY = 53002
+CMD_GUILD_INVITE = 53003
+CMD_GUILD_INVITE_REPLY = 53004
+CMD_GUILD_EXIT = 53005
+CMD_GUILD_BY_ROLE = 53006
+CMD_GUILD_INFO = 53007
+CMD_GUILD_LIST = 53008
+CMD_GUILD_DISBAND = 53009
+CMD_GUILD_SETTING = 53013
+CMD_GUILD_MESSAGE = 53014
+CMD_GUILD_POSITION = 53015
+CMD_GUILD_CONTRIB_MONEY = 53016
+CMD_GUILD_CONTRIB_GOODS = 53017
+CMD_GUILD_BY_GUILD = 53024
+CMD_GUILD_BANNERS = 53028
+CMD_GUILD_GONGXIAN = 53029
+CMD_GUILD_SEARCH = 53030
+CMD_GUILD_BY_ID = 53051
+# Guild pushes riding the member fan-out (PublicMsgQueue): apply/invite
+# answers, exit/disband notices, setting/message/position updates and
+# contribution refreshes. 11003_2 is the guild-chat offline leg.
+GUILD_PUSH_APPLY = 53001
+GUILD_PUSH_APPLY_REPLY = 53002
+GUILD_PUSH_INVITE = 53004
+GUILD_PUSH_INVITE_REPLY = 53003
+GUILD_PUSH_EXIT = 53005
+GUILD_PUSH_DISBAND = 53009
+GUILD_PUSH_SETTING = 53013
+GUILD_PUSH_MESSAGE = 53014
+GUILD_PUSH_POSITION = 53015
+GUILD_PUSH_CONTRIB = 53016
+GUILD_PUSH_CONTRIB_GOODS = 53017
+GUILD_PUSH_INFO = 53029
+# GuildErrorCode (guild/output/GuildErrorCode clinit) + GeneralErrorCode
+# (1003 JB short, 1005 goods short). meaning qizhiError/targetGuildFull/
+# roleLevelNotEnough/targetLevelNotEnough/inGuild/notInGuild/
+# guildAdminOffline/guildExit.
+GUILD_ERR_NAME_NULL = 470000
+GUILD_ERR_BANNER_NULL = 470001
+GUILD_ERR_IN_GUILD_EXIT = 470002
+GUILD_ERR_NAME_LEN = 470003
+GUILD_ERR_NAME_ILLEGAL = 470004
+GUILD_ERR_NAME_EXISTS = 470005
+GUILD_ERR_BANNER_LEN = 470006
+GUILD_ERR_BANNER_ILLEGAL = 470007
+GUILD_ERR_BANNER_EXISTS = 470008
+GUILD_ERR_CREATE_MONEY = 470009
+GUILD_ERR_CREATE_LEVEL = 470010
+GUILD_ERR_IN_GUILD = 470011
+GUILD_ERR_TARGET_FULL = 470012
+GUILD_ERR_ADMIN_OFFLINE = 470013
+GUILD_ERR_GUILD_MAX = 470014
+GUILD_ERR_NO_EXIT = 470015
+GUILD_ERR_REFUSED = 470016
+GUILD_ERR_EXIT_STATE = 470017
+GUILD_ERR_NOT_IN = 470018
+GUILD_ERR_HAS_GUILD = 470019
+GUILD_ERR_OFFLINE = 470020
+GUILD_ERR_NO_TICHU = 470024
+GUILD_ERR_NO_POSITION = 470035
+GUILD_ERR_GOODS_TOP = 470059
+GUILD_ERR_MONEY_LIMIT = 470060
+GUILD_ERR_ROLE_LEVEL = 470061
+GUILD_ERR_NO_YAOQING = 470062
+GUILD_ERR_MSG_LEN = 470055
+GUILD_ERR_SETTING_PERM = 470033
+GUILD_ERR_MESSAGE_PERM = 470034
+GUILD_ERR_DISBAND_PERM = 470022
+GUILD_ERR_JB_SHORT = 1003
+GUILD_ERR_GOODS_SHORT = 1005
+GUILD_POS_MASTER = 0
+GUILD_POS_VICE = 1
+GUILD_POS_ADMIN = 2
+GUILD_POS_MEMBER = 3
+GUILD_VICE_MAX = 1
+GUILD_ADMIN_MAX = 3
 # Pozhen inbound routes (PoZhenAction): 48001 info, 48002 start,
 # 48003 saodang, 48004 refresh, 48005 move, 48006 buy count, 48007 sweep
 # end, 48008 quick sweep, 48009 recovery, 48010 stop, 48011 claim goods
@@ -904,6 +988,21 @@ def check_role_name(name):
 
 
 _XINQING_BAD_RE = re.compile(r'[`~@#$%^*+().,?\'":;\[\]{}|<>/\\\s]')
+_GUILD_NOTICE_BAD_RE = re.compile(r'[`~@#$%^*+().,?\'":;\[\]{}|<>/\\]')
+
+
+def check_guild_notice(text):
+    """Port of NameFieldCheck.checkInputNotice minus the word filter.
+
+    Same CJK class as mood text, but the delete-char class keeps
+    whitespace (CHECK_GUILD_NOTICE_REGX has no \\s). Length gates
+    live at the call sites.
+    """
+    if not isinstance(text, str):
+        return False
+    if _GUILD_NOTICE_BAD_RE.search(text):
+        return False
+    return _ROLE_NAME_RE.fullmatch(text) is not None
 
 
 def check_xinqing(text):
@@ -1082,6 +1181,16 @@ class Session:
                  get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
+                 get_guild=None, list_guilds=None, save_guild=None,
+                 delete_guild=None, find_guild_by_name=None,
+                 find_guild_by_banner_name=None, search_guilds=None,
+                 get_guild_member=None, get_guild_members=None,
+                 count_guild_position=None, delete_guild_member=None,
+                 add_guild_apply=None, has_guild_apply=None,
+                 list_guild_applies=None, delete_guild_apply=None,
+                 save_guild_gongxian=None, list_guild_gongxian=None,
+                 delete_guild_gongxian=None, add_guild_info=None,
+                 list_guild_info=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
         self.config = config
@@ -1332,6 +1441,34 @@ class Session:
         self.save_guild_member = save_guild_member or \
             (lambda *a, **k: False)
         self.add_guild_gongxian = add_guild_gongxian or (lambda r, d: None)
+        self.get_guild = get_guild or (lambda g: None)
+        self.list_guilds = list_guilds or (lambda: [])
+        self.save_guild = save_guild or (lambda row: False)
+        self.delete_guild = delete_guild or (lambda g: False)
+        self.find_guild_by_name = find_guild_by_name or (lambda n: None)
+        self.find_guild_by_banner_name = find_guild_by_banner_name or \
+            (lambda n: None)
+        self.search_guilds = search_guilds or (lambda t: [])
+        self.get_guild_member = get_guild_member or (lambda r: None)
+        self.get_guild_members = get_guild_members or (lambda g: [])
+        self.count_guild_position = count_guild_position or \
+            (lambda g, p: 0)
+        self.delete_guild_member = delete_guild_member or \
+            (lambda r: False)
+        self.add_guild_apply = add_guild_apply or \
+            (lambda g, r: False)
+        self.has_guild_apply = has_guild_apply or \
+            (lambda g, r: False)
+        self.list_guild_applies = list_guild_applies or (lambda g: [])
+        self.delete_guild_apply = delete_guild_apply or \
+            (lambda g, r: False)
+        self.save_guild_gongxian = save_guild_gongxian or \
+            (lambda entry: None)
+        self.list_guild_gongxian = list_guild_gongxian or (lambda g: [])
+        self.delete_guild_gongxian = delete_guild_gongxian or \
+            (lambda r: False)
+        self.add_guild_info = add_guild_info or (lambda g, m: False)
+        self.list_guild_info = list_guild_info or (lambda g: [])
         self.buf = bytearray()
         self.frame_bucket = TokenBucket(FRAME_RATE_PER_S, FRAME_BURST)
         self.cipher = None
@@ -1709,6 +1846,46 @@ class Session:
             return self.gonghui_complete_best()
         if cmd_num == CMD_GONGHUI_NOTIFY_LOOP:
             return self.gonghui_notify_loop()
+        if cmd_num == CMD_GUILD_CREATE:
+            return self.guild_create(msg)
+        if cmd_num == CMD_GUILD_APPLY:
+            return self.guild_apply(msg)
+        if cmd_num == CMD_GUILD_APPLY_REPLY:
+            return self.guild_apply_reply(msg)
+        if cmd_num == CMD_GUILD_INVITE:
+            return self.guild_invite(msg)
+        if cmd_num == CMD_GUILD_INVITE_REPLY:
+            return self.guild_invite_reply(msg)
+        if cmd_num == CMD_GUILD_EXIT:
+            return self.guild_exit(msg)
+        if cmd_num == CMD_GUILD_BY_ROLE:
+            return self.guild_by_role()
+        if cmd_num == CMD_GUILD_INFO:
+            return self.guild_info_detail()
+        if cmd_num == CMD_GUILD_LIST:
+            return self.guild_list()
+        if cmd_num == CMD_GUILD_DISBAND:
+            return self.guild_disband()
+        if cmd_num == CMD_GUILD_SETTING:
+            return self.guild_setting(msg)
+        if cmd_num == CMD_GUILD_MESSAGE:
+            return self.guild_message(msg)
+        if cmd_num == CMD_GUILD_POSITION:
+            return self.guild_position(msg)
+        if cmd_num == CMD_GUILD_CONTRIB_MONEY:
+            return self.guild_contrib_money(msg)
+        if cmd_num == CMD_GUILD_CONTRIB_GOODS:
+            return self.guild_contrib_goods(msg)
+        if cmd_num == CMD_GUILD_BY_GUILD:
+            return self.guild_by_guild(msg)
+        if cmd_num == CMD_GUILD_BANNERS:
+            return self.guild_banners()
+        if cmd_num == CMD_GUILD_GONGXIAN:
+            return self.guild_gongxian()
+        if cmd_num == CMD_GUILD_SEARCH:
+            return self.guild_search(msg)
+        if cmd_num == CMD_GUILD_BY_ID:
+            return self.guild_by_id(msg)
         if cmd_num == CMD_HUODONG_ONLINE_INFO:
             return self.huodong_online_info()
         if cmd_num == CMD_HUODONG_ONLINE_REWARD:
@@ -14155,6 +14332,661 @@ class Session:
                 pass
         self._gonghui_save(rid, row)
         return frames
+
+    # Guild system (GuildAction 53000-53009/53013-53017/53024/53028-53030/
+    # 53051). Evidence: GuildAction javap (param shapes, reply-vs-void
+    # routes, silent guards), GuildServiceImpl bytecode (gate order,
+    # error codes, PublicMsgQueue fan-out), GuildVoOutput/GuildMemberVoOutput/
+    # GuildBannerOutput/GuildGongxianOutput/GuildInfoOutput/SimpleClanVoOutput
+    # shapes, GuildErrorCode clinit, and the GongHuiChuangJian (create cost
+    # 1M YXB + bangpai:1, level 20), GongHuiZhiWei (position permission
+    # flags) and GongHuiQiZhiBiao (banner caps) tables.
+    #
+    # Deliberate deviations: fight/vip/zuoqi cells of the member VO are 0
+    # (zhandouli/vip-export services have no port hook); the 470123 world
+    # notice and guild-chat channel joins ride no bus; guozhan/lingdizhan
+    # (manor-war) gates are skipped; diplomacy, banner style/name/upgrade
+    # (53010-53012), login (53021) and call (53060/53061) stay unported.
+    @staticmethod
+    def _guild_err(cmd, code, *extra):
+        """GuildErrorCodeOutput shape: [0, code, ...]."""
+        return frame(amf3_encode([str(cmd), [0, code, *extra]]))
+
+    @staticmethod
+    def _guild_ok(cmd, payload):
+        """toGuildVoSuccess shape: [1, payload]."""
+        return frame(amf3_encode([str(cmd), [1, payload]]))
+
+    def _guild_push(self, cid, cmd, payload):
+        """PublicMsgQueue flush to one role: live sessions get frames."""
+        if self.stage_registry is None:
+            return []
+        try:
+            sess = self.stage_registry.session_of(cid)
+        except Exception:
+            return []
+        if sess is None:
+            try:
+                sess = self.stage_registry.presence_of(cid)
+            except Exception:
+                sess = None
+        if sess is None:
+            return []
+        out = frame(amf3_encode([str(cmd), payload]))
+        if sess is self:
+            return [out]
+        try:
+            sess.push_frames([out])
+        except Exception:
+            pass
+        return []
+
+    def _guild_online(self, cid):
+        """Public online state: placed session or login presence."""
+        if self.stage_registry is None:
+            return False
+        try:
+            if self.stage_registry.session_of(cid) is not None:
+                return True
+            return self.stage_registry.presence_of(cid) is not None
+        except Exception:
+            return False
+
+    def _guild_broadcast(self, guild_id, cmd, payload, exclude=None):
+        """Fan out to online members; this session's copies are returned."""
+        try:
+            members = self.get_guild_members(guild_id) or []
+        except Exception:
+            members = []
+        own = []
+        for member in members:
+            cid = str(member.get('role_id'))
+            if exclude is not None and cid == str(exclude):
+                continue
+            own.extend(self._guild_push(cid, cmd, payload))
+        return own
+
+    def _guild_self(self):
+        """(role, rid) of the caller's first role, or (None, None)."""
+        role, rid = self._task_role()
+        if role is None or rid is None:
+            return None, None
+        return role, rid
+
+    def _guild_brief(self, rid):
+        """Identity card for a member VO; falls back to the caller's roles."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is not None:
+            return dict(brief)
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '') or []
+        except Exception:
+            roles = []
+        for role in roles:
+            if str((role or {}).get('id')) == str(rid):
+                return dict(role)
+        return {'id': rid}
+
+    def _guild_member_vo(self, rid, member, online=None):
+        """GuildMemberVoOutput 15-slot member card (fight/vip 0, see note)."""
+        brief = self._guild_brief(rid)
+        if online is None:
+            online = self._guild_online(rid)
+        member = dict(member or {})
+        try:
+            position = int(member.get('position') or 0)
+        except (TypeError, ValueError):
+            position = 0
+        try:
+            gongxian = int(member.get('gongxian') or 0)
+        except (TypeError, ValueError):
+            gongxian = 0
+        try:
+            gongxian_sum = int(member.get('gongxian_sum') or 0)
+        except (TypeError, ValueError):
+            gongxian_sum = 0
+        return [str(brief.get('id') if brief.get('id') is not None
+                    else rid),
+                brief.get('name'), brief.get('sex'), brief.get('level'),
+                str(member.get('guild_id') or ''), position,
+                member.get('create_time') or 0, bool(online),
+                member.get('update_time') or 0, gongxian_sum, 0, 0, 0,
+                gongxian, 0]
+
+    def _guild_ling_goods(self, guild):
+        """GuildGongxianGoods 4-pair spirit counts ([id, count])."""
+        guild = guild or {}
+        out = []
+        for key in ('lingql', 'lingbh', 'lingzq', 'lingxw'):
+            try:
+                count = int(guild.get(f'{key}_count'
+                                      if f'{key}_count' in guild
+                                      else key) or 0)
+            except (TypeError, ValueError):
+                count = 0
+            out.append([key, count])
+        return out
+
+    def _guild_simple_vo(self, guild, count=None, max_count=None):
+        """SimpleClanVoOutput 10-slot guild card for lists and search."""
+        guild = guild or {}
+        gid = str(guild.get('id') or '')
+        if count is None:
+            try:
+                count = len(self.get_guild_members(gid) or [])
+            except Exception:
+                count = 0
+        if max_count is None:
+            max_count = self.config.guild_banner_max_members(
+                guild.get('banner_id'), guild.get('banner_level')) \
+                if self.config is not None else 0
+        return [gid, guild.get('name'), guild.get('banner_id'),
+                guild.get('banner_name'), guild.get('banner_level'),
+                guild.get('fighting') or 0, count, max_count or 0,
+                False, int(guild.get('guild_setting') or 0)]
+
+    def _guild_vo(self, guild):
+        """GuildVoOutput 22-slot guild card with members and spirit goods."""
+        guild = dict(guild or {})
+        gid = str(guild.get('id') or '')
+        try:
+            members = self.get_guild_members(gid) or []
+        except Exception:
+            members = []
+        cards = [self._guild_member_vo(m.get('role_id'), m)
+                 for m in members]
+        max_count = self.config.guild_banner_max_members(
+            guild.get('banner_id'), guild.get('banner_level')) \
+            if self.config is not None else 0
+        try:
+            money = int(guild.get('money') or 0)
+        except (TypeError, ValueError):
+            money = 0
+        return [gid, guild.get('name'), guild.get('banner_id'),
+                guild.get('banner_name'), guild.get('banner_level'),
+                guild.get('fighting') or 0, len(cards), max_count or 0,
+                None, guild.get('user_role_id'),
+                guild.get('vice_user_role_id'),
+                guild.get('guild_message'), cards, [], money,
+                self._guild_ling_goods(guild), guild.get('update_time') or 0,
+                int(guild.get('guild_setting') or 0), False,
+                guild.get('create_time') or 0, False, 0]
+
+    def _guild_perm(self, member, key):
+        """GongHuiZhiWei permission flag for a member's position."""
+        try:
+            position = int((member or {}).get('position')
+                           if isinstance(member, dict) else member)
+        except (TypeError, ValueError):
+            return 0
+        if self.config is None:
+            return 0
+        try:
+            row = self.config.guild_position_config(position)
+        except Exception:
+            row = None
+        try:
+            return int((row or {}).get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _guild_bag_count(self, rid, goods_id):
+        """Total count of one goods across a role's bag slots."""
+        try:
+            slots = self.get_role_bag_slots(rid) or []
+        except Exception:
+            return 0
+        total = 0
+        for slot in slots:
+            try:
+                if str((slot or {}).get('goods_id')) != str(goods_id):
+                    continue
+                total += int((slot or {}).get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _guild_bag_decr(self, rid, goods_id, count):
+        """Consume goods across bag slots; False when short."""
+        try:
+            slots = self.get_role_bag_slots(rid) or []
+        except Exception:
+            return False
+        pairs = []
+        for slot in slots:
+            try:
+                if str((slot or {}).get('goods_id')) != str(goods_id):
+                    continue
+                have = int((slot or {}).get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            if have > 0:
+                pairs.append((slot.get('slot_num'), have))
+        if sum(have for _, have in pairs) < count:
+            return False
+        left = count
+        for slot_num, have in pairs:
+            if left <= 0:
+                break
+            if have <= left:
+                try:
+                    self.delete_role_bag_slot(rid, slot_num)
+                except Exception:
+                    return False
+                left -= have
+            else:
+                try:
+                    self.update_role_bag_slot(
+                        rid, slot_num, count=have - left)
+                except Exception:
+                    return False
+                left = 0
+        return left == 0
+
+    def _guild_money_ok(self, role, money_type, value):
+        """Whether a role can pay a guild money cost (1 YXB, 2 YB)."""
+        try:
+            value = int(value or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value <= 0:
+            return True
+        cell = {1: 'tongqian', 2: 'lingshi',
+                3: 'bind_lingshi'}.get(money_type)
+        if cell is None:
+            return True
+        try:
+            return int((role or {}).get(cell) or 0) >= value
+        except (TypeError, ValueError):
+            return False
+
+    def _guild_money_decr(self, rid, role, money_type, value):
+        """Decrement a role's money cell for a guild cost."""
+        try:
+            value = int(value or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value <= 0:
+            return True
+        cell = {1: 'tongqian', 2: 'lingshi',
+                3: 'bind_lingshi'}.get(money_type)
+        if cell is None:
+            return True
+        try:
+            total = int((role or {}).get(cell) or 0) - value
+        except (TypeError, ValueError):
+            return False
+        if total < 0:
+            return False
+        try:
+            self.save_role_state(rid, **{cell: total})
+        except Exception:
+            return False
+        return True
+
+    def guild_create(self, msg):
+        """Command 53000: create a guild, reply [1, guild VO]."""
+        if self.config is None:
+            return None
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        name = data[0] if len(data) > 0 else None
+        banner_name = data[1] if len(data) > 1 else None
+        try:
+            banner_id = int(data[2]) if len(data) > 2 else 0
+        except (TypeError, ValueError):
+            banner_id = 0
+        try:
+            setting = int(data[3]) if len(data) > 3 and \
+                data[3] is not None else 0
+        except (TypeError, ValueError):
+            setting = 0
+        try:
+            decr_type = int(data[4]) if len(data) > 4 and \
+                data[4] is not None else None
+        except (TypeError, ValueError):
+            decr_type = None
+        create = self.config.guild_create_config()
+        goods = dict(create.get('goods') or {})
+        if decr_type == 2 and goods:
+            for goods_id, need in goods.items():
+                try:
+                    need = int(need or 0)
+                except (TypeError, ValueError):
+                    need = 0
+                if self._guild_bag_count(rid, goods_id) < need:
+                    return self._guild_err(
+                        CMD_GUILD_CREATE, GUILD_ERR_GOODS_SHORT)
+        try:
+            member = self.get_guild_member(rid)
+        except Exception:
+            member = None
+        if member is not None:
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_IN_GUILD_EXIT)
+        if not name:
+            return self._guild_err(CMD_GUILD_CREATE, GUILD_ERR_NAME_NULL)
+        if not banner_name:
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_BANNER_NULL)
+        if not (2 <= len(str(name)) <= 6):
+            return self._guild_err(CMD_GUILD_CREATE, GUILD_ERR_NAME_LEN)
+        if not check_role_name(str(name)):
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_NAME_ILLEGAL)
+        if not (2 <= len(str(banner_name)) <= 6):
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_BANNER_LEN)
+        if not check_role_name(str(banner_name)):
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_BANNER_ILLEGAL)
+        try:
+            if self.find_guild_by_name(str(name)) is not None:
+                return self._guild_err(
+                    CMD_GUILD_CREATE, GUILD_ERR_NAME_EXISTS)
+        except Exception:
+            pass
+        try:
+            if self.find_guild_by_banner_name(str(banner_name)) \
+                    is not None:
+                return self._guild_err(
+                    CMD_GUILD_CREATE, GUILD_ERR_BANNER_EXISTS)
+        except Exception:
+            pass
+        if self._task_role_level(role) < int(create.get('need_level') or 0):
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_CREATE_LEVEL)
+        if decr_type == 1 and not self._guild_money_ok(
+                role, create.get('money_type'), create.get('money_value')):
+            return self._guild_err(
+                CMD_GUILD_CREATE, GUILD_ERR_CREATE_MONEY)
+        banner = self.config.guild_banner_config(banner_id, 1)
+        if banner is None:
+            return self._guild_err(CMD_GUILD_CREATE, 470046)
+        if decr_type == 1:
+            self._guild_money_decr(rid, role, create.get('money_type'),
+                                   create.get('money_value'))
+        elif decr_type == 2:
+            for goods_id, need in goods.items():
+                try:
+                    need = int(need or 0)
+                except (TypeError, ValueError):
+                    need = 0
+                if need > 0:
+                    self._guild_bag_decr(rid, goods_id, need)
+        import uuid as _uuid
+        gid = f'guild{_uuid.uuid4().hex[:12]}'
+        now = int(time.time() * 1000)
+        guild = {'id': gid, 'name': str(name), 'banner_id': banner_id,
+                 'banner_level': 1, 'banner_name': str(banner_name),
+                 'user_role_id': str(rid), 'vice_user_role_id': '',
+                 'guild_message': '', 'active_value': 0, 'warn_value': 0,
+                 'guild_setting': setting, 'money': 0,
+                 'qinglong_count': 0, 'baihu_count': 0, 'zhuque_count': 0,
+                 'xuanwu_count': 0, 'fighting': 0, 'create_time': now,
+                 'update_time': now}
+        try:
+            self.save_guild(guild)
+        except Exception:
+            return None
+        try:
+            self.save_guild_member(rid, gid, GUILD_POS_MASTER)
+        except Exception:
+            pass
+        try:
+            self.add_guild_info(gid, str(name))
+        except Exception:
+            pass
+        return self._guild_ok(CMD_GUILD_CREATE, self._guild_vo(guild))
+
+    def guild_apply(self, msg):
+        """Command 53001: apply to a guild, reply [1] plus 53002 to admins."""
+        if self.config is None:
+            return None
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        gid = self.safe(msg, 1, None)
+        if not gid:
+            return None
+        try:
+            guild = self.get_guild(str(gid))
+        except Exception:
+            guild = None
+        if guild is None:
+            return self._guild_err(CMD_GUILD_APPLY, 470048)
+        try:
+            if self.get_guild_member(rid) is not None:
+                return self._guild_err(
+                    CMD_GUILD_APPLY, GUILD_ERR_IN_GUILD)
+        except Exception:
+            pass
+        try:
+            members = self.get_guild_members(str(gid)) or []
+        except Exception:
+            members = []
+        max_count = self.config.guild_banner_max_members(
+            guild.get('banner_id'), guild.get('banner_level'))
+        if max_count and len(members) >= max_count:
+            return self._guild_err(
+                CMD_GUILD_APPLY, GUILD_ERR_TARGET_FULL)
+        if self._task_role_level(role) < 20:
+            return self._guild_err(
+                CMD_GUILD_APPLY, GUILD_ERR_ROLE_LEVEL)
+        admins = [m for m in members
+                  if str(m.get('role_id')) != str(rid) and
+                  self._guild_online(m.get('role_id')) and
+                  int(m.get('position') or 3) <= GUILD_POS_ADMIN]
+        if not admins:
+            return self._guild_err(
+                CMD_GUILD_APPLY, GUILD_ERR_ADMIN_OFFLINE)
+        try:
+            self.add_guild_apply(str(gid), rid)
+        except Exception:
+            pass
+        brief = self._guild_brief(rid)
+        for admin in admins:
+            self._guild_push(admin.get('role_id'), GUILD_PUSH_APPLY_REPLY,
+                              [str(rid), brief.get('name'),
+                               brief.get('level')])
+        return self._guild_ok(CMD_GUILD_APPLY, 1)
+
+    def guild_apply_reply(self, msg):
+        """Command 53002: answer an application (void, pushes 53001)."""
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        agree = bool(data[0]) if data else False
+        target = str(data[1]) if len(data) > 1 and data[1] else None
+        if not target:
+            return None
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        if not self._guild_perm(caller, 'recruit'):
+            self._guild_push(rid, GUILD_PUSH_APPLY,
+                              [0, GUILD_ERR_NO_POSITION])
+            return None
+        try:
+            pending = self.has_guild_apply(gid, target)
+        except Exception:
+            pending = False
+        if not pending:
+            return None
+        frames = []
+        if agree:
+            try:
+                guild = self.get_guild(gid)
+            except Exception:
+                guild = None
+            if guild is None:
+                self._guild_push(rid, GUILD_PUSH_APPLY,
+                                  [0, GUILD_ERR_EXIT_STATE])
+                return None
+            try:
+                if self.get_guild_member(target) is not None:
+                    self._guild_push(target, GUILD_PUSH_APPLY,
+                                      [0, GUILD_ERR_HAS_GUILD])
+                    return None
+            except Exception:
+                pass
+            try:
+                members = self.get_guild_members(gid) or []
+            except Exception:
+                members = []
+            max_count = self.config.guild_banner_max_members(
+                guild.get('banner_id'), guild.get('banner_level')) \
+                if self.config is not None else 0
+            if max_count and len(members) >= max_count:
+                self._guild_push(rid, GUILD_PUSH_APPLY,
+                                  [0, GUILD_ERR_TARGET_FULL])
+                return None
+            try:
+                self.save_guild_member(target, gid, GUILD_POS_MEMBER)
+            except Exception:
+                return None
+            try:
+                self.delete_guild_apply(gid, target)
+            except Exception:
+                pass
+            frames.extend(self._guild_push(
+                target, GUILD_PUSH_APPLY, [1, self._guild_vo(guild)]))
+            frames.extend(self._guild_broadcast(
+                gid, GUILD_PUSH_APPLY_REPLY,
+                self._guild_member_vo(target,
+                                      self.get_guild_member(target)),
+                exclude=target))
+        else:
+            try:
+                self.delete_guild_apply(gid, target)
+            except Exception:
+                pass
+            frames.extend(self._guild_push(target, GUILD_PUSH_APPLY,
+                                            [0, 470125]))
+        return tuple(frames) if frames else None
+
+    def guild_invite(self, msg):
+        """Command 53003: invite a role, reply [1] plus 53004 to the target."""
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        target = self.safe(msg, 1, None)
+        if not target:
+            return None
+        target = str(target)
+        try:
+            caller = self.get_guild_member(rid)
+        except Exception:
+            caller = None
+        if caller is None:
+            return None
+        gid = str(caller.get('guild_id') or '')
+        if not self._guild_perm(caller, 'recruit'):
+            return self._guild_err(CMD_GUILD_INVITE, GUILD_ERR_NO_YAOQING)
+        try:
+            guild = self.get_guild(gid)
+        except Exception:
+            guild = None
+        if guild is None:
+            return self._guild_err(CMD_GUILD_INVITE, 470048)
+        try:
+            if self.get_guild_member(target) is not None:
+                return self._guild_err(
+                    CMD_GUILD_INVITE, GUILD_ERR_HAS_GUILD)
+        except Exception:
+            pass
+        brief = self._guild_brief(target)
+        if brief.get('name') is None:
+            return self._guild_err(CMD_GUILD_INVITE, GUILD_ERR_NOT_IN)
+        try:
+            level = int(brief.get('level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        if level < 20:
+            return self._guild_err(
+                CMD_GUILD_INVITE, 470043)
+        if not self._guild_online(target):
+            return self._guild_err(CMD_GUILD_INVITE, GUILD_ERR_OFFLINE)
+        try:
+            members = self.get_guild_members(gid) or []
+        except Exception:
+            members = []
+        max_count = self.config.guild_banner_max_members(
+            guild.get('banner_id'), guild.get('banner_level')) \
+            if self.config is not None else 0
+        if max_count and len(members) >= max_count:
+            return self._guild_err(
+                CMD_GUILD_INVITE, GUILD_ERR_TARGET_FULL)
+        self._guild_push(target, GUILD_PUSH_INVITE,
+                          [gid, guild.get('name')])
+        return self._guild_ok(CMD_GUILD_INVITE, 1)
+
+    def guild_invite_reply(self, msg):
+        """Command 53004: answer an invite (void, pushes 53003)."""
+        role, rid = self._guild_self()
+        if role is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        agree = bool(data[0]) if data else False
+        gid = str(data[1]) if len(data) > 1 and data[1] else None
+        if not gid:
+            return None
+        try:
+            guild = self.get_guild(gid)
+        except Exception:
+            guild = None
+        if guild is None:
+            self._guild_push(rid, GUILD_PUSH_INVITE_REPLY,
+                              [0, GUILD_ERR_EXIT_STATE])
+            return None
+        frames = []
+        if agree:
+            try:
+                if self.get_guild_member(rid) is not None:
+                    frames.extend(self._guild_push(
+                        rid, GUILD_PUSH_INVITE_REPLY,
+                        [0, GUILD_ERR_IN_GUILD]))
+                    return tuple(frames) if frames else None
+            except Exception:
+                pass
+            try:
+                members = self.get_guild_members(gid) or []
+            except Exception:
+                members = []
+            max_count = self.config.guild_banner_max_members(
+                guild.get('banner_id'), guild.get('banner_level')) \
+                if self.config is not None else 0
+            if max_count and len(members) >= max_count:
+                frames.extend(self._guild_push(
+                    rid, GUILD_PUSH_INVITE_REPLY,
+                    [0, GUILD_ERR_TARGET_FULL]))
+                return tuple(frames) if frames else None
+            try:
+                self.save_guild_member(rid, gid, GUILD_POS_MEMBER)
+            except Exception:
+                return None
+            frames.extend(self._guild_broadcast(
+                gid, GUILD_PUSH_INVITE_REPLY,
+                [1, self._guild_member_vo(
+                    rid, self.get_guild_member(rid))]))
+        else:
+            frames.extend(self._guild_broadcast(
+                gid, GUILD_PUSH_INVITE_REPLY, [0, 470050]))
+        return tuple(frames) if frames else None
 
     # Battle-formation (pozhen 48001-48011). Evidence: PoZhenAction (11
     # inbound; 48011 getGoods is a void grant), RolePozhenServiceImpl plus

@@ -1181,6 +1181,7 @@ class GameConfig:
         self._rc_loop = None
         self._gh_cond = None
         self._gh_rew = None
+        self._guild_manage = None
         self._gh_loop = None
         self._pozhen = None
         self._pozhen_xinxi = None
@@ -2726,6 +2727,82 @@ class GameConfig:
     def gonghui_reward_buckets(self):
         """{min: max} level buckets for the guild-task reward lookup."""
         return dict(self._gonghui_reward_assembly()[3])
+
+    def _guild_manage_assembly(self):
+        """(create cfg, positions by id, banners by (id, level))."""
+        if self._guild_manage is None:
+            create = {'money_type': 1, 'money_value': 0,
+                      'need_level': 0, 'goods': {}}
+            for row in self._gonghui_rows('GongHuiChuangJian'):
+                if not isinstance(row, dict):
+                    continue
+                goods = {}
+                for chunk in str(row.get('needgoods') or '').split(';'):
+                    parts = chunk.replace('|', ':').split(':')
+                    if len(parts) != 2 or not parts[0].strip():
+                        continue
+                    try:
+                        goods[parts[0].strip()] = int(parts[1])
+                    except (TypeError, ValueError):
+                        continue
+                create = {'money_type': config_int(row.get('money1type')),
+                          'money_value': config_int(row.get('money1value')),
+                          'need_level': config_int(row.get('needlevel')),
+                          'goods': goods}
+            positions = {}
+            for row in self._gonghui_rows('GongHuiZhiWei'):
+                if not isinstance(row, dict) or row.get('id') is None:
+                    continue
+                try:
+                    pid = int(row['id'])
+                except (TypeError, ValueError):
+                    continue
+                positions[pid] = {k: config_int(v) for k, v in row.items()
+                                  if k not in ('postname',)}
+            banners = {}
+            for row in self._gonghui_rows('GongHuiQiZhiBiao'):
+                if not isinstance(row, dict) or row.get('id') is None \
+                        or row.get('level') is None:
+                    continue
+                try:
+                    key = (int(row['id']), int(row['level']))
+                except (TypeError, ValueError):
+                    continue
+                banners[key] = row
+            self._guild_manage = (create, positions, banners)
+        return self._guild_manage
+
+    def guild_create_config(self):
+        """GuildCreateConfig: cost type/value, level gate, goods map."""
+        return dict(self._guild_manage_assembly()[0])
+
+    def guild_position_config(self, position):
+        """GongHuiZhiWei row for a position id (0 master..3 member)."""
+        try:
+            return self._guild_manage_assembly()[1].get(int(position))
+        except (TypeError, ValueError):
+            return None
+
+    def guild_banner_config(self, banner_id, level):
+        """GuildQiZhiConfig row for a (banner, level); None when absent."""
+        try:
+            key = (int(banner_id), int(level))
+        except (TypeError, ValueError):
+            return None
+        return self._guild_manage_assembly()[2].get(key)
+
+    def guild_banner_max_members(self, banner_id, level):
+        """maxmemvalue for a (banner, level); 0 when unconfigured."""
+        row = self.guild_banner_config(banner_id, level)
+        return config_int((row or {}).get('maxmemvalue'))
+
+    def guild_banner_max_money(self, banner_id, level):
+        """ckmoneyvalue cap for a (banner, level); 0 when unconfigured."""
+        row = self.guild_banner_config(banner_id, level)
+        try:
+            return int(float((row or {}).get('ckmoneyvalue') or 0))
+        except (TypeError, ValueError):
+            return 0
 
     def _gonghui_loop_assembly(self):
         """(loop rewards by id, min_max lists, buckets) from EWaiJiangLi."""

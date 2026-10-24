@@ -55,3 +55,4 @@ brain-install.js
 package.json
 *.MYI
 *.MYD
+/Server-v1/.jrecon

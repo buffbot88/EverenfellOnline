@@ -75,10 +75,14 @@ skill + buyback, zuoqi ranks and longhun pills, meiren companions, shenjiang
 star charts, baoshi gems, chengjiu achievements, qiandao sign-in, yingyin
 mount skins, email inbox with item/JB/YB claims, pet panel, quest tails
 (task/richang/juqing/zuwu), teleport/inner-fly/revive, chat and scheduler
-ticks. The login result's TimeZone slot is an AMF3 object carrying
-`rawOffset`, as `ServerInfoVO.decode()` requires. Each role is a positional
-`Object[8]` per `GetRoleOutput.roleInfo`. v1.4 routes 164 command IDs with
-tests (153 persisted to SQLite) plus 71 server-push IDs.
+ticks, party/team groups, guild lifecycle, guild dungeons, and the
+marriage system (proposals, wedding, divorce, ring strengthening,
+spouse teleport). The login result's TimeZone slot is an AMF3 object
+carrying `rawOffset`, as `ServerInfoVO.decode()` requires. Each role is a
+positional `Object[8]` per `GetRoleOutput.roleInfo`. v1.5 routes 240
+command IDs with tests plus 26 server-push IDs (313 of 497 Java IDs
+dispatched; per-family status in `docs/*-ledger.md` and
+`docs/command-census.md`).
 
 ## Layout
 

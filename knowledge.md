@@ -35,7 +35,7 @@ A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "Ton
 ```sh
 python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080
 python3 server.py --db data/mko.db --add-char ACCOUNT:NAME   # seed a character, then exit
-python3 -m unittest discover -s tests                        # server tests (837, all pass)
+python3 -m unittest discover -s tests                        # server tests (1690, all pass)
 ```
 
 **Tools tests** (from `tools/`): `python3 -m unittest discover -s tests` (44 tests).
@@ -70,7 +70,7 @@ Original boot chain: `docs/boot-chain.md`. Game socket protocol: `docs/protocol.
 2. client → **encrypted** AMF3 command frames (`SimpleEncrypt`).
 3. server → **plaintext** AMF3 replies (server never encrypts).
 
-Implemented: login `10001`, createRole `10002`, enter-world `10003`, map change `20000`, role settings `13000`, scene entry `21000` (map 5 only). Every command id maps to a Java class in `docs/java-command-map.md`.
+Implemented: login `10001`, createRole `10002`, enter-world `10003`, map change `20000`, role settings `13000`, scene entry `21000` (map 5 only), plus bag/equip/vip/mall/skill, mounts, pets (partial), companions, dungeons (story/clan/guild), party/team, guild, booth, friends, marriage and more — 240 command IDs with tests in v1.5. Every command id maps to a Java class in `docs/java-command-map.md`; per-family parity status lives in `Server-v1/docs/*-ledger.md` and `Server-v1/docs/command-census.md`.
 
 Role state lives in a `role_stage` table mirroring the legacy MySQL table, joined into `list_roles` so `10003`/`20000` report the migrated map, coordinates and HP/MP.
 

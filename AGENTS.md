@@ -6,7 +6,7 @@ Full context lives in [knowledge.md](knowledge.md). Development rules live in [V
 - Current client: Adobe Flash Player projector (`MKO_Client/flash-projector/flashplayer363.exe`). Vite is not in use and `client/` is not in this checkout.
 - Setup: none beyond the Python 3 standard library (plus Pillow for captcha only).
 - Dev: from `Server-v1/`, run `python3 server.py --db data/mko.db --game 127.0.0.1:8008 --web 127.0.0.1:8080`.
-- Test: from `Server-v1/`, run `python3 -m unittest discover -s tests` (837 tests); from `tools/`, `python3 -m unittest discover -s tests` (115 tests).
+- Test: from `Server-v1/`, run `python3 -m unittest discover -s tests` (1690 tests); from `tools/`, `python3 -m unittest discover -s tests` (115 tests).
 - Parity gate: `python3 tools/ci-oracle-diff.py` boots whichever of the legacy MySQL and Java oracle is not already listening (Windows binaries under `reference/TonNgoKhong`; `--no-start-stack` refuses to boot, `--keep-stack` leaves them up), migrates a throwaway DB, starts a Python server on free ports, and diffs it. Exit 1 on an unbaselined reply/push/notification diff, 2 when the stack cannot be provisioned. CI runs the same command via `.github/workflows/oracle-diff.yml`.
 - Legacy data: `python3 tools/migrate_mysql_to_sqlite.py --users stress` copies only the named account's rows into SQLite (see [docs/mysql-to-sqlite-migration.md](docs/mysql-to-sqlite-migration.md)).
 

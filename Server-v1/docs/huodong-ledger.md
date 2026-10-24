@@ -436,15 +436,54 @@ yxb exclusion). `calYb` (rmb → YB)
 is inferred as ceil(rmb * 10) — the gamerule util bytecode was
 not recovered — isolated in one helper per side to fix once.
 
-Next batch: 70580/70508 rank rows. Both need their rank-row
-output shapes recovered from `RoleHuodongOutputWrapper` bytecode
-plus the rank data sources they read (paihang-backed rank feeds
-for the 70580 family; the per-family rank metric for 70508),
-neither of which is ported yet — no invented data.
+## Batch 12: 70580/70508 rank-display map (no code)
+
+Traced end to end from HuodongAction + HuodongServiceImpl
+bytecode (`hd705_action.txt`, `hd705_svc.txt`), the
+CompositiveActivityClientType clinit (`hd705_ct.txt`: ZUOQI 10,
+BAOSHI_LEVEL 22, QIBING_RANK 30, CHIBANG_RANK 31, VIP_LEVEL 32;
+rank range 11-17 is RANK1-7, a different paihang-backed family)
+and HuodongModuleInit (`hd_mod.txt`). No rank feed is a
+paihang read — both commands render per-activity threshold rows
+against a progression metric, refreshed client-side by 70520
+pushes, none of which the port emits yet.
+
+| cmd | action entry | service read | metric source |
+| --- | ------------ | ------------ | ------------- |
+| 70580 | `getQibingRank(Message)`: roleId + Integer typeId → `getQibingRank(roleId, type)` | Zonghe category `convert(typeId)`; null → `[0, 792005]`; not live → `[2]`; empty map → `[0, 792005]`; per shown activity the 12-array below | `getSingleHuodongConditionVal(roleId, type)`: 30 → `IQiZhanBinQiExportService.getQizhanBinLevel` (unported — the port injects `qibing_level`, default 0); 22 → baoshi `getRoleBaosShilevelSum` (ported); 32 → vip `getRoleVipLevel` (ported); 31 → guangyi `getGuangYiLevel` (ported); else 0 |
+| 70508 | `getZuoqiRank(Message)`: roleId only → `getZuoqiRank(roleId)` | ZUOQI (10) category; same three edges as 70580 | `IRoleZuoQiExportService.getZuoQiRank(roleId)` (ported as `_zonghe_zuoqi_rank` off `role_zuoqi`) |
+
+Row shape (identical both commands, built inline — no separate
+wrapper class; items via `RoleHuodongOutputWrapper.itemParamVo2Client`):
+`[actId, con, items, maxVal, maxLimit, dayVal, dayLimit, state,
+order, desc, name, huodongicon]` with state 1 when metric ≥ con
+(2 when `isCompletedHuodong`), forced 2 on day/max floors, else 0;
+rows gated by `huodongIsShow`. Outer 70508:
+`[1, 10, startMs, endMs, pic, rows]`; outer 70580:
+`[1, typeId, startMs, endMs, pic, rows]`.
+
+Reset semantics: none — no wipe/reset method exists in the 29
+recovered service publics; both displays are pure per-call
+recomputes over the shared day/max counters (claims only bump),
+and category turnover is by window expiry (`timeIsExpiry`), not
+by clearing rows. The only timing hooks are the module-wired
+`RankHuodongQuartz/2.execute()` (impl bytecode not recovered)
+and qibing `schedule(roleId)` (no reply), which is the
+progression timer, not a display reset.
+
+Fan-in that moves these displays: `decrYb`, `zuoqiJinjie`,
+`qibingJinjie`, `baoshiLevelUp`, `getProp` and `vipLevel` each
+queue `70520 [actId, 1]` when its metric crosses
+`con*(max+1)`; the port has the metric readers but emits no
+70520. Qibing progression surface (still unported source for
+ct-30): `87000 getData` / `87001 upgrade(Boolean)` /
+`87002 getbinqi` / `schedule`; service impl and storage were
+not recovered, so `getQizhanBinLevel` stays injected.
 
 - Zonghe service port for 70502/70505/70508/70509/
-  70530/70552-70554/70580/70520 (wire shapes unrecovered
-  except routing: all verbatim `send2One` except null-guarded 70530)
+  70530/70552-70554/70580/70520 (70580/70508 shapes recovered
+  in batch 12; the rest routing-only: all verbatim `send2One`
+  except null-guarded 70530)
   and the families absent from `fu0`
   (ct 4/6/8/11-17/19/20/23/35; ct-3/ct-7 claims are in but
   their 70502/70505 displays stay blocked on config). Loader +

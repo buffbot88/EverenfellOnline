@@ -1,4 +1,5 @@
 """SQLite persistence for accounts, characters, sessions, and game state."""
+import json
 import os
 import sqlite3
 import threading
@@ -624,7 +625,16 @@ CREATE TABLE IF NOT EXISTS role_pozhen (
 CREATE TABLE IF NOT EXISTS role_huodong (
   role_id INTEGER PRIMARY KEY,
   max_count TEXT DEFAULT '',
+  day_count TEXT DEFAULT '',
+  mall_buy_count TEXT DEFAULT '',
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
+);
+-- Global per-activity mall sell counts (legacy HuodongInfo subset: the
+-- mallSellInfo JSON maps goodsId to units sold, keyed by activity id.
+-- Only the 70550 buy batch reads and writes it.)
+CREATE TABLE IF NOT EXISTS huodong_info (
+  huodong_id TEXT PRIMARY KEY,
+  mall_sell_info TEXT DEFAULT ''
 );
 -- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
 -- silences every gonghui handler; addRoleGongxian accumulates gongxian).
@@ -839,6 +849,12 @@ class Store:
                     self.db.execute(
                         f'ALTER TABLE role_email ADD COLUMN {column}'
                         ' INTEGER DEFAULT 0')
+            huodong_cols = {row['name'] for row in self.db.execute(
+                'PRAGMA table_info(role_huodong)')}
+            for column in ('day_count', 'mall_buy_count'):
+                if column not in huodong_cols:
+                    self.db.execute(
+                        f'ALTER TABLE role_huodong ADD COLUMN {column} TEXT')
             juqing_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_juqingfuben)')}
             if 'pending_award' not in juqing_cols:
@@ -2159,13 +2175,14 @@ class Store:
         """A role's activity row, or None (RoleHuodong.daoLoad)."""
         with self.lock:
             row = self.db.execute(
-                'SELECT role_id, max_count FROM role_huodong WHERE role_id=?',
+                'SELECT role_id, max_count, day_count, mall_buy_count'
+                ' FROM role_huodong WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
 
     def save_role_huodong(self, role_id, **fields):
         """Upsert a role's activity row (known columns only)."""
-        known = {'max_count'}
+        known = {'max_count', 'day_count', 'mall_buy_count'}
         if not fields or set(fields) - known:
             raise ValueError('fields must contain known role_huodong columns')
         names = ', '.join(fields)
@@ -2177,6 +2194,284 @@ class Store:
                 f'ON CONFLICT(role_id) DO UPDATE SET {updates}',
                 [str(role_id), *fields.values()])
             self.db.commit()
+            return True
+
+    def get_huodong_info(self, huodong_id):
+        """Global activity row, or None (HuodongInfo.dbLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT huodong_id, mall_sell_info FROM huodong_info'
+                ' WHERE huodong_id=?',
+                (str(huodong_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_huodong_info(self, huodong_id, mall_sell_info):
+        """Upsert a global activity row (HuodongInfo.dbUpdate)."""
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO huodong_info(huodong_id, mall_sell_info)'
+                ' VALUES(?,?) ON CONFLICT(huodong_id) DO UPDATE'
+                ' SET mall_sell_info=excluded.mall_sell_info',
+                (str(huodong_id), str(mall_sell_info or '')))
+            self.db.commit()
+            return True
+
+    class HuodongAbort(Exception):
+        """A transactional claim/buy failed validation mid-apply."""
+
+    @staticmethod
+    def _huodong_bump_json(cur_text, key, delta=1):
+        """setValue +delta: counter JSON with the key incremented."""
+        try:
+            counters = json.loads(cur_text or '{}')
+        except (TypeError, ValueError):
+            counters = {}
+        if not isinstance(counters, dict):
+            counters = {}
+        try:
+            counters[str(key)] = int(counters.get(str(key)) or 0) + delta
+        except (TypeError, ValueError):
+            counters[str(key)] = delta
+        return json.dumps(counters)
+
+    def _huodong_tx_decr(self, role_id, goods):
+        """Shrink/clear bag slots for [(goods_id, count, bind)] exactly.
+
+        Bind-exact like the display-side affordability check; raises
+        HuodongAbort when any cost is not covered, leaving stock
+        untouched (checked before the first write).
+        """
+        matches = []
+        for gid, count, bind in goods:
+            rows = self.db.execute(
+                'SELECT slot_num, count FROM role_bag_slot'
+                ' WHERE role_id=? AND goods_id=? AND COALESCE(bind,0)=?'
+                ' ORDER BY slot_num',
+                (str(role_id), str(gid), int(bind or 0))).fetchall()
+            have = sum(int(r['count'] or 0) for r in rows)
+            if have < int(count or 0):
+                raise Store.HuodongAbort(str(gid))
+            matches.append((rows, int(count or 0)))
+        for rows, need in matches:
+            left = need
+            for r in rows:
+                if left <= 0:
+                    break
+                take = min(int(r['count'] or 0), left)
+                rest = int(r['count'] or 0) - take
+                if rest > 0:
+                    self.db.execute(
+                        'UPDATE role_bag_slot SET count=?'
+                        ' WHERE role_id=? AND slot_num=?',
+                        (rest, str(role_id), r['slot_num']))
+                else:
+                    self.db.execute(
+                        'DELETE FROM role_bag_slot'
+                        ' WHERE role_id=? AND slot_num=?',
+                        (str(role_id), r['slot_num']))
+                left -= take
+
+    def _huodong_tx_grant(self, role_id, goods, stacks, capacity):
+        """Stack then fill empty slots; HuodongAbort when short of room."""
+        rows = self.db.execute(
+            'SELECT slot_num, goods_id, bind, count FROM role_bag_slot'
+            ' WHERE role_id=? AND slot_num>=1 AND slot_num<=?',
+            (str(role_id), int(capacity or 0))).fetchall()
+        by_slot = {int(r['slot_num']): dict(r) for r in rows}
+        for item in goods:
+            left = int(item.get('count') or 0)
+            if left <= 0:
+                continue
+            stack = int((stacks or {}).get(str(item.get('goods_id'))) or 0)
+            if stack <= 0:
+                stack = 1
+            gid = str(item.get('goods_id'))
+            bind = int(item.get('bind') or 0)
+            for num in sorted(by_slot):
+                if left <= 0:
+                    break
+                s = by_slot[num]
+                if str(s.get('goods_id')) != gid or \
+                        int(s.get('bind') or 0) != bind:
+                    continue
+                room = stack - int(s.get('count') or 0)
+                if room <= 0:
+                    continue
+                take = min(room, left)
+                new_count = int(s.get('count') or 0) + take
+                self.db.execute(
+                    'UPDATE role_bag_slot SET count=?'
+                    ' WHERE role_id=? AND slot_num=?',
+                    (new_count, str(role_id), num))
+                s['count'] = new_count
+                left -= take
+            num = 1
+            while left > 0 and num <= int(capacity or 0):
+                if num not in by_slot:
+                    take = min(stack, left)
+                    self.db.execute(
+                        'INSERT INTO role_bag_slot(role_id, slot_num, bag_id,'
+                        ' goods_id, count, bind)'
+                        ' VALUES(?,?,?,?,?,?)',
+                        (str(role_id), num,
+                         f'py{uuid.uuid4().hex[:16]}', gid, take, bind))
+                    by_slot[num] = {'slot_num': num, 'goods_id': gid,
+                                    'count': take, 'bind': bind}
+                    left -= take
+                num += 1
+            if left > 0:
+                raise Store.HuodongAbort('bag_full')
+
+    def _huodong_tx_state(self, role_id, debits, credits):
+        """Apply currency deltas; HuodongAbort when a debit is short."""
+        row = self.db.execute(
+            'SELECT lingshi, tongqian, bind_lingshi, zhenqi, exp, level,'
+            ' max_hp, max_mp FROM characters WHERE CAST(id AS TEXT)=?'
+            ' OR legacy_id=?',
+            (str(role_id), str(role_id))).fetchone()
+        if row is None:
+            raise Store.HuodongAbort('no_role')
+        cur = dict(row)
+        fields = {}
+        for col, cost in (debits or {}).items():
+            try:
+                have = int(cur.get(col) or 0)
+            except (TypeError, ValueError):
+                have = 0
+            if have < int(cost or 0):
+                raise Store.HuodongAbort(col)
+            fields[col] = have - int(cost or 0)
+        for col, val in (credits or {}).items():
+            if col in fields:
+                fields[col] += int(val or 0)
+            else:
+                fields[col] = val
+        if fields:
+            self.db.execute(
+                'UPDATE characters SET ' +
+                ', '.join(f'{c}=?' for c in fields) +
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                [*fields.values(), str(role_id), str(role_id)])
+
+    def huodong_exchange_tx(self, role_id, yb_cost, yxb_cost,
+                            decr_goods, grant_goods, stacks, capacity,
+                            grant_state, day_key, max_key):
+        """Atomic exchange-claim apply: debit, grant, counters.
+
+        Single commit; any shortfall rolls everything back via
+        HuodongAbort (the caller maps it to the jar's [0, 792001]).
+        grant_state maps character columns to absolute values, except
+        debited columns which ride as further deltas on top.
+        """
+        with self.lock:
+            try:
+                self._huodong_tx_decr(role_id, decr_goods or [])
+                debits = {}
+                if int(yb_cost or 0):
+                    debits['lingshi'] = int(yb_cost)
+                if int(yxb_cost or 0):
+                    debits['tongqian'] = int(yxb_cost)
+                self._huodong_tx_state(role_id, debits, grant_state or {})
+                self._huodong_tx_grant(role_id, grant_goods or [],
+                                       stacks or {}, capacity)
+                cur = self.db.execute(
+                    'SELECT day_count, max_count FROM role_huodong'
+                    ' WHERE role_id=?',
+                    (str(role_id),)).fetchone()
+                cur = dict(cur) if cur else {}
+                day_json = self._huodong_bump_json(
+                    cur.get('day_count'), day_key)
+                max_json = self._huodong_bump_json(
+                    cur.get('max_count'), max_key)
+                self.db.execute(
+                    'INSERT INTO role_huodong(role_id, day_count, max_count)'
+                    ' VALUES(?,?,?) ON CONFLICT(role_id) DO UPDATE SET'
+                    ' day_count=excluded.day_count,'
+                    ' max_count=excluded.max_count',
+                    (str(role_id), day_json, max_json))
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+            return True
+
+    def huodong_mall_buy_tx(self, role_id, yb_cost, grant_main,
+                            grant_gifts, stacks, capacity, grant_state,
+                            day_key, max_key, mall_buy_add, sell_id,
+                            sell_key, sell_add, sell_max):
+        """Atomic mall-buy apply: debit, grants, counters, sell count.
+
+        checkAndUpdateMallSellCount semantics: HuodongAbort when
+        count overshoots maxSell minus units already sold.
+        """
+        with self.lock:
+            try:
+                row = self.db.execute(
+                    'SELECT mall_sell_info FROM huodong_info'
+                    ' WHERE huodong_id=?',
+                    (str(sell_id),)).fetchone()
+                try:
+                    sold_map = json.loads(
+                        (dict(row).get('mall_sell_info') if row else '')
+                        or '{}')
+                except (TypeError, ValueError):
+                    sold_map = {}
+                if not isinstance(sold_map, dict):
+                    sold_map = {}
+                try:
+                    sold = int(sold_map.get(str(sell_key)) or 0)
+                except (TypeError, ValueError):
+                    sold = 0
+                if int(sell_add or 0) > int(sell_max or 0) - sold:
+                    raise Store.HuodongAbort('sell_out')
+                sold_map[str(sell_key)] = sold + int(sell_add or 0)
+                self.db.execute(
+                    'INSERT INTO huodong_info(huodong_id, mall_sell_info)'
+                    ' VALUES(?,?) ON CONFLICT(huodong_id) DO UPDATE SET'
+                    ' mall_sell_info=excluded.mall_sell_info',
+                    (str(sell_id), json.dumps(sold_map)))
+                self._huodong_tx_state(
+                    role_id, {'lingshi': int(yb_cost or 0)},
+                    grant_state or {})
+                self._huodong_tx_grant(role_id, grant_gifts or [],
+                                       stacks or {}, capacity)
+                self._huodong_tx_grant(role_id, [grant_main],
+                                       stacks or {}, capacity)
+                cur = self.db.execute(
+                    'SELECT day_count, max_count, mall_buy_count'
+                    ' FROM role_huodong WHERE role_id=?',
+                    (str(role_id),)).fetchone()
+                cur = dict(cur) if cur else {}
+                day_json = self._huodong_bump_json(
+                    cur.get('day_count'), day_key)
+                max_json = self._huodong_bump_json(
+                    cur.get('max_count'), max_key)
+                try:
+                    mall_map = json.loads(
+                        cur.get('mall_buy_count') or '{}')
+                except (TypeError, ValueError):
+                    mall_map = {}
+                if not isinstance(mall_map, dict):
+                    mall_map = {}
+                for key, add in (mall_buy_add or {}).items():
+                    try:
+                        mall_map[str(key)] = \
+                            int(mall_map.get(str(key)) or 0) + int(add)
+                    except (TypeError, ValueError):
+                        mall_map[str(key)] = int(add)
+                self.db.execute(
+                    'INSERT INTO role_huodong(role_id, day_count, max_count,'
+                    ' mall_buy_count) VALUES(?,?,?,?)'
+                    ' ON CONFLICT(role_id) DO UPDATE SET'
+                    ' day_count=excluded.day_count,'
+                    ' max_count=excluded.max_count,'
+                    ' mall_buy_count=excluded.mall_buy_count',
+                    (str(role_id), day_json, max_json,
+                     json.dumps(mall_map)))
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
             return True
 
     def get_guild_id(self, role_id):

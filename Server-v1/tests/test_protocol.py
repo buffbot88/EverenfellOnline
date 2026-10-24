@@ -1958,7 +1958,6 @@ class TestLoadingStubs(unittest.TestCase):
         self.assertEqual(self.decode(86000), ['86000', [[0, 0, [], 0, None]]])
         self.assertEqual(self.decode(85000), ['85000', [None]])
         self.assertEqual(self.decode(87000), ['87000', [None]])
-        self.assertEqual(self.decode(70500), ['70500', [[]]])
         self.assertEqual(self.decode(90000), ['90000', [[0, [['1', '0'], ['11', 2130]], []]]])
         self.assertEqual(self.decode(92015), ['92015', [[None, [], None]]])
         self.assertEqual(self.decode(93000), ['93000', [None]])
@@ -1975,6 +1974,11 @@ class TestLoadingStubs(unittest.TestCase):
         self.assertEqual(
             amf3.decode(first.huodong_first_info([70000, None])[4:]),
             ['70000', None])
+        # 70500 left the stub table too: with no config the panel is
+        # the jar's empty array (getHuodongInfo always sends verbatim).
+        self.assertEqual(
+            amf3.decode(first.huodong_panel_info([70500, None])[4:]),
+            ['70500', []])
 
     def test_buff_query_quiet_session_is_null_null(self):
         # BuffStatistics serializes empty lists as null, never [].

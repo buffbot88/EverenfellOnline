@@ -4550,6 +4550,35 @@ class GameConfig:
         return out
 
     @staticmethod
+    def _zonghe_item_view(entry):
+        """Award item dict to its display fields, or None to skip."""
+        if not isinstance(entry, dict):
+            return None
+        gid = entry.get('itemid')
+        if not gid:
+            return None
+        count = config_int(entry.get('itemcount', 0))
+        if count <= 0:
+            return None
+        bind = config_int(entry.get('bind', 0))
+        lasttime = max(config_int(entry.get('itemlasttime', 0)), 0)
+        unsale = config_int(entry.get('unsale', 0))
+        effect = entry.get('effect')
+        if effect is not None:
+            effect = str(effect)
+        lost = config_int(entry.get('itemlosttime', 0))
+        lost_str = None
+        if lost:
+            try:
+                lost_str = time.strftime(
+                    '%Y-%m-%d %H:%M:%S', time.gmtime(lost // 1000))
+            except (TypeError, ValueError, OverflowError, OSError):
+                lost_str = None
+        return {'goods_id': str(gid), 'count': count, 'bind': bind,
+                'hours': float(lasttime), 'effect': effect,
+                'unsale': unsale, 'lost': lost_str}
+
+    @staticmethod
     def _zonghe_activity(raw):
         """Normalized activity, or None when the entry is unusable."""
         if isinstance(raw, str):
@@ -4586,10 +4615,44 @@ class GameConfig:
             cfg_jiemian = str(config.get('jiemian') or '')
             cfg_chufa = str(config.get('chufa') or '')
             award_items = GameConfig._zonghe_award_items(award_rows)
+            award_mall = []
         elif isinstance(config, list):
             goods = config
+            mall_goods = []
+            for g in config:
+                if not isinstance(g, dict):
+                    continue
+                if not g.get('itemid'):
+                    continue
+                gifts = []
+                for gf in g.get('gifts') or []:
+                    if not isinstance(gf, dict):
+                        continue
+                    v = GameConfig._zonghe_item_view({
+                        'itemid': gf.get('itemid'),
+                        'itemcount': gf.get('itemcount'),
+                        'bind': gf.get('bind'),
+                        'itemlasttime': gf.get('lasttime')})
+                    if v is not None:
+                        gifts.append(v)
+                mall_goods.append({
+                    'item_id': str(g.get('itemid')),
+                    'item_name': (None if g.get('itemname') is None
+                                  else str(g.get('itemname'))),
+                    'pic': str(g.get('pic') or ''),
+                    'tag': str(g.get('tag') or ''),
+                    'opay_yb': config_int(g.get('opayyb')),
+                    'npay_yb': config_int(g.get('npayyb')),
+                    'max_sell': config_int(g.get('maxsell')),
+                    'max_buy': config_int(g.get('maxbuy')),
+                    'buy_bind': config_int(g.get('buybind')),
+                    'lasttime': config_int(g.get('lasttime')),
+                    'gifts': gifts,
+                })
+            award_mall = mall_goods
         else:
             goods = None
+            award_mall = []
         try:
             functiontype = int(data.get('functiontype'))
         except (TypeError, ValueError):
@@ -4608,6 +4671,14 @@ class GameConfig:
             'icon': str(data.get('dataicon') or ''),
             'name': str(data.get('dataname') or ''),
             'title': str(data.get('datatitle') or ''),
+            'award_name': (None if awards.get('name') is None
+                           else str(awards.get('name'))),
+            'award_desc': (None if awards.get('des') is None
+                           else str(awards.get('des'))),
+            'item_views': [v for v in
+                           (GameConfig._zonghe_item_view(e)
+                            for e in awards.get('items') or [])
+                           if v is not None],
             'awards': dict(awards),
             'itemtj': str(data.get('itemtj') or ''),
             'parcels': items,
@@ -4626,6 +4697,7 @@ class GameConfig:
             'cfg_jiemian': cfg_jiemian,
             'cfg_chufa': cfg_chufa,
             'award_items': award_items,
+            'mall_goods': award_mall,
         }
 
     def zonghe(self, server_id='fu0', kaifu_ms=0):
@@ -4677,6 +4749,8 @@ class GameConfig:
                 'zuoqitu': str(cat.get('zuoqitu') or ''),
                 'start_ms': start_ms,
                 'end_ms': end_ms,
+                'name': '',
+                'icon': '',
                 'title': '',
                 'activities': [],
             }
@@ -4689,10 +4763,13 @@ class GameConfig:
                 entry['activities'].append(act)
                 bucket['by_activity'][act['id']] = (entry, act)
             if entry['activities']:
-                # HuodongInit reads the category title from the first
-                # activity's data map (datatitle).
-                entry['title'] = \
-                    entry['activities'][0].get('title') or ''
+                # HuodongInit reads the category display fields from
+                # the first activity's data map (dataname/dataicon/
+                # datatitle); getHuodongInfo serves name/icon/title.
+                first = entry['activities'][0]
+                entry['name'] = first.get('name') or ''
+                entry['icon'] = first.get('icon') or ''
+                entry['title'] = first.get('title') or ''
             bucket['categories'].append(entry)
         self._zonghe = (key, table)
         return table

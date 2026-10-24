@@ -14,11 +14,14 @@ the jar: no sender, no handler, not in InCmd).
 
 ## Full 38-ID classification
 
-Zonghe group (19 inbound: 70000/70001 `complete+tested`, rest
-`missing`): 70000/70001 (first recharge, batch 2),
-70500/70501/70502/70505/70506/70507/70508/70509/70530/70580
-(panel/accumulate/limited-mall/exchange/ranks), 70550/70551 (mall
-buy/generic claim), 70552/70553/70554 (consumption rank/rebate).
+Zonghe group (19 inbound: 70000/70001/70500/70501/70506/70507/
+70550/70551 `complete+tested`, rest `missing`): 70000/70001
+(first recharge, batch 2), 70500 (panel, batch 3), 70501
+(accumulate-recharge, batch 4), 70506 (discount-mall, batch 5),
+70507 (exchange, batch 6), 70550/70551 (durable buy/claim,
+batch 7), 70502/70505/70508/70509/70530/70580
+(accumulate/limited-mall/exchange/ranks),
+70552/70553/70554 (consumption rank/rebate).
 Every one is driven by `ZongheHuodongCategoryConfig` rows from the
 GM-pushed remote JSON (`AbsZongheHuodongRemoteRefreshAble-
 ConfigureParser`); the authentic `fu0` snapshot ships in the CLIENT
@@ -76,9 +79,51 @@ getValue/setValue helpers. Kaifu day = `twoDaysDiffence(role.createTime)
 - Shipped 7 x 8 ladder verified: day 1 starts at id `1` (60 s), day 7
   ends at id `56` (3600 s); past day 7 initialises `{day, end}`.
 
+## Batch 7: 70550/70551 purchase + exchange lifecycle (durable)
+
+`Session.huodong_mall_buy` / `huodong_exchange_claim` port
+buyHuodongMallGoods/getHuodongReward's ct-5 ct-9 branches with
+their check*/grant/counter helpers, end to end and durable: the
+gate answers the jar's `[0, code]` (expired 792003, hidden 792001,
+day/max 792008/792009 buy or 792006/792007 claim, full bag
+430212); short costs answer `[0, 792001]`, an emptied shelf
+`[0, 792004]`. Success debits (YB lingshi, YXB tongqian,
+bind-exact bag slots), grants (award parcels plus jb/lijin/zhenqi
+credits and exp with its pure level-up fields), bumps day/max by
+one (and the per-good buy count plus the global sell count for
+70550), and replies the jar's post-claim arrays (`[1, actId,
+goodsId|null, state, maxVal, maxLimit, dayVal, dayLimit]`, the buy
+with a queued 70506 refresh behind it). Missing
+category/activity stays silent like the jar's null; sibling
+clienttypes ride their own branches. Persistence: role_huodong
+gains day_count + mall_buy_count columns (migrated), huodong_info
+holds the global sell JSON, and every write applies in one
+Store-held atomic commit — counters increment inside the commit
+from in-tx reads (setValue parity, no lost update under
+concurrency), debits re-verify inside the commit, and any abort
+rolls everything back. The 70506 panel now reads the persisted
+buy/sell remains. Tests (23, all fu0 except one labeled
+synthetic row for the zero-currency awards): debits, grants,
+limits, duplicate/repeat rejection, forced-apply rollback,
+restart/reconnect persistence, concurrency consistency, expiry,
+the [2]->[0, 792005] regression, and encrypted-wire dispatch.
+Census: 70550/70551 implemented (huodong 10/0/0/1/27).
+
+Documented gaps (no invention): no shipped row exercises the
+exp level-up fan-out beyond the covered path (fu0 awards carry
+zero exp; the synthetic row pins one level-up); the exp absolute
+fields compute from a pre-commit read, so two racing exp-granting
+claims serialize on value while counters/debits/bag stay exact
+(Java's remote calls race worse); zubao rolls stay [] (no
+nonzero zubaoid in ct-9/5/1); count < 1 on 70550 answers
+[0, 792001] rather than replicating a negative-debit quirk.
+
 ## Java quirks reproduced (pinned by tests)
 
 - `minute` config field holds online *seconds* (x1000 to ms in state).
+- Missing clienttype category reads `[0, 792005]`, never the bare
+  `[2]` (verified against all three display services' null-category
+  arms; the port's live-cat helper now matches).
 - Thresholds are per-gift windows that reset on advance (logintime =
   now at each advance), not cumulative session time.
 - The disconnect bank / login refresh split: elapsed time only persists
@@ -148,10 +193,96 @@ frame reuses the port's 33004 shape.
 
 ## Genuine remaining gaps
 
-- Zonghe service port for 70500-70502/70505-70509/
-  70530/70550/70551/70552-70554/70580/70520 (wire shapes unrecovered)
-  and the families absent from `fu0` (ct 3/4/6/7/8/11-17/19/20/23/35).
-  Loader + first-recharge core + 70000/70001 are in (batch 2, above).
+## Batch 3: 70500 activity panel (getHuodongInfo)
+
+`Session.huodong_panel_info` ports `IHuodongService.getHuodongInfo`
+verbatim: live categories in table order, skipping FIRSTRECHARGE
+(ct 21); rows are `[clientType, pattern, button, tag, teamId,
+zuoqitu]`, with the `[name, icon, title]` header once ahead of the
+first icon-bearing row (HuodongInit reads them from the first
+activity's data map). Liveness is the raw service check
+(`start <= now < end`, end-exclusive, unlike the claim paths'
+`timeIsExpiry`). Tests pin a 5-row fu0 golden, the ct-21 skip,
+the exclusive end edge, and the wire dispatch.
+
+Next in family, in dependency order: 70551 generic claim + 70550
+mall buy (null-guarded/writes), 70580/70508 rank rows, 70530
+pay/band info. 70502 (YB_CONSUME ct 3) and 70505 (FINAL ct 7)
+have no fu0 rows and stay blocked on config.
+
+## Batch 5: 70506 discount-mall display (getLimitedMall)
+
+`Session.huodong_limited_mall` ports
+`IHuodongService.getLimitedMall` verbatim: the first time-live ct-5
+category (inclusive; none reads `[2]`, a missing/empty activity
+map reads `[0, 792005]`), else `[1, 5, startMs, endMs, pic, rows]`
+with one 14-array per level- and charge-gated activity good:
+`[activityId, item, tags, opayYb, npayYb, freeItems, buyRemain,
+sellRemain, dayVal, dayLimit, state, order, desc, itemName]`. The
+good's item is the 10-slot projection of `(itemId, 1, buyBind,
+lastTime)` with no addMesage/lostTime, so the ctor bypasses the
+clamp and fu0's `-1` reads `-1.0` (jar-exact); freeItems projects
+the gift rows. State is 1 when stock and the per-role limit allow
+it and the lingshi purse covers npayYb, 2 when maxBuy or the day
+limit is hit. Loader parses the `config[]` lists into
+`mall_goods`. Tests pin a 12-row fu0 golden (rich role all state
+1; broke role all state 0), the full first row, the level gate,
+the `[2]`/`[0, 792005]` edges, and the wire dispatch. Gaps: sell
+counts read `maxSell - 0` and buy counts `maxBuy - 0` until the
+70550 buy batch persists them.
+
+## Batch 6: 70507 limited-exchange display (getLimitedExchange)
+
+`Session.huodong_limited_exchange` ports
+`IHuodongService.getLimitedExchange` verbatim: the first time-live
+ct-9 category (inclusive; none reads `[2]`, a missing/empty
+activity map reads `[0, 792005]`), else `[1, 9, startMs, endMs,
+pic, rows]` with one 10-array per level- and charge-gated
+activity: `[activityId, costs, awards, maxVal, maxLimit, dayVal,
+dayLimit, state, null, order]`. Costs are the `[goodsId, count,
+bind]` triples split from con on `,` then a literal `|` (bind
+defaults to 0 for two-part costs like `duihuan1|1`); awards is
+the shared 10-slot view. State starts 1, drops to 0 when the role
+fails a `yuanbao` (lingshi) or `money` (tongqian) dry-run or the
+bag-slot check (id plus exact bind), and reads 2 once the day/max
+floor is hit. No new loader work: costs parse from `con1`, awards
+reuse `item_views`. Tests pin a 12-row fu0 golden (stocked rich
+role all state 1, broke role all state 0), the full first row,
+the level gate, the `[2]`/`[0, 792005]` edges, and the wire
+dispatch. Gaps: no yuanbao/money cost row is live in fu0, so
+those branches are unpinned; the bag check covers slots only;
+claim-time persistence belongs to the 70551 batch.
+
+## Batch 4: 70501 accumulate-recharge display (getAccumulateRecharge)
+
+`Session.huodong_accumulate_recharge` ports
+`IHuodongService.getAccumulateRecharge` verbatim: the first
+time-live ct-1 RECHARGE category (inclusive), else `[1, 1,
+startMs, endMs, chargeTotal, pic, rows]` with one 11-array per
+level- and charge-gated row: `[id, isAccumulate, con, [awards],
+maxVal, maxLimit, dayVal, dayLimit, state, order, choujiang]`. The
+awards block is the single 5-array `[null, name, items, null,
+desc]` (no chooseAwards or zubao rows in fu0); each item is the
+10-slot projection. State follows the jar formula (PER_RECHARGE
+gates state 1 on the total covering `con * (claimed + 1)`;
+ACCUMULATE_RECHARGE reads 1 with the check deferred to 70551;
+the day/max floors force 2). Loader gains `award_name`/
+`award_desc` plus parsed `item_views`. Tests pin a 6-row fu0
+golden, the level gate, the `[2]`/`[0, 792005]` edges, and the
+wire dispatch. Gaps: charge totals read 0 (no recharge-record
+service; batch 2 latches `charged` instead); `getChoujiang` reads
+[] (no table ships); the 70000 fjid-'' asymmetry stays as-is.
+
+## Genuine remaining gaps
+
+- Zonghe service port for 70502/70505/70508/70509/
+  70530/70552-70554/70580/70520 (wire shapes unrecovered
+  except routing: all verbatim `send2One` except null-guarded 70530)
+  and the families absent from `fu0`
+  (ct 3/4/6/7/8/11-17/19/20/23/35). Loader + first-recharge core +
+  70000/70001 (batch 2) + 70500 panel (batch 3) + 70501 display
+  (batch 4) + 70506 display (batch 5) + 70507 display (batch 6) +
+  70550/70551 durable buy/claim lifecycle (batch 7) are in.
   No seeded stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/

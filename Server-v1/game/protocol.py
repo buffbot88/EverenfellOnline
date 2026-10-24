@@ -524,6 +524,31 @@ HUODONG_ERR_NOT_YET = 792011
 # 70000 result goes out verbatim, including null).
 CMD_HUODONG_FIRST_INFO = 70000
 CMD_HUODONG_FIRST_REWARD = 70001
+# HuodongAction.getHuodongInfo -> getHuodongInfo, verbatim send2One.
+CMD_HUODONG_PANEL_INFO = 70500
+# HuodongAction.getAccumulateRecharge -> getAccumulateRecharge (ct-1).
+CMD_HUODONG_ACC_RECHARGE = 70501
+# HuodongAction.getLimitedMall -> getLimitedMall (ct-5).
+CMD_HUODONG_LIMITED_MALL = 70506
+# HuodongAction.getLimitedExchange -> getLimitedExchange (ct-9).
+CMD_HUODONG_LIMITED_EXCHANGE = 70507
+# HuodongAction.buyHuodongMallGoods route (bytecode):
+# IHuodongService.buyHuodongMallGoods over the ct-5 DISCOUNT_MALL
+# category; the 70506 panel refresh rides the action queue.
+CMD_HUODONG_MALL_BUY = 70550
+# HuodongAction.getHuodongReward route (bytecode):
+# IHuodongService.getHuodongReward dispatches on the clienttype int;
+# the port covers the ct-9 GOODS_CHANGE exchange branch, null when
+# the category or activity row is missing (the null-guarded send).
+CMD_HUODONG_EXCHANGE_CLAIM = 70551
+# RoleHuodongErrorCode follow-ups (field names carry the values,
+# like the proven 792001/792002/792005).
+HUODONG_ERR_EXPIRED = 792003
+HUODONG_ERR_SOLD_OUT = 792004
+HUODONG_ERR_DAY_LIMIT = 792006
+HUODONG_ERR_MAX_LIMIT = 792007
+HUODONG_ERR_MALL_DAY = 792008
+HUODONG_ERR_MALL_MAX = 792009
 # RoleHuodongErrorCode for the first-recharge claim (clinit values).
 HUODONG_ERR_FIRST_UNCHARGED = 792001
 HUODONG_ERR_FIRST_CLAIMED = 792002
@@ -1019,7 +1044,9 @@ class Session:
                  save_task_richang=None, delete_task_richang=None,
                  get_task_gonghui=None, save_task_gonghui=None,
                  delete_task_gonghui=None, get_role_huodong=None,
-                 save_role_huodong=None, get_role_pozhen=None,
+                 save_role_huodong=None, get_huodong_info=None,
+                 huodong_exchange_tx=None, huodong_mall_buy_tx=None,
+                 get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
                   config=None, stage_registry=None):
@@ -1230,6 +1257,11 @@ class Session:
             (lambda *a, **k: False)
         self.get_role_huodong = get_role_huodong or (lambda r: None)
         self.save_role_huodong = save_role_huodong or \
+            (lambda *a, **k: False)
+        self.get_huodong_info = get_huodong_info or (lambda r: None)
+        self.huodong_exchange_tx = huodong_exchange_tx or \
+            (lambda *a, **k: False)
+        self.huodong_mall_buy_tx = huodong_mall_buy_tx or \
             (lambda *a, **k: False)
         self.get_role_pozhen = get_role_pozhen or (lambda r: None)
         self.save_role_pozhen = save_role_pozhen or \
@@ -1617,6 +1649,18 @@ class Session:
             return self.huodong_first_info(msg)
         if cmd_num == CMD_HUODONG_FIRST_REWARD:
             return self.huodong_first_reward(msg)
+        if cmd_num == CMD_HUODONG_PANEL_INFO:
+            return self.huodong_panel_info(msg)
+        if cmd_num == CMD_HUODONG_ACC_RECHARGE:
+            return self.huodong_accumulate_recharge(msg)
+        if cmd_num == CMD_HUODONG_LIMITED_MALL:
+            return self.huodong_limited_mall(msg)
+        if cmd_num == CMD_HUODONG_LIMITED_EXCHANGE:
+            return self.huodong_limited_exchange(msg)
+        if cmd_num == CMD_HUODONG_MALL_BUY:
+            return self.huodong_mall_buy(msg)
+        if cmd_num == CMD_HUODONG_EXCHANGE_CLAIM:
+            return self.huodong_exchange_claim(msg)
         if cmd_num == CMD_POZHEN_INFO:
             return self.pozhen_info()
         if cmd_num == CMD_POZHEN_START:
@@ -1937,7 +1981,7 @@ class Session:
             return self.friend_fight(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
-                        86000, 85000, 87000, 70500, 91002, 90000,
+                        86000, 85000, 87000, 91002, 90000,
                         92015, 93000, 94002, 94100, 95000, 97001,
                         114000, 113000,
                         120100, 124001):
@@ -3705,7 +3749,6 @@ class Session:
             86000: [[0, 0, [], 0, None]],
             85000: [None],
             87000: [None],
-            70500: [[]],
             91002: [['1', 0.0, '1', [], [['35', False, 0], ['36', 1, 0], ['33', 0, 0], ['34', 0, 0], ['39', 0, 0], ['37', 450], ['38', 0.0, 0.0, 0.0], ['43', False, 0], ['42', None], ['41', 0, 0], ['40', 0, 0], ['67', False, 0], ['66', 0, 0], ['69', False], ['68', 0, 0], ['22', 0, 0], ['23', False, 0], ['24', 0.0, 0], ['25', 1, 0], ['26', 34, 30], ['27', 0.0, 0.0], ['28', 0.0, 0.0, 0.0], ['29', 0, 0], ['3', 0.0, 0.0, 0.0], ['2', 34, 30], ['1', 0], ['7', 0, 0], ['30', 0, 0], ['6', 0, 0], ['5', 0.0, 0.0, 0.0], ['32', 0, 0], ['4', 0.0], ['31', 0.0], ['70', 450], ['71', 0, 0], ['9', False, 0], ['72', 0, 0], ['8', 0, 0], ['59', 0, 0], ['58', 0, 0], ['57', 0, 0], ['56', 0, 0], ['19', 0, 0], ['55', 0.0, 0], ['17', 0, 0], ['18', 0, 0], ['15', 0.0, 0.0, 0.0], ['16', 0, 0], ['13', 0.0, 0.0], ['14', 0.0, 0.0], ['11', False, 0], ['12', False], ['21', 0.0, 0.0, 0.0], ['20', 450], ['64', 0, 0], ['65', 0.0, 0.0], ['62', 450], ['63', 0, 0], ['60', 0, 0], ['61', 0, 0], ['49', 0.0, 0.0], ['48', 0, 0], ['45', 0, 0], ['44', 0.0, 0.0, 0.0], ['47', 0, 0], ['46', 0.0, 0], ['10', 1, 0], ['51', 0.0, 0.0], ['52', 450], ['53', 0, 0], ['54', 0.0, 0.0, 0.0], ['50', None]]]],
             90000: [[0, [['1', '0'], ['11', 2130]], []]],
             92015: [[None, [], None]],
@@ -15103,6 +15146,816 @@ class Session:
         return frame(amf3_encode(
             [str(CMD_HUODONG_ONLINE_REWARD),
              [1, self._huodong_remainder_ms(advanced, now), arr]]))
+
+    @staticmethod
+    def _zonghe_int(value):
+        """Lenient int: garbage/None read 0, like object2int."""
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_live_cat(self, clienttype, now_ms):
+        """First time-live category for a clienttype: (found, missing).
+
+        missing is True when no category row resolved at all (the
+        jar's [0, 792005] case: getZongheHuodongCategoryConfig null)
+        as opposed to nothing live ([2]). A bucket with zero
+        categories is the jar's empty-map case, also [0, 792005].
+        """
+        if self.config is None:
+            return None, True
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        kaifu = self._zonghe_int(self.server_start_ms)
+        try:
+            bucket = self.config.zonghe(
+                kaifu_ms=kaifu).get(clienttype)
+        except Exception:
+            return None, True
+        if not (bucket or {}).get('categories'):
+            return None, True
+        for cat in bucket.get('categories') or []:
+            try:
+                live = self.config._zonghe_live_ms(
+                    cat.get('start_ms') or 0, cat.get('end_ms') or 0,
+                    now_ms)
+            except Exception:
+                live = False
+            if live:
+                return cat, False
+        return None, False
+
+    def _zonghe_role_frame(self, cmd, payload, now_ms):
+        """Framed payload for the role's first character, or None."""
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        return frame(amf3_encode(
+            [str(cmd), payload(role, now_ms=now_ms)]))
+
+    def _zonghe_panel(self, now_ms=None):
+        """70500 payload: live-category rows plus the header once."""
+        if self.config is None:
+            return []
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        kaifu = self._zonghe_int(self.server_start_ms)
+        try:
+            table = self.config.zonghe(kaifu_ms=kaifu)
+        except Exception:
+            return []
+        out, headed = [], False
+        for clienttype, bucket in table.items():
+            for cat in bucket.get('categories') or []:
+                try:
+                    start = int(cat.get('start_ms') or 0)
+                    end = int(cat.get('end_ms') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if not (start <= now_ms < end and start < end):
+                    continue
+                if int(clienttype or 0) == \
+                        self.config.ZONGHE_FIRST_RECHARGE:
+                    continue
+                if not headed and (cat.get('icon') or ''):
+                    out.append([cat.get('name') or '', cat.get('icon'),
+                                cat.get('title') or ''])
+                    headed = True
+                out.append([int(clienttype or 0), cat.get('pattern') or '',
+                            cat.get('button') or '', cat.get('tag') or '',
+                            int(cat.get('teamid') or 0),
+                            cat.get('zuoqitu') or ''])
+        return out
+
+    def huodong_panel_info(self, msg=None, now_ms=None):
+        """Command 70500: the activity panel for live categories."""
+        return frame(amf3_encode(
+            [str(CMD_HUODONG_PANEL_INFO), self._zonghe_panel(now_ms)]))
+
+    @staticmethod
+    def _zonghe_acc_value(counters, act_id):
+        """getValue: int counter for an activity id, 0 when absent."""
+        try:
+            return int((counters or {}).get(act_id) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _zonghe_item_client(view):
+        """A parsed award/gift view to its 10-slot client array."""
+        return [view['goods_id'], view['count'], view['bind'],
+                view['hours'], [0, 0], 0, None, view['effect'],
+                view['unsale'], view['lost']]
+
+    def _zonghe_accumulate(self, role, now_ms=None):
+        """70501 payload: first-live ct-1 rows else [2]/[0, 792005]."""
+        found, missing = self._zonghe_live_cat(1, now_ms)
+        if missing:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        if found is None:
+            return [2]
+        acts = found.get('activities') or []
+        if not acts:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        level = self._zonghe_int((role or {}).get('level'))
+        # No recharge-record service here (batch 2 latches 'charged'
+        # instead), so both charge totals read 0, exact for fresh roles.
+        total = 0
+        try:
+            row = self._huodong_row(_wire_id(role))
+        except Exception:
+            row = None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        rows = []
+        for act in acts:
+            need = self._zonghe_int(act.get('need_level'))
+            need_pay = self._zonghe_int(act.get('need_pay_yb'))
+            if level < need or total < need_pay:
+                continue
+            con = self._zonghe_int(act.get('con1'))
+            items = [self._zonghe_item_client(v)
+                     for v in act.get('item_views') or []]
+            awards = [[None, act.get('award_name'), items, None,
+                       act.get('award_desc')]]
+            day_limit = self._zonghe_int(act.get('day_count'))
+            max_limit = self._zonghe_int(act.get('max_count'))
+            day_val = self._zonghe_acc_value(counters, act.get('id'))
+            max_val = self._zonghe_acc_value(counters_max,
+                                             act.get('id'))
+            # PER_RECHARGE gates state 1 on the total covering con *
+            # (claimed + 1); ACCUMULATE_RECHARGE reads 1 with the
+            # check deferred to 70551; the day/max floors force 2.
+            per = self._zonghe_int(act.get('functiontype')) == 10
+            state = 0
+            if (total >= con * (max_val + 1)) if per else True:
+                state = 1
+            if day_val >= day_limit or max_val >= max_limit:
+                state = 2
+            rows.append([act.get('id'),
+                         1 if self._zonghe_int(
+                             act.get('functiontype')) == 11 else 0,
+                         con, awards, max_val, max_limit, day_val,
+                         day_limit, state,
+                         self._zonghe_int(act.get('order')), []])
+        return [1, 1, found.get('start_ms') or 0,
+                found.get('end_ms') or 0, total, found.get('pic') or '',
+                rows]
+
+    def huodong_accumulate_recharge(self, msg=None, now_ms=None):
+        """Command 70501: accumulate-recharge rows for ct-1."""
+        return self._zonghe_role_frame(CMD_HUODONG_ACC_RECHARGE,
+                                       self._zonghe_accumulate,
+                                       now_ms=now_ms)
+
+    def _zonghe_mall(self, role, now_ms=None):
+        """70506 payload: first-live ct-5 goods else [2]/[0, 792005]."""
+        found, missing = self._zonghe_live_cat(5, now_ms)
+        if missing:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        if found is None:
+            return [2]
+        acts = found.get('activities') or []
+        if not acts:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        level = self._zonghe_int((role or {}).get('level'))
+        purse = self._zonghe_int((role or {}).get('lingshi'))
+        # No recharge-record service here, so the lifetime total reads
+        # 0. Buy/sell remains ride the persisted mallBuyCount map and
+        # the huodong_info sell counts the 70550 buy batch maintains.
+        total = 0
+        try:
+            row = self._huodong_row(_wire_id(role))
+        except Exception:
+            row = None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        rows = []
+        for act in acts:
+            need = self._zonghe_int(act.get('need_level'))
+            need_pay = self._zonghe_int(act.get('need_pay_yb'))
+            if level < need or total < need_pay:
+                continue
+            day_limit = self._zonghe_int(act.get('day_count'))
+            day_val = self._zonghe_acc_value(counters, act.get('id'))
+            for good in act.get('mall_goods') or []:
+                item = [good['item_id'], 1, good['buy_bind'],
+                        float(good['lasttime']), [0, 0], 0, None,
+                        None, 0, None]
+                free = [self._zonghe_item_client(v)
+                        for v in good.get('gifts') or []]
+                buy_remain = good['max_buy'] - self._zonghe_mall_bought(
+                    row, act.get('id'), good['item_id'])
+                sell_remain = good['max_sell'] - self._zonghe_mall_sold(
+                    act.get('id'), good['item_id'])
+                state = 0
+                if sell_remain >= 1 and \
+                        buy_remain >= 1 and \
+                        purse >= good['npay_yb']:
+                    state = 1
+                if buy_remain <= 0 or day_val >= day_limit:
+                    state = 2
+                rows.append([act.get('id'), item,
+                             str(good.get('tag') or '').split(','),
+                             good['opay_yb'], good['npay_yb'], free,
+                             buy_remain, sell_remain,
+                             day_val, day_limit, state,
+                             self._zonghe_int(act.get('order')),
+                             act.get('award_desc'),
+                             good.get('item_name')])
+        return [1, 5, found.get('start_ms') or 0,
+                found.get('end_ms') or 0, found.get('pic') or '', rows]
+
+    def huodong_limited_mall(self, msg=None, now_ms=None):
+        """Command 70506: discount-mall goods for ct-5."""
+        return self._zonghe_role_frame(CMD_HUODONG_LIMITED_MALL,
+                                       self._zonghe_mall, now_ms=now_ms)
+
+    @staticmethod
+    def _zonghe_exchange_costs(con):
+        """con split on ',' then '|': [(goodsId, count, bind)]."""
+        costs = []
+        for part in str(con).split(','):
+            cells = part.split('|')
+            if len(cells) < 2 or not cells[0]:
+                continue
+            try:
+                count = int(cells[1])
+            except (TypeError, ValueError):
+                continue
+            bind = Session._zonghe_int(
+                cells[2]) if len(cells) > 2 else 0
+            costs.append((cells[0], count, bind))
+        return costs
+
+    def _zonghe_goods_affordable(self, rid, goods):
+        """checkDecrGoods stand-in: slots cover every goods cost."""
+        try:
+            slots = self.get_role_bag_slots(rid, 1, 150) or []
+        except Exception:
+            return False
+        for gid, count, bind in goods:
+            try:
+                have = sum(int(s.get('count') or 0) for s in slots
+                           if str(s.get('goods_id')) == str(gid)
+                           and int(s.get('bind') or 0) == int(bind or 0))
+            except (TypeError, ValueError):
+                have = 0
+            if have < count:
+                return False
+        return True
+
+    def _zonghe_exchange(self, role, now_ms=None):
+        """70507 payload: first-live ct-9 rows else [2]/[0, 792005]."""
+        found, missing = self._zonghe_live_cat(9, now_ms)
+        if missing:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        if found is None:
+            return [2]
+        acts = found.get('activities') or []
+        if not acts:
+            return [0, HUODONG_ERR_FIRST_NO_CONFIG]
+        level = self._zonghe_int((role or {}).get('level'))
+        # No recharge-record service here, so the lifetime total
+        # reads 0, exact for fresh roles.
+        total = 0
+        purse = self._zonghe_int((role or {}).get('lingshi'))
+        money = self._zonghe_int((role or {}).get('tongqian'))
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            rid, row = None, None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        rows = []
+        for act in acts:
+            need = self._zonghe_int(act.get('need_level'))
+            need_pay = self._zonghe_int(act.get('need_pay_yb'))
+            if level < need or total < need_pay:
+                continue
+            con = act.get('con1')
+            if con is None or str(con) == '':
+                continue
+            costs = self._zonghe_exchange_costs(con)
+            goods = []
+            affordable = True
+            for gid, count, bind in costs:
+                if gid == 'yuanbao':
+                    if purse < count:
+                        affordable = False
+                elif gid == 'money':
+                    if money < count:
+                        affordable = False
+                else:
+                    goods.append((gid, count, bind))
+            if affordable:
+                affordable = self._zonghe_goods_affordable(rid, goods)
+            day_limit = self._zonghe_int(act.get('day_count'))
+            max_limit = self._zonghe_int(act.get('max_count'))
+            day_val = self._zonghe_acc_value(counters, act.get('id'))
+            max_val = self._zonghe_acc_value(counters_max,
+                                             act.get('id'))
+            state = 1 if affordable else 0
+            if day_val >= day_limit or max_val >= max_limit:
+                state = 2
+            items = [self._zonghe_item_client(v)
+                     for v in act.get('item_views') or []]
+            triples = [[gid, count, bind]
+                       for gid, count, bind in costs] or None
+            rows.append([act.get('id'), triples, items, max_val,
+                         max_limit, day_val, day_limit, state, None,
+                         self._zonghe_int(act.get('order'))])
+        return [1, 9, found.get('start_ms') or 0,
+                found.get('end_ms') or 0, found.get('pic') or '', rows]
+
+    def huodong_limited_exchange(self, msg=None, now_ms=None):
+        """Command 70507: limited-exchange goods for ct-9."""
+        return self._zonghe_role_frame(CMD_HUODONG_LIMITED_EXCHANGE,
+                                       self._zonghe_exchange,
+                                       now_ms=now_ms)
+
+    # Huodong purchase/exchange writes (70550/70551). Evidence:
+    # HuodongAction.buyHuodongMallGoods/getHuodongReward plus
+    # HuodongServiceImpl buyDiscountMallGoods/getGoodsExchangeReward,
+    # checkBuyHuodongMallGoods/checkGetHuodongReward, huodongReward
+    # and the counter/sell-count helpers. The jar splits each write
+    # across remote services with no shared transaction; the port
+    # pre-validates everything, then applies one atomic SQLite commit
+    # (Store held lock, single commit, rollback on abort), which is
+    # the only interleaving-safe reading of the same end state.
+    @staticmethod
+    def _zonghe_claim_req(msg, size):
+        """Action data array of at least size, else None."""
+        data = msg[1] if isinstance(msg, list) and len(msg) > 1 else None
+        if not isinstance(data, (list, tuple)) or len(data) < size:
+            return None
+        return list(data)
+
+    def _zonghe_claim_gate(self, cat, act, role, day_val, max_val,
+                           now_ms, mall=False):
+        """[0, code] when the claim gate fails, else None.
+
+        Mirrors checkGetHuodongReward (claim codes 792003/792001/
+        792006/792007/430212-parity lives at the call site) and
+        checkBuyHuodongMallGoods (792008/792009 for the day/max
+        floors). now_ms rides explicitly; the lifetime total reads 0
+        (no recharge-record service), exact for fresh roles.
+        """
+        if not self.config._zonghe_live_ms(
+                cat.get('start_ms') or 0, cat.get('end_ms') or 0,
+                now_ms):
+            return [0, HUODONG_ERR_EXPIRED]
+        need = self._zonghe_int(act.get('need_level'))
+        need_pay = self._zonghe_int(act.get('need_pay_yb'))
+        level = self._zonghe_int((role or {}).get('level'))
+        if level < need or 0 < need_pay:
+            return [0, HUODONG_ERR_FIRST_UNCHARGED]
+        if day_val >= self._zonghe_int(act.get('day_count')):
+            return [0, HUODONG_ERR_MALL_DAY if mall
+                    else HUODONG_ERR_DAY_LIMIT]
+        if max_val >= self._zonghe_int(act.get('max_count')):
+            return [0, HUODONG_ERR_MALL_MAX if mall
+                    else HUODONG_ERR_MAX_LIMIT]
+        return None
+
+    def _zonghe_find_activity(self, clienttype, act_id):
+        """(category, activity) holding act_id, or (None, None)."""
+        if self.config is None:
+            return None, None
+        try:
+            kaifu = self._zonghe_int(self.server_start_ms)
+            bucket = self.config.zonghe(
+                kaifu_ms=kaifu).get(clienttype) or {}
+        except Exception:
+            return None, None
+        for cat in bucket.get('categories') or []:
+            for act in cat.get('activities') or []:
+                if str(act.get('id')) == str(act_id):
+                    return cat, act
+        return None, None
+
+    @staticmethod
+    def _zonghe_bump(counters, act_id):
+        """setValue +1: counter map with the activity row incremented."""
+        out = dict(counters or {})
+        try:
+            out[str(act_id)] = int(out.get(str(act_id)) or 0) + 1
+        except (TypeError, ValueError):
+            out[str(act_id)] = 1
+        return out
+
+    def _zonghe_mall_bought(self, row, act_id, goods_id):
+        """getRoleMallBuyCount: buys under the activity+goods key."""
+        counters = self._huodong_json(
+            (row or {}).get('mall_buy_count'))
+        return self._zonghe_acc_value(
+            counters, str(act_id) + str(goods_id))
+
+    def _zonghe_mall_sold(self, act_id, goods_id):
+        """getMallSellCount: global units sold under the goods key."""
+        try:
+            info = self.get_huodong_info(str(act_id)) or {}
+            sold_map = json.loads(
+                info.get('mall_sell_info') or '{}')
+        except Exception:
+            return 0
+        if not isinstance(sold_map, dict):
+            return 0
+        return self._zonghe_acc_value(sold_map, str(goods_id))
+
+    def _zonghe_exp_fields(self, role, amount):
+        """Pure half of _role_gain_exp: fields to persist, and gained.
+
+        No save and no frames; the caller applies the fields inside
+        its atomic commit and emits the pushes afterwards.
+        """
+        try:
+            old_level = int((role or {}).get('level') or 0)
+        except (TypeError, ValueError):
+            old_level = 0
+        try:
+            old_exp = int((role or {}).get('exp') or 0)
+        except (TypeError, ValueError):
+            old_exp = 0
+        try:
+            amount = int(amount or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if self.config is not None:
+            need, cap = self.config.role_need_exp, \
+                self.config.role_max_level()
+        else:
+            need, cap = (lambda lv: None), 0
+        level, total, gained = combat_lib.apply_exp_gain(
+            old_level, old_exp, amount, need, cap)
+        fields = {'exp': total}
+        if gained:
+            row = self.config.role_attribute_row(level) \
+                if self.config is not None else None
+            if row is not None:
+                fields['level'] = level
+                try:
+                    fields['max_hp'] = int(row.get('hitpoints') or 0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    fields['max_mp'] = int(row.get('mana') or 0)
+                except (TypeError, ValueError):
+                    pass
+        return fields, gained
+
+    def _zonghe_grant_state(self, role, currencies):
+        """huodongReward currency half: (credits, exp_fields, gained).
+
+        jb rides tongqian (YXB incr), lijin rides bind_lingshi
+        (BIND_YB incr), zhenqi rides the zhenqi column; exp goes
+        through the pure level-up computation. fu0 awards carry zero
+        currencies, so this is synthetic-fixture territory.
+        """
+        credits = {}
+        try:
+            if int(currencies.get('jb') or 0) > 0:
+                credits['tongqian'] = int(currencies.get('jb'))
+        except (TypeError, ValueError):
+            pass
+        try:
+            if int(currencies.get('lijin') or 0) > 0:
+                credits['bind_lingshi'] = int(currencies.get('lijin'))
+        except (TypeError, ValueError):
+            pass
+        try:
+            if int(currencies.get('zhenqi') or 0) > 0:
+                credits['zhenqi'] = int(currencies.get('zhenqi'))
+        except (TypeError, ValueError):
+            pass
+        try:
+            exp = int(currencies.get('exp') or 0)
+        except (TypeError, ValueError):
+            exp = 0
+        fields, gained = self._zonghe_exp_fields(role, exp) \
+            if exp > 0 else ({}, False)
+        return credits, fields, gained
+
+    @staticmethod
+    def _zonghe_abort(error):
+        """True when error is the store's transactional abort.
+
+        Matched by class name: the store is duck-typed behind
+        injected callables, so protocol.py never imports it.
+        """
+        return type(error).__name__ == 'HuodongAbort'
+
+    def _zonghe_bag_sums(self, rid):
+        """{(goods_id, bind): count} over the role's bag slots."""
+        try:
+            slots = self.get_role_bag_slots(rid, 1, 150) or []
+        except Exception:
+            return {}
+        sums = {}
+        for s in slots:
+            try:
+                key = (str(s.get('goods_id')),
+                       int(s.get('bind') or 0))
+                sums[key] = sums.get(key, 0) + \
+                    int(s.get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        return sums
+
+    def _zonghe_grant_stacks(self, goods):
+        """{goods_id: max stack} for a grant list, or {} unconfigured."""
+        stacks = {}
+        if self.config is None:
+            return stacks
+        for item in goods or []:
+            gid = str(item.get('goods_id'))
+            if gid in stacks:
+                continue
+            try:
+                stacks[gid] = int(
+                    self.config.goods_max_stack(gid) or 1)
+            except (TypeError, ValueError):
+                stacks[gid] = 1
+        return stacks
+
+    def _zonghe_grant_capacity(self, rid):
+        """Bag capacity for a grant, 0 when unreadable."""
+        try:
+            state = self._bag_state_or_init(rid) or {}
+            return int(state.get('bag_capacity') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_level_frames(self, role, rid, old_level, total, level):
+        """Post-commit level-up pushes for an exp grant, else []."""
+        if int(level or 0) <= int(old_level or 0):
+            return []
+        grown = dict(role or {})
+        try:
+            grown.update(exp=total, level=level)
+        except Exception:
+            pass
+        return [frame(amf3_encode(
+            combat_lib.exp_notice(total, level)))] + \
+            self._role_level_frames(grown, rid, old_level)
+
+    def huodong_exchange_claim(self, msg=None, now_ms=None):
+        """Command 70551: exchange claim for ct-9.
+
+        getHuodongReward's GOODS_CHANGE branch: the gate answers
+        [0, code] (expired 792003, hidden 792001, day 792006, max
+        792007, full bag 430212); short costs answer [0, 792001].
+        Success debits costs, grants awards, bumps both counters by
+        one and replies [1, activityId, null, state, maxVal, maxLimit,
+        dayVal, dayLimit] with post-claim counters (state 1 only
+        when the reduced purse/bag still covers the cost and both
+        limits stay open). Missing category/activity stays silent
+        like the jar's null; sibling clienttypes ride their own
+        service branches (not covered here).
+        """
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        req = self._zonghe_claim_req(msg, 2)
+        if req is None:
+            return None
+        try:
+            ctype = int(req[0])
+        except (TypeError, ValueError):
+            return None
+        if ctype != 9 or self.config is None:
+            return None
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(9, req[1])
+        if act is None:
+            return None
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       gate]))
+        costs = self._zonghe_exchange_costs(act.get('con1'))
+        yb = yxb = 0
+        goods = []
+        for gid, count, bind in costs:
+            if gid == 'yuanbao':
+                yb += count
+            elif gid == 'money':
+                yxb += count
+            else:
+                goods.append((gid, count, bind))
+        purse = self._zonghe_int((role or {}).get('lingshi'))
+        money = self._zonghe_int((role or {}).get('tongqian'))
+        sums = self._zonghe_bag_sums(rid)
+        short = purse < yb or money < yxb or any(
+            sums.get((str(gid), int(bind or 0)), 0) < count
+            for gid, count, bind in goods)
+        if short:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        parcels = [(v['goods_id'], v['count'], v['bind'])
+                   for v in act.get('item_views') or []]
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        # Post-debit display state: the jar re-runs its checks on the
+        # reduced purse/bag, so arithmetic here mirrors it exactly.
+        post_ok = (purse - yb >= yb and money - yxb >= yxb and all(
+            sums.get((str(gid), int(bind or 0)), 0) - count >= count
+            for gid, count, bind in goods))
+        new_day = self._zonghe_bump(counters, act.get('id'))
+        new_max = self._zonghe_bump(counters_max, act.get('id'))
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        new_day_val = self._zonghe_acc_value(new_day, act.get('id'))
+        new_max_val = self._zonghe_acc_value(new_max, act.get('id'))
+        state = 1 if (post_ok and new_max_val < max_limit and
+                      new_day_val < day_limit) else 2
+        grant_goods = [{'goods_id': gid, 'count': count, 'bind': bind}
+                       for gid, count, bind in parcels]
+        credits, exp_fields, gained = self._zonghe_grant_state(
+            role, act.get('currencies') or {})
+        grant_state = dict(credits)
+        grant_state.update(exp_fields)
+        try:
+            old_level = int((role or {}).get('level') or 0)
+        except (TypeError, ValueError):
+            old_level = 0
+        try:
+            # Counters increment inside the commit (not as prebuilt
+            # JSON): concurrent claims serialize on the store lock
+            # with no lost update, matching the jar's setValue.
+            ok = self.huodong_exchange_tx(
+                rid, yb, yxb, goods, grant_goods,
+                self._zonghe_grant_stacks(grant_goods),
+                self._zonghe_grant_capacity(rid), grant_state,
+                act.get('id'), act.get('id'))
+        except Exception as e:
+            if not self._zonghe_abort(e):
+                raise
+            ok = False
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                    [1, act.get('id'), None, state,
+                                     new_max_val, max_limit, new_day_val,
+                                     day_limit]]))]
+        if gained:
+            out.extend(self._zonghe_level_frames(
+                role, rid, old_level,
+                exp_fields.get('exp'),
+                exp_fields.get('level', old_level)))
+        return out[0] if len(out) == 1 else out
+
+    def huodong_mall_buy(self, msg=None, now_ms=None):
+        """Command 70550: discount-mall buy for ct-5.
+
+        buyDiscountMallGoods: the gate answers [0, code] (expired
+        792003, hidden 792001, day 792008, max 792009); an unknown
+        good, a short purse, or an exhausted per-role limit answer
+        [0, 792001]; a full bag [0, 430212]; an emptied shelf
+        [0, 792004]. Success debits npayYb x count, grants the good
+        plus gifts, bumps both counters by one and the per-good buy
+        count by count, advances the global sell count, and replies
+        [1, activityId, goodsId, state, maxVal, maxLimit, dayVal,
+        dayLimit] with a queued 70506 panel refresh behind it.
+        Missing category/activity stays silent like the jar's null;
+        sibling clienttypes ride their own service branches.
+        """
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        req = self._zonghe_claim_req(msg, 4)
+        if req is None:
+            return None
+        try:
+            ctype = int(req[0])
+            count = int(req[3])
+        except (TypeError, ValueError):
+            return None
+        if ctype != 5 or count < 1 or self.config is None:
+            if ctype != 5 or self.config is None:
+                return None
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(5, req[1])
+        if act is None:
+            return None
+        good = None
+        for g in act.get('mall_goods') or []:
+            if str(g.get('item_id')) == str(req[2]):
+                good = g
+                break
+        if good is None:
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms, mall=True)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       gate]))
+        total = good['npay_yb'] * count
+        purse = self._zonghe_int((role or {}).get('lingshi'))
+        bought = self._zonghe_mall_bought(row, act.get('id'),
+                                          good['item_id'])
+        if purse < total or bought >= good['max_buy']:
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        parcels = [(good['item_id'], count, good['buy_bind'])] + \
+            [(v['goods_id'], v['count'], v['bind'])
+             for v in good.get('gifts') or []]
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        sold = self._zonghe_mall_sold(act.get('id'), good['item_id'])
+        if count > good['max_sell'] - sold:
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, HUODONG_ERR_SOLD_OUT]]))
+        new_day = self._zonghe_bump(counters, act.get('id'))
+        new_max = self._zonghe_bump(counters_max, act.get('id'))
+        new_day_val = self._zonghe_acc_value(new_day, act.get('id'))
+        new_max_val = self._zonghe_acc_value(new_max, act.get('id'))
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        state = 1 if (new_max_val < max_limit and
+                      new_day_val < day_limit and
+                      purse - total >= good['npay_yb']) else 2
+        main = {'goods_id': good['item_id'], 'count': count,
+                'bind': good['buy_bind']}
+        gifts = [{'goods_id': v['goods_id'], 'count': v['count'],
+                  'bind': v['bind']}
+                 for v in good.get('gifts') or []]
+        try:
+            ok = self.huodong_mall_buy_tx(
+                rid, total, main, gifts,
+                self._zonghe_grant_stacks([main] + gifts),
+                self._zonghe_grant_capacity(rid), {},
+                act.get('id'), act.get('id'),
+                {str(act.get('id')) + str(good['item_id']): count},
+                str(act.get('id')), str(good['item_id']), count,
+                good['max_sell'])
+        except Exception as e:
+            if not self._zonghe_abort(e):
+                raise
+            if 'sell_out' in str(getattr(e, 'args', [''])):
+                return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                           [0, HUODONG_ERR_SOLD_OUT]]))
+            ok = False
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        out = [frame(amf3_encode(
+            [str(CMD_HUODONG_MALL_BUY),
+             [1, act.get('id'), good['item_id'], state, new_max_val,
+              max_limit, new_day_val, day_limit]]))]
+        try:
+            fresh = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            out.append(frame(amf3_encode(
+                [str(CMD_HUODONG_LIMITED_MALL),
+                 self._zonghe_mall((fresh or [None])[0],
+                                    now_ms=now_ms)])))
+        except Exception:
+            pass
+        return out
 
     # First-recharge lifecycle (zonghe clienttype 21: HuodongAction
     # getRechargeInfo/lingquRechargeReward -> HuodongServiceImpl

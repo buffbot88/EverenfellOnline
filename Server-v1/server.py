@@ -190,6 +190,9 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             delete_task_gonghui=self.server.delete_task_gonghui,
             get_role_huodong=self.server.get_role_huodong,
             save_role_huodong=self.server.save_role_huodong,
+            get_huodong_info=self.server.get_huodong_info,
+            huodong_exchange_tx=self.server.huodong_exchange_tx,
+            huodong_mall_buy_tx=self.server.huodong_mall_buy_tx,
             get_role_pozhen=self.server.get_role_pozhen,
             save_role_pozhen=self.server.save_role_pozhen,
             get_guild_id=self.server.get_guild_id,
@@ -446,6 +449,9 @@ def main():
     tcpd.delete_task_gonghui = store.delete_task_gonghui
     tcpd.get_role_huodong = store.get_role_huodong
     tcpd.save_role_huodong = store.save_role_huodong
+    tcpd.get_huodong_info = store.get_huodong_info
+    tcpd.huodong_exchange_tx = store.huodong_exchange_tx
+    tcpd.huodong_mall_buy_tx = store.huodong_mall_buy_tx
     tcpd.get_role_pozhen = store.get_role_pozhen
     tcpd.save_role_pozhen = store.save_role_pozhen
     tcpd.get_guild_id = store.get_guild_id

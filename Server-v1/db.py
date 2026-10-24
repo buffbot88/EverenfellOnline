@@ -1,5 +1,6 @@
 """SQLite persistence for accounts, characters, sessions, and game state."""
 import json
+import math
 import os
 import sqlite3
 import threading
@@ -637,6 +638,30 @@ CREATE TABLE IF NOT EXISTS huodong_info (
   huodong_id TEXT PRIMARY KEY,
   mall_sell_info TEXT DEFAULT ''
 );
+-- Recharge records (legacy recharge_record subset: one row per payment
+-- or GM/goods-exchange grant; money_num is the granted YB count,
+-- money_type 2 is YB, recharge_type 1/2 counts toward activity totals
+-- (3/4 are excluded), recharge_state is '0' granted, '1' pending grant,
+-- '9' revoked, '1001'/'1003'/'1004'/'1005' failed. The jar compares the
+-- state as text, so '0'/'1' match `<= '1'` while '9' and the 100x codes
+-- do not. create_time is ms epoch like every other port timestamp.)
+CREATE TABLE IF NOT EXISTS recharge_record (
+  id TEXT PRIMARY KEY,
+  user_role_id TEXT NOT NULL,
+  rmb REAL DEFAULT 0,
+  money_type INTEGER DEFAULT 2,
+  money_num INTEGER DEFAULT 0,
+  is_calc INTEGER DEFAULT 0,
+  recharge_type TEXT DEFAULT '1',
+  platform_type TEXT DEFAULT '',
+  recharge_state TEXT DEFAULT '1',
+  order_id TEXT DEFAULT '',
+  create_time INTEGER DEFAULT 0,
+  server_id TEXT DEFAULT '',
+  user_guid TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_recharge_record_role ON recharge_record(user_role_id);
+CREATE INDEX IF NOT EXISTS idx_recharge_record_order ON recharge_record(order_id);
 -- Minimal guild membership (legacy guild gate: getGuildInfoByRoleId null
 -- silences every gonghui handler; addRoleGongxian accumulates gongxian).
 CREATE TABLE IF NOT EXISTS guild_member (
@@ -822,6 +847,17 @@ STAGE_COLUMNS = {
     'free_fly_count': 'INTEGER',
     'fly_count_refresh_time': 'INTEGER',
 }
+
+
+def _local_day_start_ms(now_ms):
+    """Local-midnight epoch ms for the day containing now_ms."""
+    try:
+        secs = int(now_ms) // 1000
+    except (TypeError, ValueError):
+        secs = 0
+    loc = time.localtime(secs)
+    return int(time.mktime((loc.tm_year, loc.tm_mon, loc.tm_mday,
+                            0, 0, 0, 0, 0, -1)) * 1000)
 
 
 class Store:
@@ -2217,6 +2253,372 @@ class Store:
             self.db.commit()
             return True
 
+    # YB's MoneyType.getIntType (the sqlmap hardcodes money_type = 2).
+    RECHARGE_MONEY_YB = 2
+
+    @staticmethod
+    def _recharge_role_scope(role):
+        """(user_guid, server_id) a charge total scopes to for a role row."""
+        return str(role.get('account') or ''), str(role.get('server_id') or '')
+
+    def _recharge_role(self, role_id):
+        """Character row for a wire id, or None (success totals need it)."""
+        return self.db.execute(
+            'SELECT id, account, server_id FROM characters'
+            ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+            (str(role_id), str(role_id))).fetchone()
+
+    def save_recharge_yb(self, server_id, user_guid, role_id, order_id,
+                         rmb, money_num, is_calc, platform_type,
+                         recharge_type, recharge_state, create_ms=None):
+        """Insert one recharge_record row; returns its id.
+
+        Record half of saveRechargetYb (no currency grant, no
+        event): state '0' granted, '1' pending grant, '9' revoked,
+        '1001'/'1003'/'1004'/'1005' failed. create_time is ms epoch.
+        """
+        if create_ms is None:
+            create_ms = int(time.time() * 1000)
+        record_id = uuid.uuid4().hex
+        with self.lock:
+            self.db.execute(
+                'INSERT INTO recharge_record(id, user_role_id, rmb,'
+                ' money_type, money_num, is_calc, recharge_type,'
+                ' platform_type, recharge_state, order_id, create_time,'
+                ' server_id, user_guid)'
+                ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (record_id, str(role_id), float(rmb or 0),
+                 self.RECHARGE_MONEY_YB, int(money_num or 0),
+                 1 if is_calc else 0, str(recharge_type),
+                 str(platform_type or ''), str(recharge_state),
+                 str(order_id or ''), int(create_ms), str(server_id or ''),
+                 str(user_guid or '')))
+            self.db.commit()
+            return record_id
+
+    def recharge_check_order_repeat(self, order_id):
+        """True when a live/success row already carries this order id.
+
+        checkRechageOrderIdIsRepeat verbatim: order_id match with
+        recharge_state <= '1' blocks ('0' granted and '1' pending),
+        while revoked ('9') and failed (100x) rows do not.
+        """
+        with self.lock:
+            row = self.db.execute(
+                'SELECT 1 FROM recharge_record'
+                ' WHERE order_id=? AND recharge_state <= ? LIMIT 1',
+                (str(order_id or ''), '1')).fetchone()
+            return row is not None
+
+    def recharge_charge_total(self, role_id):
+        """Lifetime YB total for a role (getChargeTotal).
+
+        Sums money_num over the account's server-scoped success
+        rows (recharge_type 3/4 excluded, state '0' only); 0 when
+        the role is unknown.
+        """
+        with self.lock:
+            role = self._recharge_role(role_id)
+            if role is None:
+                return 0
+            user_guid, server_id = self._recharge_role_scope(dict(role))
+            row = self.db.execute(
+                'SELECT COALESCE(SUM(money_num),0) AS total'
+                ' FROM recharge_record'
+                " WHERE user_guid=? AND server_id=? AND money_type=?"
+                " AND recharge_type NOT IN ('3','4')"
+                ' AND recharge_state <= ?',
+                (user_guid, server_id, self.RECHARGE_MONEY_YB,
+                 '0')).fetchone()
+            try:
+                return int((dict(row) if row else {}).get('total') or 0)
+            except (TypeError, ValueError):
+                return 0
+
+    def recharge_charge_total_in_time(self, role_id, start_ms, end_ms):
+        """Windowed YB total for a role (getChargeTotalInTime).
+
+        Same success shape but state <= '1' (pending offline orders
+        count) with inclusive create_time bounds; a None bound is
+        unbounded like the jar's isNotNull time arms.
+        """
+        with self.lock:
+            role = self._recharge_role(role_id)
+            if role is None:
+                return 0
+            user_guid, server_id = self._recharge_role_scope(dict(role))
+            query = ('SELECT COALESCE(SUM(money_num),0) AS total'
+                     ' FROM recharge_record'
+                     ' WHERE user_guid=? AND server_id=? AND money_type=?'
+                     " AND recharge_type NOT IN ('3','4')"
+                     ' AND recharge_state <= ?')
+            params = [user_guid, server_id, self.RECHARGE_MONEY_YB, '1']
+            if start_ms is not None:
+                query += ' AND create_time >= ?'
+                params.append(int(start_ms))
+            if end_ms is not None:
+                query += ' AND create_time <= ?'
+                params.append(int(end_ms))
+            row = self.db.execute(query, params).fetchone()
+            try:
+                return int((dict(row) if row else {}).get('total') or 0)
+            except (TypeError, ValueError):
+                return 0
+
+    def recharge_pending(self, role_id):
+        """Pending-grant rows for a role (finishRecharge's login list).
+
+        getEnableRecharges(roleId) verbatim: exact state '1',
+        oldest first; the caller grants each row then marks it.
+        """
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, user_role_id, rmb, money_type, money_num,'
+                ' is_calc, recharge_type, platform_type, recharge_state,'
+                ' order_id, create_time, server_id, user_guid'
+                ' FROM recharge_record'
+                " WHERE user_role_id=? AND recharge_state='1'"
+                ' ORDER BY create_time ASC, rowid ASC',
+                (str(role_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def recharge_mark_state(self, record_id, state):
+        """Move one row to a new state ('0' granted, '9' revoked)."""
+        with self.lock:
+            cur = self.db.execute(
+                'UPDATE recharge_record SET recharge_state=? WHERE id=?',
+                (str(state), str(record_id)))
+            self.db.commit()
+            return cur.rowcount == 1
+
+    # MoneyType intTypes (MoneyType clinit: YXB 1, YB 2, BIND_YB 3).
+    RECHARGE_MONEY_YXB = 1
+    RECHARGE_MONEY_BIND_YB = 3
+
+    @staticmethod
+    def recharge_cal_yb(rmb):
+        """MoneyUtil.calYb stand-in: ceil(rmb * 10).
+
+        The gamerule util bytecode was not recovered; 1 RMB = 10 YB
+        is the standard rate, isolated here so it is one edit to fix.
+        """
+        try:
+            return max(0, int(math.ceil(float(rmb or 0) * 10)))
+        except (TypeError, ValueError):
+            return 0
+
+    def recharge_grant_save_tx(self, server_id, user_guid, role_id,
+                               order_id, rmb, money_num, is_calc,
+                               platform_type, recharge_type,
+                               create_ms=None):
+        """Atomic grant-on-save: dup-guarded insert plus YB credit.
+
+        saveRechargetYb's online arm in one commit: when a live row
+        already carries the order id the insert is skipped and None
+        returns (the caller answers 1004); otherwise a state-'0' row
+        lands and lingshi grows by money_num. A vanished role aborts
+        the whole apply (HuodongAbort, no partial row).
+        """
+        if create_ms is None:
+            create_ms = int(time.time() * 1000)
+        with self.lock:
+            try:
+                dupe = self.db.execute(
+                    'SELECT 1 FROM recharge_record'
+                    ' WHERE order_id=? AND recharge_state <= ? LIMIT 1',
+                    (str(order_id or ''), '1')).fetchone()
+                if dupe is not None:
+                    return None
+                record_id = uuid.uuid4().hex
+                self.db.execute(
+                    'INSERT INTO recharge_record(id, user_role_id, rmb,'
+                    ' money_type, money_num, is_calc, recharge_type,'
+                    ' platform_type, recharge_state, order_id,'
+                    ' create_time, server_id, user_guid)'
+                    ' VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (record_id, str(role_id), float(rmb or 0),
+                     self.RECHARGE_MONEY_YB, int(money_num or 0),
+                     1 if is_calc else 0, str(recharge_type),
+                     str(platform_type or ''), '0',
+                     str(order_id or ''), int(create_ms),
+                     str(server_id or ''), str(user_guid or '')))
+                cur = self.db.execute(
+                    'UPDATE characters'
+                    ' SET lingshi = COALESCE(lingshi,0) + ?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (int(money_num or 0), str(role_id),
+                     str(role_id)))
+                if cur.rowcount == 0:
+                    raise Store.HuodongAbort('no_role')
+                self.db.commit()
+                return record_id
+            except Exception:
+                self.db.rollback()
+                raise
+
+    def recharge_finish_tx(self, role_id):
+        """Atomic finishRecharge: grant every pending row, mark '0'.
+
+        The login arm in one commit: pending (exact state '1') rows
+        oldest first, each re-fetched by order/guid/server like
+        getEnableRecharge (surviving duplicates are deleted, the
+        first is granted once), credited by money type (YB 2 goes
+        to lingshi, YXB 1 to tongqian, BIND_YB 3 to
+        bind_lingshi), then flipped to '0'. Unknown money types
+        and non-positive amounts stay pending. Returns the granted
+        row dicts with credit_col/credit_num for the 12301 gate
+        and the event fan-out; a second call grants nothing.
+        """
+        columns = {self.RECHARGE_MONEY_YB: 'lingshi',
+                   self.RECHARGE_MONEY_YXB: 'tongqian',
+                   self.RECHARGE_MONEY_BIND_YB: 'bind_lingshi'}
+        with self.lock:
+            try:
+                pending = self.db.execute(
+                    'SELECT id, user_role_id, rmb, money_type, money_num,'
+                    ' is_calc, recharge_type, platform_type,'
+                    ' recharge_state, order_id, create_time, server_id,'
+                    ' user_guid'
+                    ' FROM recharge_record'
+                    " WHERE user_role_id=? AND recharge_state='1'"
+                    ' ORDER BY create_time ASC, rowid ASC',
+                    (str(role_id),)).fetchall()
+                granted = []
+                for prow in pending:
+                    row = dict(prow)
+                    try:
+                        amount = int(row.get('money_num') or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        mtype = int(row.get('money_type') or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    column = columns.get(mtype)
+                    if column is None or amount <= 0:
+                        continue
+                    sibs = self.db.execute(
+                        'SELECT id FROM recharge_record'
+                        ' WHERE order_id=? AND user_guid=? AND server_id=?'
+                        " AND recharge_state='1'"
+                        ' ORDER BY create_time ASC, rowid ASC',
+                        (str(row.get('order_id') or ''),
+                         str(row.get('user_guid') or ''),
+                         str(row.get('server_id') or ''))).fetchall()
+                    sib_ids = [str(s['id']) for s in sibs]
+                    if not sib_ids or str(row['id']) != sib_ids[0]:
+                        if str(row['id']) in sib_ids:
+                            self.db.execute(
+                                'DELETE FROM recharge_record WHERE id=?',
+                                (str(row['id']),))
+                        continue
+                    for extra in sib_ids[1:]:
+                        self.db.execute(
+                            'DELETE FROM recharge_record WHERE id=?',
+                            (extra,))
+                    cur = self.db.execute(
+                        'UPDATE characters SET ' + column +
+                        ' = COALESCE(' + column + ',0) + ?'
+                        ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                        (amount, str(role_id), str(role_id)))
+                    if cur.rowcount == 0:
+                        raise Store.HuodongAbort('no_role')
+                    self.db.execute(
+                        "UPDATE recharge_record SET recharge_state='0'"
+                        ' WHERE id=?',
+                        (str(row['id']),))
+                    row['recharge_state'] = '0'
+                    row['credit_col'] = column
+                    row['credit_num'] = amount
+                    granted.append(row)
+                self.db.commit()
+                return granted
+            except Exception:
+                self.db.rollback()
+                raise
+
+    def recharge_charge_today(self, role_id, now_ms=None):
+        """Today's success total for a role (getChargeToday).
+
+        Same success shape as the lifetime total, restricted to
+        rows whose create_time falls in the server-local day
+        containing now_ms (DatatimeUtil.dayIsToday verbatim).
+        """
+        if now_ms is None:
+            now_ms = int(time.time() * 1000)
+        try:
+            day_start = int(_local_day_start_ms(int(now_ms)))
+        except (TypeError, ValueError):
+            return 0
+        with self.lock:
+            role = self._recharge_role(role_id)
+            if role is None:
+                return 0
+            user_guid, server_id = self._recharge_role_scope(dict(role))
+            row = self.db.execute(
+                'SELECT COALESCE(SUM(money_num),0) AS total'
+                ' FROM recharge_record'
+                ' WHERE user_guid=? AND server_id=? AND money_type=?'
+                " AND recharge_type NOT IN ('3','4')"
+                " AND recharge_state='0' AND create_time >= ?",
+                (user_guid, server_id, self.RECHARGE_MONEY_YB,
+                 day_start)).fetchone()
+            try:
+                return int((dict(row) if row else {}).get('total') or 0)
+            except (TypeError, ValueError):
+                return 0
+
+    def yb_consume_tx(self, role_id, amount, act_ids):
+        """Atomic YB debit plus per-activity consumption accounting.
+
+        The decrYb listener half in one commit: lingshi must cover
+        the amount (False with no writes when short), then each
+        live YB_CONSUME activity id in act_ids gains +amount on
+        the role_huodong pay_yb map. True once committed.
+        """
+        try:
+            debit = int(amount or 0)
+        except (TypeError, ValueError):
+            return False
+        if debit <= 0 or not act_ids:
+            return False
+        with self.lock:
+            try:
+                row = self.db.execute(
+                    'SELECT lingshi FROM characters'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (str(role_id), str(role_id))).fetchone()
+                if row is None:
+                    return False
+                try:
+                    have = int(dict(row).get('lingshi') or 0)
+                except (TypeError, ValueError):
+                    have = 0
+                if have < debit:
+                    return False
+                self.db.execute(
+                    'UPDATE characters'
+                    ' SET lingshi = COALESCE(lingshi,0) - ?'
+                    ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                    (debit, str(role_id), str(role_id)))
+                cur = self.db.execute(
+                    'SELECT pay_yb FROM role_huodong WHERE role_id=?',
+                    (str(role_id),)).fetchone()
+                pay_text = (dict(cur).get('pay_yb')
+                            if cur else None)
+                bumped = self._huodong_bump_json_multi(
+                    pay_text, [str(a) for a in act_ids or []], debit)
+                self.db.execute(
+                    'INSERT INTO role_huodong(role_id, pay_yb)'
+                    ' VALUES(?,?) ON CONFLICT(role_id) DO UPDATE'
+                    ' SET pay_yb=excluded.pay_yb',
+                    (str(role_id), bumped))
+                self.db.commit()
+                return True
+            except Exception:
+                self.db.rollback()
+                raise
+
     class HuodongAbort(Exception):
         """A transactional claim/buy failed validation mid-apply."""
 
@@ -2234,6 +2636,43 @@ class Store:
         except (TypeError, ValueError):
             counters[str(key)] = delta
         return json.dumps(counters)
+
+    @classmethod
+    def _huodong_consume_json(cls, cur_pay_text, yb_cost, consume_acts):
+        """pay_yb JSON with one YB debit accounted, or the stored text.
+
+        decrYb's in-tx arm: only the lingshi debit counts — yxb
+        and goods costs are the carved-out exclusion — and empty
+        acts or a zero cost leave the ledger untouched.
+        """
+        try:
+            debit = int(yb_cost or 0)
+        except (TypeError, ValueError):
+            debit = 0
+        if debit <= 0 or not consume_acts:
+            return cur_pay_text if cur_pay_text is not None else '{}'
+        return cls._huodong_bump_json_multi(
+            cur_pay_text, [str(a) for a in consume_acts], debit)
+
+    @classmethod
+    def _huodong_bump_json_multi(cls, cur_text, keys, delta):
+        """setValue +delta applied to every key (decrYb payYb arm)."""
+        try:
+            out = json.loads(cur_text or '{}')
+        except (TypeError, ValueError):
+            out = {}
+        if not isinstance(out, dict):
+            out = {}
+        try:
+            bump = int(delta or 0)
+        except (TypeError, ValueError):
+            bump = 0
+        for key in keys or []:
+            try:
+                out[str(key)] = int(out.get(str(key)) or 0) + bump
+            except (TypeError, ValueError):
+                out[str(key)] = bump
+        return json.dumps(out)
 
     def _huodong_tx_decr(self, role_id, goods):
         """Shrink/clear bag slots for [(goods_id, count, bind)] exactly.
@@ -2371,8 +2810,9 @@ class Store:
 
     def huodong_exchange_tx(self, role_id, yb_cost, yxb_cost,
                             decr_goods, grant_goods, stacks, capacity,
-                            grant_state, day_key, max_key, exp_apply=None):
-        """Atomic exchange-claim apply: debit, grant, counters.
+                            grant_state, day_key, max_key, exp_apply=None,
+                            consume_acts=None):
+        """Atomic exchange-claim apply: debit, grant, counters, consume.
 
         Single commit; any shortfall rolls everything back via
         HuodongAbort (the caller maps it to the jar's [0, 792001]).
@@ -2381,9 +2821,12 @@ class Store:
         fn(level, exp) -> (fields, gained) run against the fresh
         in-tx character row, so simultaneous exp-granting claims
         serialize on value instead of clobbering each other with
-        stale precomputed fields. Returns (True, exp_out) with
-        exp_out None, or the exact post-commit {old_level, level,
-        exp, gained} the reply frames are built from.
+        stale precomputed fields. consume_acts lists live
+        YB_CONSUME activity ids: a positive yb_cost bumps each
+        one's payYb in the same commit (decrYb), so a later abort
+        reverts debit and totals together. Returns (True, exp_out)
+        with exp_out None, or the exact post-commit {old_level,
+        level, exp, gained} the reply frames are built from.
         """
         with self.lock:
             try:
@@ -2429,20 +2872,24 @@ class Store:
                 self._huodong_tx_grant(role_id, grant_goods or [],
                                        stacks or {}, capacity)
                 cur = self.db.execute(
-                    'SELECT day_count, max_count FROM role_huodong'
-                    ' WHERE role_id=?',
+                    'SELECT day_count, max_count, pay_yb'
+                    ' FROM role_huodong WHERE role_id=?',
                     (str(role_id),)).fetchone()
                 cur = dict(cur) if cur else {}
                 day_json = self._huodong_bump_json(
                     cur.get('day_count'), day_key)
                 max_json = self._huodong_bump_json(
                     cur.get('max_count'), max_key)
+                pay_json = self._huodong_consume_json(
+                    cur.get('pay_yb'), yb_cost, consume_acts)
                 self.db.execute(
-                    'INSERT INTO role_huodong(role_id, day_count, max_count)'
-                    ' VALUES(?,?,?) ON CONFLICT(role_id) DO UPDATE SET'
-                    ' day_count=excluded.day_count,'
-                    ' max_count=excluded.max_count',
-                    (str(role_id), day_json, max_json))
+                    'INSERT INTO role_huodong(role_id, day_count,'
+                    ' max_count, pay_yb)'
+                    ' VALUES(?,?,?,?) ON CONFLICT(role_id) DO UPDATE'
+                    ' SET day_count=excluded.day_count,'
+                    ' max_count=excluded.max_count,'
+                    ' pay_yb=excluded.pay_yb',
+                    (str(role_id), day_json, max_json, pay_json))
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -2452,11 +2899,15 @@ class Store:
     def huodong_mall_buy_tx(self, role_id, yb_cost, grant_main,
                             grant_gifts, stacks, capacity, grant_state,
                             day_key, max_key, mall_buy_add, sell_id,
-                            sell_key, sell_add, sell_max):
+                            sell_key, sell_add, sell_max,
+                            consume_acts=None):
         """Atomic mall-buy apply: debit, grants, counters, sell count.
 
         checkAndUpdateMallSellCount semantics: HuodongAbort when
-        count overshoots maxSell minus units already sold.
+        count overshoots maxSell minus units already sold. Like
+        the exchange tx, a positive yb_cost bumps each live
+        consume_acts activity's payYb in the same commit, so an
+        abort reverts debit and totals together.
         """
         with self.lock:
             try:
@@ -2492,7 +2943,7 @@ class Store:
                 self._huodong_tx_grant(role_id, [grant_main],
                                        stacks or {}, capacity)
                 cur = self.db.execute(
-                    'SELECT day_count, max_count, mall_buy_count'
+                    'SELECT day_count, max_count, mall_buy_count, pay_yb'
                     ' FROM role_huodong WHERE role_id=?',
                     (str(role_id),)).fetchone()
                 cur = dict(cur) if cur else {}
@@ -2513,15 +2964,18 @@ class Store:
                             int(mall_map.get(str(key)) or 0) + int(add)
                     except (TypeError, ValueError):
                         mall_map[str(key)] = int(add)
+                pay_json = self._huodong_consume_json(
+                    cur.get('pay_yb'), yb_cost, consume_acts)
                 self.db.execute(
                     'INSERT INTO role_huodong(role_id, day_count, max_count,'
-                    ' mall_buy_count) VALUES(?,?,?,?)'
+                    ' mall_buy_count, pay_yb) VALUES(?,?,?,?,?)'
                     ' ON CONFLICT(role_id) DO UPDATE SET'
                     ' day_count=excluded.day_count,'
                     ' max_count=excluded.max_count,'
-                    ' mall_buy_count=excluded.mall_buy_count',
+                    ' mall_buy_count=excluded.mall_buy_count,'
+                    ' pay_yb=excluded.pay_yb',
                     (str(role_id), day_json, max_json,
-                     json.dumps(mall_map)))
+                     json.dumps(mall_map), pay_json))
                 self.db.commit()
             except Exception:
                 self.db.rollback()

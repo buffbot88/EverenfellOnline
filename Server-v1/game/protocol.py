@@ -77,6 +77,9 @@ CMD_GETTIME = 19001
 CMD_APPLY_STAGE = 20000
 CMD_CHANGE_STAGE = 21000
 CMD_MONEY = 32010
+# RoleRechargeOutputWrapper.rechargeSuccess: pushed per granted YB row
+# (online grant and login finish alike), gated on rechargeType 1/2.
+CMD_RECHARGE_GRANTED = 12301
 
 # Java sends MapLineConfig.maptype in 21000 on every stage entry:
 #   StageServiceImpl.roleEnterStage -> { Integer(1), stage.getLineNo(),
@@ -1047,6 +1050,10 @@ class Session:
                  save_role_huodong=None, get_huodong_info=None,
                  huodong_exchange_tx=None, huodong_mall_buy_tx=None,
                  charge_total_in_time=None, charge_total=None,
+                 charge_today=None, save_recharge_yb=None,
+                 recharge_check_order_repeat=None,
+                 recharge_grant_save_tx=None, recharge_finish_tx=None,
+                 yb_consume_tx=None,
                  qibing_level=None,
                  get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
@@ -1266,16 +1273,30 @@ class Session:
         self.huodong_mall_buy_tx = huodong_mall_buy_tx or \
             (lambda *a, **k: False)
         # Windowed recharge total for ct-1 claims
-        # (getChargeTotalInTime). No recharge-record service exists
-        # here, so the default reads 0, exact for fresh roles; tests
-        # inject a covering total to exercise the grant path.
+        # (getChargeTotalInTime). server.py wires the Store query;
+        # the default reads 0, exact for fresh roles.
         self.charge_total_in_time = charge_total_in_time or \
             (lambda role_id, start_ms, end_ms: 0)
         # Lifetime recharge total for ct-7 claims (getChargeTotal)
         # and the qizhanbinqi level for ct-30 claims
-        # (getQizhanBinLevel): both services are unported, so the
-        # defaults read 0 and tests inject covering values.
+        # (getQizhanBinLevel): the total is Store-wired, the level
+        # stays injected (its progression service is unported).
         self.charge_total = charge_total or (lambda role_id: 0)
+        # Today's success total for the enter_world recharge pair
+        # (getChargeToday / getTotalByDayAndAll, [day, all]).
+        self.charge_today = charge_today or (lambda role_id: 0)
+        # Recharge-record producer + login-finish transactions.
+        self.save_recharge_yb = save_recharge_yb or \
+            (lambda *a, **k: None)
+        self.recharge_check_order_repeat = \
+            recharge_check_order_repeat or (lambda order_id: False)
+        self.recharge_grant_save_tx = recharge_grant_save_tx or \
+            (lambda *a, **k: None)
+        self.recharge_finish_tx = recharge_finish_tx or \
+            (lambda role_id: [])
+        # Atomic YB debit + pay_yb accounting (decrYb). None keeps
+        # the legacy blind debit; server.py wires the Store tx.
+        self.yb_consume_tx = yb_consume_tx
         self.qibing_level = qibing_level or (lambda role_id: 0)
         self.get_role_pozhen = get_role_pozhen or (lambda r: None)
         self.save_role_pozhen = save_role_pozhen or \
@@ -3906,7 +3927,10 @@ class Session:
         # isChenmi, chenmiAddOnlineTime, vipLevel, recharge[day, all],
         # gmState]. The exp Long serializes as an AMF3 double (1310 ->
         # 1310.0); vip comes from role_vip (0 when unmigrated); the
-        # recharge pair reads unmigrated recharge rows, so [0.0, 0.0].
+        # recharge pair reads getTotalByDayAndAll ([today, all]) off
+        # real recharge rows (0.0 when unwired or unknown). The
+        # pending finish runs first like the jar's role-login event,
+        # so the pair already includes fresh grants.
         try:
             vip = self.get_role_vip(role.get('id'))
         except Exception:
@@ -3915,9 +3939,21 @@ class Session:
             vip_level = int((vip or {}).get('vip_level') or 0)
         except (TypeError, ValueError):
             vip_level = 0
+        try:
+            rech_frames = self.recharge_finish_login(role) or []
+        except Exception:
+            rech_frames = []
+        try:
+            day_total = float(self.charge_today(_wire_id(role)))
+        except Exception:
+            day_total = 0.0
+        try:
+            all_total = float(self.charge_total(_wire_id(role)))
+        except Exception:
+            all_total = 0.0
         state = [role.get('face') or '', role.get('level', 1), float(exp),
                  role.get('sex', 0), str(role.get('job', '')),
-                 False, 0, vip_level, [0.0, 0.0], 0]
+                 False, 0, vip_level, [day_total, all_total], 0]
         stage = [str(role.get('map_id') or '0'),
                  role.get('map_x') if role.get('map_x') is not None else 57,
                  role.get('map_y') if role.get('map_y') is not None else 148]
@@ -3962,7 +3998,7 @@ class Session:
                 self._huodong_on_enter(_wire_id(role))
             except Exception:
                 pass
-            return (*bootstrap, *task_frames,
+            return (*bootstrap, *task_frames, *rech_frames,
                     frame(amf3_encode(['10003', result])))
 
     def apply_stage(self, msg):
@@ -10795,8 +10831,63 @@ class Session:
                 return None
         return None
 
-    def _bag_money_decr(self, rid, money, amount):
-        """Deduct amount of one MoneyType's column (decrMoney single-type)."""
+    def _zonghe_live_consume_ids(self, now_ms):
+        """Live YB_CONSUME activity ids (the decrYb listener scope).
+
+        The jar bumps payYb for every activity of the live
+        YB_CONSUME category on each YB decr; without a live
+        category nothing is accounted.
+        """
+        if self.config is None:
+            return []
+        try:
+            kaifu = self._zonghe_int(self.server_start_ms)
+            bucket = self.config.zonghe(kaifu_ms=kaifu).get(3) or {}
+        except Exception:
+            return []
+        ids = []
+        for cat in bucket.get('categories') or []:
+            try:
+                live = self.config._zonghe_live_ms(
+                    cat.get('start_ms') or 0, cat.get('end_ms') or 0,
+                    now_ms)
+            except Exception:
+                continue
+            if not live:
+                continue
+            for act in cat.get('activities') or []:
+                try:
+                    ids.append(str(act.get('id')))
+                except Exception:
+                    continue
+        return ids
+
+    def _bag_money_decr(self, rid, money, amount, now_ms=None):
+        """Deduct amount of one MoneyType's column (decrMoney single-type).
+
+        YB debits also feed the per-activity consumption ledger:
+        with live YB_CONSUME activities the debit and the pay_yb
+        bumps commit atomically through yb_consume_tx (decrYb),
+        which refuses short purses; every other debit keeps the
+        legacy blind write.
+        """
+        if money == 'YB' and self.yb_consume_tx is not None:
+            try:
+                debit = int(amount or 0)
+            except (TypeError, ValueError):
+                return False
+            if debit > 0:
+                if now_ms is None:
+                    now_ms = int(time.time() * 1000)
+                try:
+                    acts = self._zonghe_live_consume_ids(now_ms)
+                except Exception:
+                    acts = []
+                if acts:
+                    try:
+                        return bool(self.yb_consume_tx(rid, debit, acts))
+                    except Exception:
+                        return False
         column = BAG_MONEY_COLUMNS[money]
         try:
             roles = self.get_roles(self.authed_user or '', self.server_id or '')
@@ -16324,11 +16415,16 @@ class Session:
             # JSON): concurrent claims serialize on the store lock
             # with no lost update, matching the jar's setValue. The
             # exp gain computes there too, against the fresh row.
+            # A positive YB cost also feeds the live consume ledger
+            # in the same commit (only lingshi counts, never yxb).
+            consume = self._zonghe_live_consume_ids(now_ms) \
+                if yb else []
             ok, exp_out = self.huodong_exchange_tx(
                 rid, yb, yxb, goods, grant_goods,
                 self._zonghe_grant_stacks(grant_goods),
                 self._zonghe_grant_capacity(rid), credits,
-                act.get('id'), act.get('id'), exp_apply=exp_apply)
+                act.get('id'), act.get('id'), exp_apply=exp_apply,
+                consume_acts=consume)
         except Exception as e:
             if not self._zonghe_abort(e):
                 raise
@@ -16437,6 +16533,8 @@ class Session:
                   'bind': v['bind']}
                  for v in good.get('gifts') or []]
         try:
+            # The npayYb debit feeds the live consume ledger in the
+            # same commit (decrYb); a later abort reverts both.
             ok = self.huodong_mall_buy_tx(
                 rid, total, main, gifts,
                 self._zonghe_grant_stacks([main] + gifts),
@@ -16444,7 +16542,8 @@ class Session:
                 act.get('id'), act.get('id'),
                 {str(act.get('id')) + str(good['item_id']): count},
                 str(act.get('id')), str(good['item_id']), count,
-                good['max_sell'])
+                good['max_sell'],
+                consume_acts=self._zonghe_live_consume_ids(now_ms))
         except Exception as e:
             if not self._zonghe_abort(e):
                 raise
@@ -16519,6 +16618,199 @@ class Session:
         live.sort(key=lambda pair: (pair[0].get('end_ms') or 0,
                                     pair[0].get('id') or ''))
         return live[0]
+
+    @staticmethod
+    def _recharge_cal_yb(rmb):
+        """MoneyUtil.calYb stand-in: ceil(rmb * 10).
+
+        Mirrors Store.recharge_cal_yb (the gamerule util bytecode
+        was not recovered; the rate is isolated here to fix once).
+        """
+        try:
+            return max(0, int(math.ceil(float(rmb or 0) * 10)))
+        except (TypeError, ValueError):
+            return 0
+
+    def _recharge_audit(self, server_id, user_guid, role_id, order_id,
+                        rmb, money_num, is_calc, platform_type,
+                        recharge_type, state, create_ms=None):
+        """Best-effort failure/pending row (the jar always persists)."""
+        try:
+            self.save_recharge_yb(
+                str(server_id or ''), str(user_guid or ''),
+                str(role_id or ''), str(order_id or ''),
+                float(rmb or 0), int(money_num or 0), is_calc,
+                str(platform_type or ''), str(recharge_type or ''),
+                str(state), create_ms=create_ms)
+        except Exception:
+            pass
+
+    def _recharge_grant_frames(self, role, incr, money_type,
+                               recharge_type, now_ms=None):
+        """12301 push plus the RechargeYBEvent fan-out for one grant.
+
+        The jar gates both on the granted money reading YB with
+        rechargeType 1/2; YXB/BIND_YB finish grants credit silently.
+        """
+        try:
+            mtype = int(money_type)
+        except (TypeError, ValueError):
+            return []
+        if mtype != 2 or str(recharge_type or '') not in ('1', '2'):
+            return []
+        try:
+            amount = int(incr or 0)
+        except (TypeError, ValueError):
+            return []
+        frames = [frame(amf3_encode(
+            [str(CMD_RECHARGE_GRANTED), [float(amount)]]))]
+        try:
+            frames.extend(self.zonghe_recharge(role, amount,
+                                               now_ms=now_ms))
+        except Exception:
+            pass
+        try:
+            rid = _wire_id(role)
+            total = self._zonghe_charge_total_all(rid)
+        except Exception:
+            total, rid = 0, None
+        if rid is not None:
+            try:
+                frames.extend(self.vip_upgrade_level(role, total))
+            except Exception:
+                pass
+        return frames
+
+    def recharge_commit(self, server_id, user_guid, role_id, order_id,
+                        rmb, money_num, is_calc, platform_type,
+                        recharge_type, online=True, create_ms=None,
+                        now_ms=None):
+        """Payment/GM producer entry (saveRechargetYb2 + endpoint checks).
+
+        Returns (code, frames): '1' with the 12301/fan-out frames on
+        an online grant; '1' with [] when the row parks pending for
+        the login finish; '1005' (no role), '1001' (bad amount) or
+        '1004' (duplicate order) with a failure-state audit row;
+        '1003' when the save itself blows up. The checks and the
+        state-as-code shape are endpoint-verbatim.
+        """
+        code, wired = '1', []
+        try:
+            if is_calc:
+                money_num = self._recharge_cal_yb(rmb)
+            try:
+                amount = int(money_num or 0)
+            except (TypeError, ValueError):
+                amount = 0
+            rid = None
+            try:
+                roles = self.get_roles(str(user_guid or ''),
+                                       str(server_id or '')) or []
+            except Exception:
+                roles = []
+            for cand in roles:
+                try:
+                    if str((cand or {}).get('id')) == str(role_id):
+                        rid = cand
+                        break
+                except Exception:
+                    continue
+            if rid is None and len(roles) == 1:
+                rid = roles[0]
+            if rid is None:
+                code = '1005'
+            elif amount <= 0:
+                code = '1001'
+            else:
+                try:
+                    if self.recharge_check_order_repeat(
+                            str(order_id or '')):
+                        code = '1004'
+                except Exception:
+                    pass
+            if code == '1' and online:
+                record_id = None
+                try:
+                    record_id = self.recharge_grant_save_tx(
+                        str(server_id or ''), str(user_guid or ''),
+                        _wire_id(rid), str(order_id or ''),
+                        float(rmb or 0), amount, is_calc,
+                        str(platform_type or ''),
+                        str(recharge_type or ''), create_ms=create_ms)
+                except Exception as e:
+                    if not self._zonghe_abort(e):
+                        raise
+                    record_id = 'aborted'
+                if record_id is None:
+                    code = '1004'
+                    self._recharge_audit(
+                        server_id, user_guid, _wire_id(rid), order_id,
+                        rmb, amount, is_calc, platform_type,
+                        recharge_type, code, create_ms=create_ms)
+                elif record_id == 'aborted':
+                    code = '1003'
+                    self._recharge_audit(
+                        server_id, user_guid, _wire_id(rid), order_id,
+                        rmb, amount, is_calc, platform_type,
+                        recharge_type, code, create_ms=create_ms)
+                else:
+                    wired = self._recharge_grant_frames(
+                        rid, amount, 2, recharge_type, now_ms=now_ms)
+                    try:
+                        wired.append(self.money_info())
+                    except Exception:
+                        pass
+            elif code == '1':
+                self._recharge_audit(
+                    server_id, user_guid, _wire_id(rid), order_id, rmb,
+                    amount, is_calc, platform_type, recharge_type, '1',
+                    create_ms=create_ms)
+            else:
+                self._recharge_audit(
+                    server_id, user_guid,
+                    _wire_id(rid) if rid is not None else '', order_id,
+                    rmb, amount, is_calc, platform_type, recharge_type,
+                    code, create_ms=create_ms)
+        except Exception:
+            code = '1003'
+            self._recharge_audit(
+                server_id, user_guid, role_id, order_id, rmb,
+                money_num, is_calc, platform_type, recharge_type,
+                code, create_ms=create_ms)
+        return code, wired
+
+    def recharge_finish_login(self, role, now_ms=None):
+        """Login finish (finishRecharge): grant pending rows, push, fan out.
+
+        The atomic finish tx credits each pending row and flips it
+        to '0', so a second login grants nothing; every granted YB
+        row (type 1/2) pushes 12301 and fans out to zonghe_recharge
+        plus vip_upgrade_level, with one 32010 money refresh behind.
+        """
+        try:
+            rid = _wire_id(role)
+        except Exception:
+            return []
+        try:
+            granted = self.recharge_finish_tx(rid) or []
+        except Exception:
+            return []
+        if not granted:
+            return []
+        frames = []
+        for row in granted:
+            try:
+                frames.extend(self._recharge_grant_frames(
+                    role, row.get('credit_num'),
+                    row.get('money_type'), row.get('recharge_type'),
+                    now_ms=now_ms))
+            except Exception:
+                continue
+        try:
+            frames.append(self.money_info())
+        except Exception:
+            pass
+        return frames
 
     def zonghe_recharge(self, role, yb, now_ms=None):
         """Recharge hook: latch 'charged', push 71002 [activityId, yb, 1]

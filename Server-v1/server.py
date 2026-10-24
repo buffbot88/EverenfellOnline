@@ -193,6 +193,15 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             get_huodong_info=self.server.get_huodong_info,
             huodong_exchange_tx=self.server.huodong_exchange_tx,
             huodong_mall_buy_tx=self.server.huodong_mall_buy_tx,
+            charge_total_in_time=self.server.recharge_charge_total_in_time,
+            charge_total=self.server.recharge_charge_total,
+            charge_today=self.server.recharge_charge_today,
+            save_recharge_yb=self.server.save_recharge_yb,
+            recharge_check_order_repeat=
+            self.server.recharge_check_order_repeat,
+            recharge_grant_save_tx=self.server.recharge_grant_save_tx,
+            recharge_finish_tx=self.server.recharge_finish_tx,
+            yb_consume_tx=self.server.yb_consume_tx,
             get_role_pozhen=self.server.get_role_pozhen,
             save_role_pozhen=self.server.save_role_pozhen,
             get_guild_id=self.server.get_guild_id,
@@ -452,6 +461,14 @@ def main():
     tcpd.get_huodong_info = store.get_huodong_info
     tcpd.huodong_exchange_tx = store.huodong_exchange_tx
     tcpd.huodong_mall_buy_tx = store.huodong_mall_buy_tx
+    tcpd.recharge_charge_total_in_time = store.recharge_charge_total_in_time
+    tcpd.recharge_charge_total = store.recharge_charge_total
+    tcpd.recharge_charge_today = store.recharge_charge_today
+    tcpd.save_recharge_yb = store.save_recharge_yb
+    tcpd.recharge_check_order_repeat = store.recharge_check_order_repeat
+    tcpd.recharge_grant_save_tx = store.recharge_grant_save_tx
+    tcpd.recharge_finish_tx = store.recharge_finish_tx
+    tcpd.yb_consume_tx = store.yb_consume_tx
     tcpd.get_role_pozhen = store.get_role_pozhen
     tcpd.save_role_pozhen = store.save_role_pozhen
     tcpd.get_guild_id = store.get_guild_id

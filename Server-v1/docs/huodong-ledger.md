@@ -357,6 +357,85 @@ no persistence); 70550 (mall buy) and 70551 (claims for ct
 `role_huodong` persistence (day/max/mall-buy/pay-yb counters,
 global sell counts) and the in-tx EXP/credit grant.
 
+## Batch 10: recharge_record persistence (RechargeRecordService/Dao)
+
+`Store` grows the jar-exact `recharge_record` table (id,
+user_role_id, rmb, money_type 2 = YB, money_num, is_calc,
+recharge_type, platform_type, recharge_state, order_id,
+create_time ms epoch, server_id, user_guid; no UNIQUE on
+order_id, like the jar — revoked orders may be re-paid) plus
+the service/DAO read half: `save_recharge_yb` (record insert;
+the currency grant + `RechargeYBEvent` fan-out stay unported),
+`recharge_check_order_repeat` (`order_id=? AND recharge_state
+<= '1'`, so live/pending rows block while '9' and 100x rows
+do not), `recharge_charge_total` (lifetime Σ over the
+account's server-scoped success rows, type 3/4 excluded,
+state '0' only — the ct-7/vip source), and
+`recharge_charge_total_in_time` (same shape with state <=
+'1' so pending offline orders count, inclusive create_time
+bounds, None bound unbounded — the ct-1 source). Text state
+comparison reproduces the jar's varchar `<=`: '0'/'1'
+match while '9' and '1001'-'1005' do not. `recharge_pending`
+returns the exact-state-'1' login list oldest-first
+(`finishRecharge`'s list; the exact `=` match is why a second
+login cannot re-grant) and `recharge_mark_state` flips rows
+to '0'/'9'. Tests (14, all on real rows): repeat gating per
+state, lifetime/window sums with edge inclusivity and type
+and account/server scoping, pending ordering and the
+grant-mark-total cycle, unknown-role zeros, and reopen
+persistence. Census unchanged (no wire IDs).
+
+## Batch 11: recharge producer + login finish + consume ledger
+
+Grounded in rchg_dao/rchg_svc/rchg_exp/rchg_ep/money dumps (not
+inferred): `saveRechargetYb2` gates on checkAccountExist (no
+role → 1005), non-positive amount (→ 1001) and order repeat
+(→ 1004), persists the row under the outcome state (exception
+→ 1003), grants only when online, and pushes 12301 [incr]
+plus a `RechargeYBEvent(roleId, incr, !type.equals("1"))`
+for YB rows of type 1/2; `finishRecharge` re-grants every
+exact-state-'1' row by money type (YB 2 → `recharge`, YXB 1
+and BIND_YB 3 → `incr`), re-fetches each row by
+order/guid/server, deletes surviving duplicates, flips the
+winner to '0', then sends 12301 and the event per YB row;
+`getTotalByDayAndAll` returns [all, today] (today = local-day
+window); `decrYb` bumps every live YB_CONSUME activity's
+payYb by the debited amount (queues 70520 at newly
+completed thresholds) plus the category-level accumlatePayYb.
+MoneyType intTypes: YXB 1, YB 2, BIND_YB 3.
+
+Ported: `Store.recharge_grant_save_tx` (dup-guarded insert +
+lingshi credit, one commit), `Store.recharge_finish_tx`
+(pending oldest-first with the getEnableRecharge dedup-delete,
+per-type credit, flip to '0'; unknown money types stay
+pending), `Store.recharge_charge_today`, `Store.yb_consume_tx`
+(debit + payYb bumps, one commit, False with no writes when
+short), `Session.recharge_commit` (the 1005/1001/1004/1/1003
+entry with the 12301 + zonghe_recharge/vip_upgrade_level
+fan-out and a 32010 refresh), `Session.recharge_finish_login`
+wired into `enter_world` ahead of the 10003 pair (so
+[day, all] includes fresh grants), the `charge_total*`/`charge_today`
+callables wired in server.py, and the `_bag_money_decr` YB hook
+(old blind debit otherwise, so existing behavior is unchanged
+without live ct-3 rows). Tests: 11 new Store tx tests plus
+`test_recharge_wire.py` (14) proving ct-1/ct-7/ct-3 claims off
+real rows, dup/repeat protection, the 12301 gate (type 3
+finishes credit-only), and debit/accounting atomicity.
+Census unchanged (12301 is a push, not a dispatch).
+
+Still unported: the 70520 threshold push on consume completion
+(no 70520 consumer exists in the port), the category-level
+accumlatePayYb column (no reader ported), and
+`revocationOrder`. The mall/exchange in-tx YB debits feed
+consume via an optional trailing `consume_acts` on both txs
+(Session passes the live YB_CONSUME ids; zero-cost grants,
+yxb-only debits and empty live sets bump nothing, same-commit
+so aborts revert debit and totals together — pinned by
+mall/exchange abort tests, the exact-purse boundary and the
+yxb exclusion). `calYb` (rmb → YB)
+is inferred as ceil(rmb * 10) — the gamerule util bytecode was
+not recovered — isolated in one helper per side to fix once.
+
 Next batch: 70580/70508 rank rows. Both need their rank-row
 output shapes recovered from `RoleHuodongOutputWrapper` bytecode
 plus the rank data sources they read (paihang-backed rank feeds

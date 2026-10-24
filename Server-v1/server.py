@@ -20,6 +20,7 @@ from game import scheduler as scheduler_lib
 from game.config import DEFAULT_CONFIG_DIR, GameConfig
 from game.protocol import Session as GameSession
 from game.stage_registry import StageRegistry
+from game.team import TeamState
 from web import serve as serve_web
 
 log = logging.getLogger()
@@ -232,6 +233,7 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
             config=self.server.game_config,
+            team_state=self.server.team_state,
             stage_registry=self.server.stage_registry)
         log.info('game conn from %s', self.client_address)
         sess.send_lock = threading.Lock()
@@ -278,6 +280,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 pass
             try:
                 sess._huodong_on_disconnect()
+            except Exception:
+                pass
+            try:
+                sess._team_on_disconnect()
             except Exception:
                 pass
             with self.server.sessions_lock:
@@ -523,6 +529,9 @@ def main():
     tcpd.tz_id = a.tz_id
     tcpd.game_config = GameConfig(a.config_dir).warm()
     tcpd.stage_registry = StageRegistry()
+    # In-memory party/team graph (DataContainer regions); shared by every
+    # game connection, dropped on restart like the Java server's.
+    tcpd.team_state = TeamState()
     # Server open time echoed in the 10001 login reply (slot 0). The Java
     # server sends this fixed value (2014-03-10, the fu0 open date; captured
     # in session-20261018-040230), not its boot time. Mirrored exactly: the

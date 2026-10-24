@@ -5,6 +5,7 @@ and dense arrays. Object markers beyond this raise, loudly, rather than
 mis-decoding. String tables are per-message (decoder resets per frame, as
 AmfRequestDecoder calls Amf3Input.reset() before each readObject).
 """
+import datetime
 import struct
 
 INT_MIN, INT_MAX = -(1 << 28), (1 << 28) - 1
@@ -302,6 +303,15 @@ class Writer:
         elif isinstance(v, float):
             self.b.append(0x05)
             self.b += struct.pack('>d', v)
+        elif isinstance(v, datetime.datetime):
+            # AMF3 Date (java.sql.Timestamp on the wire for team join
+            # times): inline marker plus big-endian epoch milliseconds.
+            # Naive values read as UTC, matching the server clock.
+            self.b.append(0x08)
+            self.u29(1)
+            stamp = v if v.tzinfo is not None else \
+                v.replace(tzinfo=datetime.timezone.utc)
+            self.b += struct.pack('>d', stamp.timestamp() * 1000.0)
         elif isinstance(v, str):
             self.b.append(0x06)
             self.string(v)

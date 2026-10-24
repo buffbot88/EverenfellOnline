@@ -1182,6 +1182,7 @@ class GameConfig:
         self._gh_cond = None
         self._gh_rew = None
         self._guild_manage = None
+        self._duiwu_jiacheng = None
         self._gh_loop = None
         self._pozhen = None
         self._pozhen_xinxi = None
@@ -2795,6 +2796,33 @@ class GameConfig:
         """maxmemvalue for a (banner, level); 0 when unconfigured."""
         row = self.guild_banner_config(banner_id, level)
         return config_int((row or {}).get('maxmemvalue'))
+
+    def team_jiacheng_config(self, team_size):
+        """(exp, life) bonus for a team size from DuiWuJiaCheng; None when absent.
+
+        TeamJiaChengConfigExportService loads the same table keyed by team
+        count (rows exist for 2-4 members); sizes without a row get no
+        bonus, so the 52011 push and the team VO fall back to [0, 0].
+        """
+        if self._duiwu_jiacheng is None:
+            table = {}
+            for row in self._gonghui_rows('DuiWuJiaCheng'):
+                if not isinstance(row, dict) or row.get('team') is None:
+                    continue
+                try:
+                    size = int(row['team'])
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    table[size] = (float(row.get('exp') or 0),
+                                   float(row.get('life') or 0))
+                except (TypeError, ValueError):
+                    continue
+            self._duiwu_jiacheng = table
+        try:
+            return self._duiwu_jiacheng.get(int(team_size))
+        except (TypeError, ValueError):
+            return None
 
     def guild_banner_max_money(self, banner_id, level):
         """ckmoneyvalue cap for a (banner, level); 0 when unconfigured."""

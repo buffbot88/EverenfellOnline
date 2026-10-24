@@ -1,6 +1,6 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (292 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (302 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 

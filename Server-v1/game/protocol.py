@@ -37,6 +37,7 @@ import json
 import logging
 import math
 import random
+import datetime
 import re
 import struct
 import threading
@@ -49,6 +50,7 @@ from .buffs import buff_change, buff_value, dynamic_cd, prop_buff, timed_buff
 from . import ai as ai_lib
 from . import loot as loot_lib
 from .ground_items import can_pick_up as _ground_can_pick_up
+from .team import now_ms as team_now_ms
 from . import combat as combat_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
@@ -515,6 +517,55 @@ CMD_GUILD_BANNERS = 53028
 CMD_GUILD_GONGXIAN = 53029
 CMD_GUILD_SEARCH = 53030
 CMD_GUILD_BY_ID = 53051
+# Party/team inbound routes (TeamAction EasyMapping): create/info/invite/
+# answer/leader-request/leader-answer/exit (52000-52006), invite/application
+# answers (52030/52035) and team chat (11002). getTeamByMap answers 52001;
+# changeStageTeam rides the P:STAGE_CHANGE event, not a client command.
+CMD_TEAM_CREATE = 52000
+CMD_TEAM_INFO = 52001
+CMD_TEAM_INVITE = 52002
+CMD_TEAM_ANSWER = 52003
+CMD_TEAM_APPLY_LEADER = 52004
+CMD_TEAM_CHANGE_LEADER = 52005
+CMD_TEAM_EXIT = 52006
+CMD_TEAM_INVITE_ANSWER = 52030
+CMD_TEAM_APPLY_ANSWER = 52035
+CMD_TEAM_CHAT = 11002
+# Team pushes riding the member fan-out (PublicMsgQueue): 52000 carries
+# the full team VO to a fresh joiner, 52003 a member card, 52004 leader
+# updates, 52006 exit notices, 52011 the exp/life jiacheng pair, 52012
+# map moves, and 52030/52035 the invite/apply cards. 52007/52008/52009
+# are stage-owned visibility IDs the team service never sends (52009 is
+# answered by the stage module); answer-flow errors ride 52002.
+TEAM_PUSH_JOIN = 52000
+TEAM_PUSH_MEMBER = 52003
+TEAM_PUSH_LEADER = 52004
+TEAM_PUSH_LEADER_REQUEST = 52005
+TEAM_PUSH_EXIT = 52006
+TEAM_PUSH_JIACHENG = 52011
+TEAM_PUSH_MAP = 52012
+TEAM_PUSH_INVITE = 52030
+TEAM_PUSH_APPLY = 52035
+TEAM_PUSH_CHAT = 11002
+# TeamErrorCode (team/output/TeamErrorCode clinit).
+TEAM_ERR_TEAM_FULL = 460001
+TEAM_ERR_TARGET_FULL = 460002
+TEAM_ERR_OFFLINE = 460003
+TEAM_ERR_EXPIRED = 460004
+TEAM_ERR_HAS_TEAM = 460005
+TEAM_ERR_IN_TEAM = 460006
+TEAM_ERR_NOT_LEADER = 460007
+TEAM_ERR_NOT_EXPEL = 460008
+TEAM_ERR_REFUSED = 460009
+TEAM_ERR_DISMISS = 460010
+TEAM_ERR_LEADER_REFUSED = 460011
+TEAM_ERR_ROLE_REFUSED = 460012
+TEAM_ERR_OPERATION = 460013
+# TeamConstants: 4-member cap; 52003 status 0 = application answer,
+# 1 = invitation answer.
+TEAM_MAX_MEMBERS = 4
+TEAM_STATUS_APPLY = 0
+TEAM_STATUS_INVITE = 1
 # Guild pushes riding the member fan-out (PublicMsgQueue): apply/invite
 # answers, exit/disband notices, setting/message/position updates and
 # contribution refreshes. 11003_2 is the guild-chat offline leg.
@@ -1189,8 +1240,8 @@ class Session:
                  add_guild_apply=None, has_guild_apply=None,
                  list_guild_applies=None, delete_guild_apply=None,
                  save_guild_gongxian=None, list_guild_gongxian=None,
-                 delete_guild_gongxian=None, add_guild_info=None,
-                 list_guild_info=None,
+                 delete_guild_gongxian=None,                 add_guild_info=None, list_guild_info=None,
+                 team_state=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
         self.config = config
@@ -1550,6 +1601,9 @@ class Session:
         # Cross-session pushes: the shared registry routes a role to its
         # session, whose outbox joins the next tick (outbox_lock is a leaf).
         self.stage_registry = stage_registry
+        # Shared party/team graph (game/team.py TeamState): in-memory like
+        # Java's DataContainer regions, so teams die with the process.
+        self.team_state = team_state
         self.outbox = []
         self.outbox_lock = threading.Lock()
         # Same-response 70520 threshold pushes queued by progression
@@ -1886,6 +1940,26 @@ class Session:
             return self.guild_search(msg)
         if cmd_num == CMD_GUILD_BY_ID:
             return self.guild_by_id(msg)
+        if cmd_num == CMD_TEAM_CREATE:
+            return self.team_create(msg)
+        if cmd_num == CMD_TEAM_INFO:
+            return self.team_info()
+        if cmd_num == CMD_TEAM_INVITE:
+            return self.team_invite(msg)
+        if cmd_num == CMD_TEAM_ANSWER:
+            return self.team_answer(msg)
+        if cmd_num == CMD_TEAM_APPLY_LEADER:
+            return self.team_apply_leader(msg)
+        if cmd_num == CMD_TEAM_CHANGE_LEADER:
+            return self.team_change_leader(msg)
+        if cmd_num == CMD_TEAM_EXIT:
+            return self.team_exit(msg)
+        if cmd_num == CMD_TEAM_INVITE_ANSWER:
+            return self.team_invite_answer(msg)
+        if cmd_num == CMD_TEAM_APPLY_ANSWER:
+            return self.team_apply_answer(msg)
+        if cmd_num == CMD_TEAM_CHAT:
+            return self.team_chat(msg)
         if cmd_num == CMD_HUODONG_ONLINE_INFO:
             return self.huodong_online_info()
         if cmd_num == CMD_HUODONG_ONLINE_REWARD:
@@ -4249,6 +4323,14 @@ class Session:
                     or []
             except Exception:
                 changed = []
+            # P:STAGE_CHANGE: the team follows its member to the new map
+            # (52012 to members; the leader moves the map bucket).
+            try:
+                own = self._team_on_map(str(role.get('id')), map_id) \
+                    or ()
+                changed = [*changed, *own]
+            except Exception:
+                pass
         reply = frame(amf3_encode(['20000', [1, map_id, [x, y]]]))
         return (*changed, reply) if changed else reply
 
@@ -4532,6 +4614,11 @@ class Session:
             self.stage_registry.unregister(rid)
             self.stage_registry.register(rid, map_id, self, x=x, y=y)
         self.save_role_state(rid, map_id=map_id, map_x=x, map_y=y)
+        # P:STAGE_CHANGE, like apply_stage above.
+        try:
+            changed_frames = self._team_on_map(str(rid), map_id)
+        except Exception:
+            changed_frames = None
         frames = [frame(amf3_encode(['20000', [1, map_id, [x, y]]])),
                   frame(amf3_encode(['21000', [1, 1, self.map_type_for(map_id)]]))]
         if self.config is not None:
@@ -4544,6 +4631,8 @@ class Session:
         for item in self.ground_snapshot_items(map_id, x, y):
             frames.append(frame(amf3_encode(
                 ['23004', [self.goods_msg_data(item, first_drop=0)]])))
+        if changed_frames:
+            frames.extend(changed_frames)
         return frames
 
     def town_revive(self, msg):
@@ -4844,7 +4933,14 @@ class Session:
         task_frames = task_frames + self.gonghui_kill_progress(
             role, tpl.get('id'))
         lv_diff = max(int(role.get('level') or 0) - int(tpl.get('level') or 0), 0)
-        revise = (self.config.exp_revise(100, solo=True)
+        # AiServiceImpl.monsterExpDrop team rule: a killer in a team reads
+        # the rankrevise column with the team size in the (1+(n-1)*0.05)
+        # factor; solo kills read solorevise with n = 1. Only the killer
+        # is credited here (Python tracks no per-harmer shares), but the
+        # column and factor follow the killer's team.
+        team = self._team_export(owner['id'])
+        team_size = len(team[2]) if team is not None else 1
+        revise = (self.config.exp_revise(100, solo=team is None)
                   if self.config is not None else None)
         decay = (self.config.exp_decay(lv_diff)
                  if self.config is not None else None)
@@ -4853,6 +4949,7 @@ class Session:
                      self.conn_id, dead_fighter['id'])
             return task_frames
         base = combat_lib.base_kill_exp(tpl.get('basicexp') or 0,
+                                        team_size=team_size,
                                         xiuZheng=revise, levelXishu=decay)
         granted = combat_lib.fight_exp_with_bonuses(base)
         _total, _level, _gained, exp_frames = self._role_gain_exp(
@@ -5120,8 +5217,8 @@ class Session:
             # .getBind yields 0 and calGoodsExpireTime yields 0 (duration 0).
             item = store.add(result['goods_id'], result['count'], map_id,
                              int(point[0]), int(point[1]), now_ms,
-                             owner_id=str(role.get('id')),
-                             owner_team_id=None,  # Python roles carry no team id yet
+                            owner_id=str(role.get('id')),
+                            owner_team_id=self._team_id_of(role),
                              duration_seconds=duration, bind=0)
             result['point'] = (item.x, item.y)
             own.extend(self._point_broadcast(
@@ -5198,7 +5295,8 @@ class Session:
             log.info('conn %d: money pickup %r (no producer; left)',
                      self.conn_id, item_id)
             return fail
-        if not _ground_can_pick_up(item, str(role.get('id')), None, now):
+        if not _ground_can_pick_up(item, str(role.get('id')),
+                                        self._team_id_of(role), now):
             return fail
         if self.config._goods_table().get(str(item.goods_id)) is None:
             # Java destroys the item here (leave runs before putInBag1
@@ -15663,6 +15761,1019 @@ class Session:
             return None
         return frame(amf3_encode([str(CMD_GUILD_BY_ID),
                                   self._guild_vo(guild)]))
+
+    # Party/team (TeamAction/TeamServiceImpl + TeamVoOutput/
+    # TeamMemberVoOutput/TeamErrorCodeOutput/ChangeLeaderOutput/
+    # GetTeamByMapOutput shapes, TeamErrorCode clinit, TeamConstants and
+    # the DuiWuJiaCheng exp/life-by-size table).
+    #
+    # State mirrors the DataContainer regions (team/role_team/map_team):
+    # in-memory only, so a restart drops every team like the Java reboot
+    # and teams never touch SQLite. All graph mutations run under the
+    # shared TeamState lock, so concurrent joins/leaves cannot interleave.
+    #
+    # Deliberate deviations: callers and targets resolve through
+    # get_role_brief (legacy or local id) because Python keys sessions by
+    # both while Java has one id space; unresolvable phantom ids are
+    # skipped instead of throwing Java's NPE (same wire silence, no
+    # reply); team chat has no shutup gate (no mute state is ported) and
+    # no chat log; TeamChangeEvent has no subscribers in the extracted
+    # server so it is not published; kicking a non-member is a silent
+    # no-op instead of Java's unguarded cross-team role_team removal;
+    # 52007/52008/52009 are stage-owned visibility IDs the team service
+    # never sends.
+    @staticmethod
+    def _team_err(cmd, code, *extra):
+        """TeamErrorCodeOutput shape: [0, code, ...]."""
+        return frame(amf3_encode([str(cmd), [0, code, *extra]]))
+
+    @staticmethod
+    def _team_emit(queue, cid, cmd, payload):
+        """PublicMsgQueue.addMsg: one addressed entry for the flush."""
+        queue.append((str(cid), str(cmd), payload))
+
+    def _team_flush(self, queue, own_rid=None):
+        """PublicMsgQueue.flush: own entries return as frames, peers get pushed.
+
+        Offline targets are dropped, like Java's send2One to a gone role.
+        """
+        own = []
+        for cid, cmd, payload in queue:
+            out = frame(amf3_encode([cmd, payload]))
+            if own_rid is not None and cid == str(own_rid):
+                own.append(out)
+                continue
+            sess = self._team_session_of(cid)
+            if sess is self:
+                own.append(out)
+            elif sess is not None:
+                try:
+                    sess.push_frames([out])
+                except Exception:
+                    pass
+        return tuple(own) if own else None
+
+    def _team_session_of(self, cid):
+        """Session owning a role, trying local then legacy id forms.
+
+        Sessions are keyed by the wire id while the team graph keys the
+        canonical brief id; both forms resolve to the same session.
+        """
+        if self.stage_registry is None:
+            return None
+        forms = [str(cid)]
+        try:
+            brief = self.get_role_brief(cid)
+        except Exception:
+            brief = None
+        if brief is not None:
+            for key in ('id', 'legacy_id'):
+                val = brief.get(key)
+                if val and str(val) not in forms:
+                    forms.append(str(val))
+        for form in forms:
+            try:
+                sess = self.stage_registry.session_of(form)
+            except Exception:
+                sess = None
+            if sess is not None:
+                return sess
+            try:
+                sess = self.stage_registry.presence_of(form)
+            except Exception:
+                sess = None
+            if sess is not None:
+                return sess
+        return None
+
+    def _team_online(self, cid):
+        """Public online state: placed session or login presence."""
+        try:
+            return self._team_session_of(cid) is not None
+        except Exception:
+            return False
+
+    def _team_self(self):
+        """(role, rid) of the caller's first role, or (None, None)."""
+        role, rid = self._task_role()
+        if role is None or rid is None:
+            return None, None
+        return role, str(role.get('id'))
+
+    def _team_brief(self, rid):
+        """Identity card for a member VO; falls back to the caller's roles."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is not None:
+            return dict(brief)
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '') or []
+        except Exception:
+            roles = []
+        for role in roles:
+            if str((role or {}).get('id')) == str(rid):
+                return dict(role)
+        return {'id': rid}
+
+    def _team_canonical(self, rid):
+        """Team-key id: the brief id when resolvable, else the raw string."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is not None and brief.get('id') is not None:
+            return str(brief.get('id'))
+        return str(rid)
+
+    def _team_map_of(self, rid, role=None):
+        """Live map for a role: registry placement, then its row map."""
+        if self.stage_registry is not None:
+            forms = [str(rid)]
+            try:
+                brief = self.get_role_brief(rid)
+            except Exception:
+                brief = None
+            if brief is not None and brief.get('legacy_id'):
+                forms.append(str(brief.get('legacy_id')))
+            for form in forms:
+                try:
+                    placed = self.stage_registry.map_of(form)
+                except Exception:
+                    placed = None
+                if placed is not None:
+                    return str(placed)
+        if role is not None:
+            try:
+                row_map = role.get('map_id')
+            except Exception:
+                row_map = None
+            if row_map:
+                return str(row_map)
+        return None
+
+    def _team_jiacheng(self, size):
+        """[exp, life] bonus pair for a team size; None when unconfigured."""
+        if self.config is None:
+            return None
+        try:
+            pair = self.config.team_jiacheng_config(size)
+        except Exception:
+            return None
+        if pair is None:
+            return None
+        try:
+            return [float(pair[0]), float(pair[1])]
+        except (TypeError, ValueError):
+            return None
+
+    def _team_equip(self, rid, brief):
+        """Client-view equip list for a member card (getEquipClient)."""
+        try:
+            items = self.get_role_equip(rid) or []
+        except Exception:
+            return None
+        if not items:
+            return None
+        try:
+            return [self.equip_record(brief if brief is not None else {},
+                                      item)
+                    for item in items]
+        except Exception:
+            return None
+
+    @staticmethod
+    def _team_stamp(join_ms):
+        """AMF3 Date for a join millisecond (java.sql.Timestamp)."""
+        return datetime.datetime.fromtimestamp(
+            float(join_ms or 0) / 1000.0, tz=datetime.timezone.utc)
+
+    def _team_card_live(self, team_id, rid, join_ms, map_id=None):
+        """TeamMemberVoOutput 10-slot card from the live role row."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is None:
+            return None
+        cid = str(brief.get('id'))
+        if map_id is None:
+            map_id = self._team_map_of(cid)
+        return [cid, brief.get('name'), brief.get('sex'),
+                brief.get('face'), brief.get('level'), str(team_id),
+                self._team_stamp(join_ms), brief.get('job'), map_id,
+                self._team_equip(cid, brief)]
+
+    def _team_card_stored(self, team_id, stored, join_ms, map_id=None):
+        """TeamMemberVoOutput 10-slot card from the join-time snapshot."""
+        stored = dict(stored or {})
+        rid = str(stored.get('role_id'))
+        if map_id is None:
+            map_id = self._team_map_of(rid)
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        return [rid, stored.get('name'), stored.get('sex'),
+                stored.get('face'), stored.get('level'), str(team_id),
+                self._team_stamp(join_ms), stored.get('job'), map_id,
+                self._team_equip(rid, brief)]
+
+    def _team_vo(self, team, cards):
+        """TeamVoOutput 4-slot card: [teamId, leaderId, members, bonus]."""
+        bonus = self._team_jiacheng(len(team.get('member_map') or {}))
+        return [str(team.get('team_id')), str(team.get('leader_id')),
+                list(cards), list(bonus) if bonus is not None else [0, 0]]
+
+    def _team_lookup(self, rid):
+        """(team dict, role entry) for a role id, cleaning stale links."""
+        if self.team_state is None:
+            return None, None
+        with self.team_state.lock:
+            entry = self.team_state.get_role_team(
+                self._team_canonical(rid))
+            if entry is None:
+                entry = self.team_state.get_role_team(str(rid))
+            if entry is None:
+                return None, None
+            team = self.team_state.get_team(entry.get('team_id'))
+            if team is None:
+                try:
+                    self.team_state.remove_role_team(entry.get('role_id'))
+                except Exception:
+                    pass
+                return None, None
+            return team, entry
+
+    def _team_export(self, rid):
+        """TeamWrapper for combat/loot: (team_id, leader_id, [member ids])."""
+        team, _entry = self._team_lookup(rid)
+        if team is None:
+            return None
+        return (str(team.get('team_id')), str(team.get('leader_id')),
+                [str(mid) for mid in (team.get('member_map') or {})])
+
+    def _team_id_of(self, role):
+        """Team id owning a role's drops/pickups; None when teamless."""
+        if role is None:
+            return None
+        try:
+            rid = str(role.get('id'))
+        except Exception:
+            return None
+        team = self._team_export(rid)
+        return team[0] if team is not None else None
+
+    def _team_create_locked(self, rid, brief, team_id, map_id, queue,
+                            stamp):
+        """createTeam: solo or explicit-id team led by rid, 52000 queued."""
+        if team_id is None:
+            team_id = self.team_state.next_team_id()
+        else:
+            team_id = str(team_id)
+        entry = {'team_id': team_id, 'role_id': str(rid),
+                 'name': brief.get('name'), 'sex': brief.get('sex'),
+                 'face': brief.get('face'), 'level': brief.get('level'),
+                 'job': brief.get('job')}
+        self.team_state.put_role_team(entry)
+        team = {'team_id': team_id, 'leader_id': str(rid),
+                'leader_map_id': map_id, 'next_leader_id': '',
+                'member_map': {str(rid): stamp}}
+        self.team_state.put_team(team)
+        if map_id is not None:
+            self.team_state.add_map_team(map_id, team_id)
+        card = self._team_card_stored(team_id, entry, stamp, map_id)
+        self._team_emit(queue, str(rid), TEAM_PUSH_JOIN,
+                         [1, self._team_vo(team, [card])])
+        return team
+
+    def _team_add_locked(self, team, new_rid, queue, stamp):
+        """addTeam: join a role, 52000 to the joiner, 52003/52011 out."""
+        brief = self._team_brief(new_rid)
+        if brief.get('name') is None and brief.get('level') is None:
+            log.info('conn %d: team join of unknown role %r (skipped)',
+                     self.conn_id, new_rid)
+            return False
+        new_rid = str(brief.get('id')
+                      if brief.get('id') is not None else new_rid)
+        entry = {'team_id': str(team.get('team_id')),
+                 'role_id': new_rid, 'name': brief.get('name'),
+                 'sex': brief.get('sex'), 'face': brief.get('face'),
+                 'level': brief.get('level'), 'job': brief.get('job')}
+        self.team_state.put_role_team(entry)
+        members = team.setdefault('member_map', {})
+        members[new_rid] = stamp
+        self.team_state.put_team(team)
+        size = len(members)
+        bonus = self._team_jiacheng(size)
+        pruned = [mid for mid in list(members)
+                  if self.team_state.get_role_team(mid) is None]
+        for mid in pruned:
+            members.pop(mid, None)
+        if pruned:
+            self.team_state.put_team(team)
+        cards = [self._team_card_stored(team.get('team_id'),
+                                        self.team_state.get_role_team(mid),
+                                        members[mid])
+                 for mid in members]
+        self._team_emit(queue, new_rid, TEAM_PUSH_JOIN,
+                         [1, self._team_vo(team, cards)])
+        notice = self._team_card_stored(team.get('team_id'), entry, stamp)
+        for mid in members:
+            if mid == new_rid:
+                continue
+            self._team_emit(queue, mid, TEAM_PUSH_MEMBER, notice)
+            if bonus is not None:
+                self._team_emit(queue, mid, TEAM_PUSH_JIACHENG,
+                                 list(bonus))
+        return True
+
+    def _team_exit_locked(self, leaver, team, queue):
+        """roleExitTeam: leave, 52006 everywhere, 52011 refresh out."""
+        members = team.get('member_map') or {}
+        members.pop(str(leaver), None)
+        self.team_state.put_team(team)
+        try:
+            self.team_state.remove_role_team(leaver)
+        except Exception:
+            pass
+        if not members:
+            team_id = str(team.get('team_id'))
+            self.team_state.remove_team(team_id)
+            if team.get('leader_map_id') is not None:
+                self.team_state.remove_map_team(team.get('leader_map_id'),
+                                                team_id)
+        else:
+            bonus = self._team_jiacheng(len(members))
+            for mid in list(members):
+                self._team_emit(queue, mid, TEAM_PUSH_EXIT,
+                                 [1, str(leaver), True])
+                if bonus is not None:
+                    self._team_emit(queue, mid, TEAM_PUSH_JIACHENG,
+                                     list(bonus))
+        self._team_emit(queue, str(leaver), TEAM_PUSH_EXIT,
+                         [1, str(leaver), True])
+
+    def _team_leader_exit_locked(self, exiter, team, queue):
+        """exitChangeLeader: earliest joiner leads, 52004 to the rest."""
+        members = team.get('member_map') or {}
+        if len(members) >= 2:
+            ranked = sorted(((ms, mid) for mid, ms in members.items()
+                            if str(mid) != str(exiter)))
+            if ranked:
+                team['leader_id'] = str(ranked[0][1])
+                self.team_state.put_team(team)
+        try:
+            live_map = self._team_map_of(team.get('leader_id'))
+        except Exception:
+            live_map = None
+        if live_map is not None and live_map != team.get('leader_map_id'):
+            if team.get('leader_map_id') is not None:
+                self.team_state.remove_map_team(team.get('leader_map_id'),
+                                                team.get('team_id'))
+            self.team_state.add_map_team(live_map, team.get('team_id'))
+            team['leader_map_id'] = live_map
+            self.team_state.put_team(team)
+        for mid in members:
+            if str(mid) == str(exiter):
+                continue
+            self._team_emit(queue, mid, TEAM_PUSH_LEADER,
+                             [1, str(team.get('leader_id'))])
+
+    def _team_remove_solo_locked(self, rid, queue):
+        """removeTeam: disband a one-member team, 52006 to its role."""
+        entry = self.team_state.get_role_team(str(rid))
+        if entry is None:
+            return
+        team = self.team_state.get_team(entry.get('team_id'))
+        if team is None or len(team.get('member_map') or {}) != 1:
+            return
+        try:
+            self.team_state.remove_role_team(rid)
+        except Exception:
+            pass
+        team_id = str(team.get('team_id'))
+        self.team_state.remove_team(team_id)
+        if team.get('leader_map_id') is not None:
+            self.team_state.remove_map_team(team.get('leader_map_id'),
+                                            team_id)
+        self._team_emit(queue, str(rid), TEAM_PUSH_EXIT,
+                         [1, str(rid), True])
+
+    def team_create(self, msg):
+        """Command 52000: solo team, reply [1, team VO]."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        queue = []
+        stamp = team_now_ms()
+        with self.team_state.lock:
+            if self.team_state.get_role_team(rid) is None:
+                brief = self._team_brief(rid)
+                self._team_create_locked(
+                    rid, brief, None,
+                    self._team_map_of(rid, role), queue, stamp)
+        return self._team_flush(queue, rid)
+
+    def team_info(self):
+        """Command 52001: [1, [team VOs]] for the caller's map."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        map_id = self._team_map_of(rid, role)
+        if map_id is None:
+            return frame(amf3_encode([str(CMD_TEAM_INFO), [1, []]]))
+        vos = []
+        with self.team_state.lock:
+            for team_id in self.team_state.get_map_teams(map_id):
+                team = self.team_state.get_team(team_id)
+                if team is None or not (team.get('member_map') or {}):
+                    self.team_state.remove_map_team(map_id, team_id)
+                    continue
+                members = dict(team.get('member_map') or {})
+                cards = []
+                for mid, join_ms in members.items():
+                    stored = self.team_state.get_role_team(mid)
+                    if stored is None or not self._team_online(mid):
+                        team['member_map'].pop(mid, None)
+                        try:
+                            self.team_state.remove_role_team(mid)
+                        except Exception:
+                            pass
+                        continue
+                    cards.append(self._team_card_stored(
+                        team.get('team_id'), stored, join_ms))
+                if not cards:
+                    continue
+                self.team_state.put_team(team)
+                vos.append(self._team_vo(team, cards))
+        return frame(amf3_encode([str(CMD_TEAM_INFO), [1, vos]]))
+
+    def _team_check_invite_locked(self, rid, tid, mine, theirs, queue,
+                                  stamp):
+        """checkInvitebegAddTeam: both teamed, error or 52030/52035."""
+        my_team = self.team_state.get_team(mine.get('team_id'))
+        their_team = self.team_state.get_team(theirs.get('team_id'))
+        if my_team is None or their_team is None:
+            for stale in (mine, theirs):
+                try:
+                    self.team_state.remove_role_team(
+                        stale.get('role_id'))
+                except Exception:
+                    pass
+            return
+        my_size = len(my_team.get('member_map') or {})
+        their_size = len(their_team.get('member_map') or {})
+        leader_card = self._team_card_live(
+            my_team.get('team_id'), my_team.get('leader_id'), stamp)
+        if leader_card is None:
+            stored = self.team_state.get_role_team(
+                my_team.get('leader_id'))
+            if stored is None:
+                return
+            leader_card = self._team_card_stored(
+                my_team.get('team_id'), stored, stamp)
+        if my_size > 1 and their_size > 1:
+            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                             [0, TEAM_ERR_HAS_TEAM])
+        elif my_size == 1 and their_size == 1:
+            self._team_emit(queue, tid, TEAM_PUSH_INVITE, leader_card)
+        elif my_size > 1 and their_size == 1:
+            self._team_emit(queue, tid, TEAM_PUSH_INVITE, leader_card)
+        elif my_size == 1 and their_size > 1:
+            self._team_emit(queue, their_team.get('leader_id'),
+                             TEAM_PUSH_APPLY, leader_card)
+
+    def _team_push_invite_locked(self, rid, tid, mine, queue, stamp):
+        """yaoQingAddTeam: teamed inviter asks a teamless target (52030)."""
+        team = self.team_state.get_team(mine.get('team_id'))
+        if team is None:
+            return False
+        if str(team.get('leader_id')) != str(rid):
+            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                             [0, TEAM_ERR_NOT_LEADER])
+            return False
+        if len(team.get('member_map') or {}) >= TEAM_MAX_MEMBERS:
+            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                             [0, TEAM_ERR_TEAM_FULL])
+            return False
+        card = self._team_card_live(
+            team.get('team_id'), team.get('leader_id'), stamp)
+        if card is None:
+            return False
+        self._team_emit(queue, tid, TEAM_PUSH_INVITE, card)
+        return True
+
+    def _team_push_apply_locked(self, rid, theirs, queue, stamp):
+        """shengQingAddTeam: teamless caller applies to a team (52035)."""
+        team = self.team_state.get_team(theirs.get('team_id'))
+        if team is None:
+            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                             [0, TEAM_ERR_DISMISS])
+            return False
+        if len(team.get('member_map') or {}) >= TEAM_MAX_MEMBERS:
+            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                             [0, TEAM_ERR_TARGET_FULL])
+            return False
+        card = self._team_card_live(
+            team.get('team_id'), rid, stamp,
+            self._team_map_of(rid))
+        if card is None:
+            brief = self._team_brief(rid)
+            if brief.get('name') is None:
+                return False
+            card = [str(brief.get('id')), brief.get('name'),
+                    brief.get('sex'), brief.get('face'),
+                    brief.get('level'), str(rid),
+                    self._team_stamp(stamp), brief.get('job'),
+                    self._team_map_of(rid),
+                    self._team_equip(str(brief.get('id')), brief)]
+        self._team_emit(queue, team.get('leader_id'), TEAM_PUSH_APPLY,
+                         card)
+        return True
+
+    def team_invite(self, msg):
+        """Command 52002: invite a role, reply [1, true] plus pushes."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        target = self.safe(msg, 1, None)
+        if not target:
+            return None
+        tid = self._team_canonical(str(target))
+        queue = []
+        stamp = team_now_ms()
+        with self.team_state.lock:
+            if rid == tid:
+                self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_OPERATION])
+                return self._team_flush(queue, rid)
+            if not self._team_online(tid):
+                self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_OFFLINE])
+                return self._team_flush(queue, rid)
+            mine = self.team_state.get_role_team(rid)
+            theirs = self.team_state.get_role_team(tid)
+            if mine is not None and theirs is not None:
+                self._team_check_invite_locked(rid, tid, mine, theirs,
+                                               queue, stamp)
+            elif mine is None and theirs is None:
+                card = self._team_card_live(rid, rid, stamp,
+                                            self._team_map_of(rid, role))
+                if card is not None:
+                    self._team_emit(queue, tid, TEAM_PUSH_INVITE, card)
+            elif mine is not None:
+                self._team_push_invite_locked(rid, tid, mine, queue,
+                                              stamp)
+            else:
+                self._team_push_apply_locked(rid, theirs, queue, stamp)
+            self._team_emit(queue, rid, CMD_TEAM_INVITE, [1, True])
+        return self._team_flush(queue, rid)
+
+    def team_answer(self, msg):
+        """Command 52003: answer an invite/application push (void)."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        agree = bool(data[0]) if data else False
+        try:
+            status = int(data[1]) if len(data) > 1 else TEAM_STATUS_APPLY
+        except (TypeError, ValueError):
+            status = TEAM_STATUS_APPLY
+        target = str(data[2]) if len(data) > 2 and data[2] else None
+        if not target:
+            return None
+        tid = self._team_canonical(target)
+        queue = []
+        stamp = team_now_ms()
+        with self.team_state.lock:
+            if agree and status == TEAM_STATUS_APPLY:
+                if self.team_state.get_role_team(tid) is not None:
+                    self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                     [0, TEAM_ERR_EXPIRED])
+                else:
+                    caller = self.team_state.get_role_team(rid)
+                    team = self.team_state.get_team(
+                        caller.get('team_id')) if caller else None
+                    if team is None:
+                        self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                         [0, TEAM_ERR_DISMISS])
+                    elif len(team.get('member_map') or {}) >= \
+                            TEAM_MAX_MEMBERS:
+                        self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                         [0, TEAM_ERR_TARGET_FULL])
+                    else:
+                        self._team_add_locked(team, tid, queue, stamp)
+            elif agree:
+                self._team_remove_solo_locked(rid, queue)
+                if self.team_state.get_role_team(rid) is not None:
+                    self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                     [0, TEAM_ERR_IN_TEAM])
+                else:
+                    team = self.team_state.get_team(tid)
+                    if team is None:
+                        team = self._team_create_by_id_locked(
+                            tid, tid, queue, stamp)
+                    if team is None:
+                        team = self._team_create_by_id_locked(
+                            tid, None, queue, stamp)
+                    if team is not None:
+                        if len(team.get('member_map') or {}) >= \
+                                TEAM_MAX_MEMBERS:
+                            self._team_emit(
+                                queue, team.get('leader_id'),
+                                CMD_TEAM_INVITE, [0, TEAM_ERR_TEAM_FULL])
+                        else:
+                            self._team_add_locked(team, rid, queue, stamp)
+            elif status == TEAM_STATUS_APPLY:
+                caller = self.team_state.get_role_team(rid)
+                team = self.team_state.get_team(
+                    caller.get('team_id')) if caller else None
+                if team is not None:
+                    name = self._team_live_name(team.get('leader_id'))
+                    if name is None:
+                        name = self._team_live_name(rid)
+                else:
+                    name = self._team_live_name(rid)
+                self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_LEADER_REFUSED, name])
+            else:
+                stored = self.team_state.get_role_team(rid)
+                name = (stored or {}).get('name')
+                if name is None:
+                    name = self._team_live_name(rid)
+                team = self.team_state.get_team(tid)
+                dest = team.get('leader_id') if team is not None \
+                    else tid
+                self._team_emit(queue, dest, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_ROLE_REFUSED, name])
+        return self._team_flush(queue, rid)
+
+    def _team_live_name(self, rid):
+        """Live role name for refusal notices (getRoleWrapper.getName)."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is not None and brief.get('name'):
+            return brief.get('name')
+        return self._team_brief(rid).get('name')
+
+    def _team_create_by_id_locked(self, rid, team_id, queue, stamp):
+        """createTeam(roleId[, teamId]): ad-hoc team; None when unknown."""
+        try:
+            brief = self.get_role_brief(rid)
+        except Exception:
+            brief = None
+        if brief is None:
+            log.info('conn %d: team create for unknown role %r (skipped)',
+                     self.conn_id, rid)
+            return None
+        map_id = self._team_map_of(str(brief.get('id')))
+        return self._team_create_locked(str(brief.get('id')), brief,
+                                        team_id, map_id, queue, stamp)
+
+    def team_invite_answer(self, msg):
+        """Command 52030: answer an invite (void, errors ride 52002)."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        agree = bool(data[0]) if data else False
+        target = str(data[1]) if len(data) > 1 and data[1] else None
+        if not target:
+            return None
+        tid = self._team_canonical(target)
+        queue = []
+        stamp = team_now_ms()
+        with self.team_state.lock:
+            if agree:
+                self._team_remove_solo_locked(rid, queue)
+                if self.team_state.get_role_team(rid) is not None:
+                    self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                     [0, TEAM_ERR_EXPIRED])
+                else:
+                    team = self.team_state.get_team(tid)
+                    if team is None:
+                        if not self._team_online(tid):
+                            self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                             [0, TEAM_ERR_EXPIRED])
+                        else:
+                            team = self._team_create_by_id_locked(
+                                tid, tid, queue, stamp)
+                            if team is None:
+                                team = self._team_create_by_id_locked(
+                                    tid, None, queue, stamp)
+                    if team is not None:
+                        if len(team.get('member_map') or {}) >= \
+                                TEAM_MAX_MEMBERS:
+                            self._team_emit(
+                                queue, team.get('leader_id'),
+                                CMD_TEAM_INVITE, [0, TEAM_ERR_TEAM_FULL])
+                        else:
+                            self._team_add_locked(team, rid, queue, stamp)
+            else:
+                stored = self.team_state.get_role_team(rid)
+                name = (stored or {}).get('name')
+                if name is None:
+                    name = self._team_live_name(rid)
+                team = self.team_state.get_team(tid)
+                dest = team.get('leader_id') if team is not None \
+                    else tid
+                self._team_emit(queue, dest, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_ROLE_REFUSED, name])
+        return self._team_flush(queue, rid)
+
+    def team_apply_answer(self, msg):
+        """Command 52035: answer an application (void, errors ride 52002)."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        data = self.safe(msg, 1, [])
+        data = list(data) if isinstance(data, list) else []
+        agree = bool(data[0]) if data else False
+        target = str(data[1]) if len(data) > 1 and data[1] else None
+        if not target:
+            return None
+        tid = self._team_canonical(target)
+        queue = []
+        stamp = team_now_ms()
+        with self.team_state.lock:
+            if not self._team_online(tid):
+                self._team_emit(queue, rid, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_EXPIRED])
+            elif agree:
+                if self.team_state.get_role_team(tid) is not None:
+                    self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                     [0, TEAM_ERR_EXPIRED])
+                else:
+                    caller = self.team_state.get_role_team(rid)
+                    team = self.team_state.get_team(
+                        caller.get('team_id')) if caller else None
+                    if team is None:
+                        self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                         [0, TEAM_ERR_DISMISS])
+                    elif len(team.get('member_map') or {}) >= \
+                            TEAM_MAX_MEMBERS:
+                        self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                         [0, TEAM_ERR_TARGET_FULL])
+                    else:
+                        self._team_add_locked(team, tid, queue, stamp)
+            else:
+                caller = self.team_state.get_role_team(rid)
+                team = self.team_state.get_team(
+                    caller.get('team_id')) if caller else None
+                name = self._team_live_name(
+                    team.get('leader_id') if team is not None else rid)
+                self._team_emit(queue, tid, CMD_TEAM_INVITE,
+                                 [0, TEAM_ERR_LEADER_REFUSED, name])
+        return self._team_flush(queue, rid)
+
+    def team_apply_leader(self, msg):
+        """Command 52004: leader nominates a successor; 52005 asks them."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        target = self.safe(msg, 1, None)
+        if not target:
+            return None
+        tid = self._team_canonical(str(target))
+        queue = []
+        with self.team_state.lock:
+            caller = self.team_state.get_role_team(rid)
+            if caller is None:
+                return None
+            team = self.team_state.get_team(caller.get('team_id'))
+            if team is None:
+                try:
+                    self.team_state.remove_role_team(rid)
+                except Exception:
+                    pass
+                return None
+            if str(team.get('leader_id')) != rid:
+                return self._team_err(CMD_TEAM_APPLY_LEADER,
+                                       TEAM_ERR_NOT_LEADER)
+            if not self._team_online(tid):
+                return self._team_err(CMD_TEAM_APPLY_LEADER,
+                                       TEAM_ERR_OFFLINE)
+            if tid not in (team.get('member_map') or {}):
+                return self._team_err(CMD_TEAM_APPLY_LEADER,
+                                       TEAM_ERR_HAS_TEAM)
+            team['next_leader_id'] = tid
+            self.team_state.put_team(team)
+            self._team_emit(queue, tid, TEAM_PUSH_LEADER_REQUEST, [1])
+        own = self._team_flush(queue, rid) or ()
+        return (frame(amf3_encode([str(CMD_TEAM_APPLY_LEADER), [1]])),
+                *own)
+
+    def team_change_leader(self, msg):
+        """Command 52005: the nominee accepts/refuses; 52004 fans out."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        agree = bool(self.safe(msg, 1, False))
+        queue = []
+        with self.team_state.lock:
+            caller = self.team_state.get_role_team(rid)
+            team = self.team_state.get_team(caller.get('team_id')) \
+                if caller else None
+            if team is None:
+                result = [0, TEAM_ERR_EXPIRED]
+            elif not team.get('next_leader_id'):
+                result = [0, TEAM_ERR_EXPIRED]
+            elif str(team.get('next_leader_id')) != rid:
+                result = [0, TEAM_ERR_EXPIRED]
+            elif agree:
+                try:
+                    old_map = self._team_map_of(team.get('leader_id'))
+                except Exception:
+                    old_map = None
+                try:
+                    new_map = self._team_map_of(rid)
+                except Exception:
+                    new_map = None
+                if old_map is not None and new_map is not None \
+                        and old_map != new_map:
+                    if team.get('leader_map_id') is not None:
+                        self.team_state.remove_map_team(
+                            team.get('leader_map_id'), team.get('team_id'))
+                    self.team_state.add_map_team(new_map,
+                                                 team.get('team_id'))
+                    team['leader_map_id'] = new_map
+                team['leader_id'] = rid
+                team['next_leader_id'] = ''
+                self.team_state.put_team(team)
+                result = [1, dict(team.get('member_map') or {})]
+            else:
+                stored = self.team_state.get_role_team(rid)
+                name = (stored or {}).get('name')
+                if name is None:
+                    name = self._team_live_name(rid)
+                result = [2, [0, TEAM_ERR_REFUSED, name],
+                          str(team.get('leader_id'))]
+            code = result[0]
+            if code == 0:
+                reply = self._team_err(CMD_TEAM_APPLY_LEADER, result[1])
+            elif code == 1:
+                reply = None
+                for mid in team.get('member_map') or {}:
+                    self._team_emit(queue, mid, TEAM_PUSH_LEADER,
+                                     [1, rid])
+            else:
+                reply = None
+                self._team_emit(queue, result[2], TEAM_PUSH_LEADER,
+                                 result[1])
+        own = self._team_flush(queue, rid) or ()
+        if reply is not None:
+            return (reply, *own)
+        return tuple(own) if own else None
+
+    def team_exit(self, msg):
+        """Command 52006: leave, or kick when a target rides along."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        target = self.safe(msg, 1, None)
+        tid = self._team_canonical(str(target)) if target else None
+        queue = []
+        reply = None
+        with self.team_state.lock:
+            caller = self.team_state.get_role_team(rid)
+            if caller is None:
+                return None
+            team = self.team_state.get_team(caller.get('team_id'))
+            if team is None:
+                try:
+                    self.team_state.remove_role_team(rid)
+                except Exception:
+                    pass
+                return None
+            if not tid:
+                if str(team.get('leader_id')) == rid:
+                    self._team_leader_exit_locked(rid, team, queue)
+                self._team_exit_locked(rid, team, queue)
+            else:
+                if str(team.get('leader_id')) != rid:
+                    reply = self._team_err(CMD_TEAM_EXIT,
+                                            TEAM_ERR_NOT_LEADER)
+                elif tid == rid:
+                    reply = self._team_err(CMD_TEAM_EXIT,
+                                            TEAM_ERR_NOT_EXPEL)
+                elif tid not in (team.get('member_map') or {}):
+                    log.info('conn %d: team kick of non-member %r '
+                             '(ignored)', self.conn_id, tid)
+                else:
+                    self._team_exit_locked(tid, team, queue)
+        own = self._team_flush(queue, rid) or ()
+        if reply is not None:
+            return (reply, *own)
+        return tuple(own) if own else None
+
+    def team_chat(self, msg):
+        """Command 11002: fan a chat payload out to every member."""
+        role, rid = self._team_self()
+        if role is None or self.team_state is None:
+            return None
+        payload = self.safe(msg, 1, None)
+        if not isinstance(payload, list):
+            return None
+        queue = []
+        with self.team_state.lock:
+            entry = self.team_state.get_role_team(rid)
+            team = self.team_state.get_team(entry.get('team_id')) \
+                if entry else None
+            if team is None:
+                if entry is not None:
+                    try:
+                        self.team_state.remove_role_team(rid)
+                    except Exception:
+                        pass
+                return None
+            for mid in team.get('member_map') or {}:
+                self._team_emit(queue, mid, TEAM_PUSH_CHAT, payload)
+        return self._team_flush(queue, rid)
+
+    def _team_on_map(self, rid, map_id):
+        """changeStageTeam: track a member's map move, 52012 to members."""
+        if self.team_state is None:
+            return None
+        queue = []
+        with self.team_state.lock:
+            entry = self.team_state.get_role_team(str(rid))
+            if entry is None:
+                return None
+            team = self.team_state.get_team(entry.get('team_id'))
+            if team is None:
+                try:
+                    self.team_state.remove_role_team(rid)
+                except Exception:
+                    pass
+                return None
+            if str(team.get('leader_id')) == str(rid):
+                try:
+                    live_map = self._team_map_of(rid)
+                except Exception:
+                    live_map = None
+                if live_map is not None \
+                        and live_map != team.get('leader_map_id'):
+                    if team.get('leader_map_id') is not None:
+                        self.team_state.remove_map_team(
+                            team.get('leader_map_id'), team.get('team_id'))
+                    self.team_state.add_map_team(live_map,
+                                                 team.get('team_id'))
+                    team['leader_map_id'] = live_map
+                    self.team_state.put_team(team)
+            for mid in team.get('member_map') or {}:
+                self._team_emit(queue, mid, TEAM_PUSH_MAP,
+                                 [str(rid), str(map_id)])
+        return self._team_flush(queue, rid)
+
+    def _team_on_disconnect(self):
+        """role_logout: exit every owned role from its team (offline)."""
+        if self.team_state is None or self.stage_registry is None:
+            return []
+        try:
+            owned = list(self.stage_registry.roles_of(self))
+        except Exception:
+            owned = []
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '') or []
+        except Exception:
+            roles = []
+        for role in roles:
+            for key in (str((role or {}).get('id') or ''),
+                        str((role or {}).get('legacy_id') or '')):
+                if key and key not in owned:
+                    owned.append(key)
+        queue = []
+        for rid in owned:
+            if not rid:
+                continue
+            with self.team_state.lock:
+                for probe in (rid, self._team_canonical(rid)):
+                    entry = self.team_state.get_role_team(probe)
+                    if entry is None:
+                        continue
+                    team = self.team_state.get_team(
+                        entry.get('team_id'))
+                    if team is None:
+                        try:
+                            self.team_state.remove_role_team(probe)
+                        except Exception:
+                            pass
+                        continue
+                    if str(team.get('leader_id')) == str(probe):
+                        self._team_leader_exit_locked(probe, team, queue)
+                    self._team_exit_locked(probe, team, queue)
+                    break
+        flushed = self._team_flush(queue, None) or ()
+        return list(flushed)
 
     # Battle-formation (pozhen 48001-48011). Evidence: PoZhenAction (11
     # inbound; 48011 getGoods is a void grant), RolePozhenServiceImpl plus

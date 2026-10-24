@@ -210,6 +210,16 @@ CMD_ZUWU_QUIT = 108006
 CMD_ZUWU_BUY = 108009
 CMD_ZUWU_REFRESH = 108010
 CMD_ZUWU_BUYALL = 108011
+# Guild-dungeon inbound routes (GuildFuBenAction): 118001 panel,
+# 118002 chest claim, 118003 entry, 118004 quit, 118007 unseal.
+# 118006 doubles as the sealed-enter error and the stage-side enter
+# payload; bossDie has no inbound route (stage-side event).
+CMD_GUILDFUBEN_INFO = 118001
+CMD_GUILDFUBEN_REWARD = 118002
+CMD_GUILDFUBEN_ENTER = 118003
+CMD_GUILDFUBEN_QUIT = 118004
+CMD_GUILDFUBEN_STAGE_ENTER = 118006
+CMD_GUILDFUBEN_SEAL = 118007
 CMD_ROLE_SETTINGS = 13000
 CMD_SETTING_QUICKBAR = 13001
 CMD_SETTING_PANEL = 13002
@@ -624,6 +634,29 @@ GUILD_POS_ADMIN = 2
 GUILD_POS_MEMBER = 3
 GUILD_VICE_MAX = 1
 GUILD_ADMIN_MAX = 3
+# GuildFuBenErrorCode (jar clinit: values equal names) +
+# DuildFuBenconstants OPEN 1 / COLSE 0 + GeneralErrorCode bag room.
+GUILDFUBEN_OPEN = 1
+GUILDFUBEN_COLSE = 0
+GUILDFUBEN_ERR_NOT_MASTER = 118000
+GUILDFUBEN_ERR_SEALED_OPEN = 118001
+GUILDFUBEN_ERR_MONEY_SHORT = 118002
+GUILDFUBEN_ERR_NO_REWARD = 118003
+GUILDFUBEN_ERR_NOT_ELIGIBLE = 118004
+GUILDFUBEN_ERR_CLAIMED = 118005
+GUILDFUBEN_ERR_SEALED = 118006
+GUILDFUBEN_ERR_UNSEAL_NOTICE = 118008
+GUILDFUBEN_ERR_BOSS_NOTICE = 118009
+GUILDFUBEN_ERR_FINISH_NOTICE = 118010
+GUILDFUBEN_ERR_ENTER_NOTICE = 118011
+GUILDFUBEN_ERR_QUIT_NOTICE = 118012
+GUILDFUBEN_ERR_ENTER_COOLDOWN = 118013
+GUILDFUBEN_ERR_BAG_SHORT = 1006
+# Guild-dungeon notices: 11101 world frames ride the actor's own outbox
+# (the port's send2All); guild frames wrap 11003 inside 11130, exactly
+# sendGuildNotice's send2Many(memberIds, '11130', ['11003', [...]]).
+GUILDFUBEN_PUSH_GUILD = 11130
+GUILDFUBEN_PUSH_GUILD_INNER = 11003
 # Pozhen inbound routes (PoZhenAction): 48001 info, 48002 start,
 # 48003 saodang, 48004 refresh, 48005 move, 48006 buy count, 48007 sweep
 # end, 48008 quick sweep, 48009 recovery, 48010 stop, 48011 claim goods
@@ -1241,6 +1274,10 @@ class Session:
                  list_guild_applies=None, delete_guild_apply=None,
                  save_guild_gongxian=None, list_guild_gongxian=None,
                  delete_guild_gongxian=None,                 add_guild_info=None, list_guild_info=None,
+                 get_guild_fuben=None, list_guild_fubens=None,
+                 save_guild_fuben=None, delete_guild_fubens=None,
+                 get_guild_fuben_reward=None,
+                 save_guild_fuben_reward=None,
                  team_state=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
@@ -1520,6 +1557,15 @@ class Session:
             (lambda r: False)
         self.add_guild_info = add_guild_info or (lambda g, m: False)
         self.list_guild_info = list_guild_info or (lambda g: [])
+        self.get_guild_fuben = get_guild_fuben or (lambda g, m: None)
+        self.list_guild_fubens = list_guild_fubens or (lambda g: [])
+        self.save_guild_fuben = save_guild_fuben or (lambda row: False)
+        self.delete_guild_fubens = delete_guild_fubens or \
+            (lambda g: 0)
+        self.get_guild_fuben_reward = get_guild_fuben_reward or \
+            (lambda r: None)
+        self.save_guild_fuben_reward = save_guild_fuben_reward or \
+            (lambda row: False)
         self.buf = bytearray()
         self.frame_bucket = TokenBucket(FRAME_RATE_PER_S, FRAME_BURST)
         self.cipher = None
@@ -1617,6 +1663,12 @@ class Session:
         # Java holds this in the stage copy; the shared-world port keeps
         # it on the session and drops it on quit/expiry/disconnect.
         self._zuwu_attempt = {}
+        # Guild-dungeon presence: role ids inside (GuildFuBenUtil.fMap),
+        # re-entry stamps per dungeon (refMap), and live attempts
+        # role id -> {'guild': gid, 'mainid': id} (the stage copy side).
+        self._guildfuben_inside = set()
+        self._guildfuben_ref = {}
+        self._guildfuben_attempt = {}
         self._ops = []
 
     def feed(self, data: bytes):
@@ -2146,6 +2198,16 @@ class Session:
             return self.zuwu_refresh(msg)
         if cmd_num == CMD_ZUWU_BUYALL:
             return self.zuwu_buy_all()
+        if cmd_num == CMD_GUILDFUBEN_INFO:
+            return self.guildfuben_info()
+        if cmd_num == CMD_GUILDFUBEN_REWARD:
+            return self.guildfuben_reward(msg)
+        if cmd_num == CMD_GUILDFUBEN_ENTER:
+            return self.guildfuben_enter(msg)
+        if cmd_num == CMD_GUILDFUBEN_QUIT:
+            return self.guildfuben_quit(msg)
+        if cmd_num == CMD_GUILDFUBEN_SEAL:
+            return self.guildfuben_seal(msg)
         if cmd_num == CMD_BUFF:
             return self.buff_query(msg)
         if cmd_num == CMD_ZUOQI_HP:
@@ -4277,6 +4339,10 @@ class Session:
                 self._zuwu_on_enter(_wire_id(role))
             except Exception:
                 pass
+            try:
+                self._guildfuben_on_enter(_wire_id(role))
+            except Exception:
+                pass
             task_frames = []
             try:
                 task_frames = self._task_on_enter(_wire_id(role)) or []
@@ -5016,6 +5082,7 @@ class Session:
                                   or [])
                     frames.extend(self._juqing_kill_frames(actor, target))
                     frames.extend(self._zuwu_kill_frames(actor, target))
+                    frames.extend(self._guildfuben_kill_frames(actor, target))
                 if target['kind'] == 'role':
                     try:
                         self._juqing_death_progress(target.get('role'))
@@ -14846,6 +14913,10 @@ class Session:
             self.add_guild_info(gid, str(name))
         except Exception:
             pass
+        try:
+            self._guildfuben_on_guild_create(gid)
+        except Exception:
+            pass
         return self._guild_ok(CMD_GUILD_CREATE, self._guild_vo(guild))
 
     def guild_apply(self, msg):
@@ -15167,9 +15238,16 @@ class Session:
                 self.delete_guild_gongxian(rid)
             except Exception:
                 pass
+            try:
+                evicted = self._guildfuben_on_guild_leave(rid, gid)
+            except Exception:
+                evicted = None
             ok = self._guild_ok(CMD_GUILD_EXIT, 1)
-            return (ok,) + tuple(self._guild_broadcast(
+            out = (ok,) + tuple(self._guild_broadcast(
                 gid, GUILD_PUSH_EXIT, [str(rid), sid]))
+            if evicted is not None:
+                out = out + (evicted,)
+            return out
         if position == GUILD_POS_MASTER:
             try:
                 members = self.get_guild_members(gid) or []
@@ -15179,7 +15257,12 @@ class Session:
                 self.delete_guild(gid)
             except Exception:
                 return None
+            try:
+                evicted = self._guildfuben_on_guild_disband(gid, members)
+            except Exception:
+                evicted = []
             out = [self._guild_ok(CMD_GUILD_EXIT, 1)]
+            out.extend(evicted or [])
             for m in members:
                 out.extend(self._guild_push(m.get('role_id'),
                                             GUILD_PUSH_DISBAND, [1]))
@@ -15202,9 +15285,16 @@ class Session:
             self.delete_guild_gongxian(rid)
         except Exception:
             pass
-        ok = self._guild_ok(CMD_GUILD_EXIT, 1)
-        return (ok,) + tuple(self._guild_broadcast(
-            gid, GUILD_PUSH_EXIT, [str(rid)]))
+            try:
+                evicted = self._guildfuben_on_guild_leave(rid, gid)
+            except Exception:
+                evicted = None
+            ok = self._guild_ok(CMD_GUILD_EXIT, 1)
+            out = (ok,) + tuple(self._guild_broadcast(
+                gid, GUILD_PUSH_EXIT, [str(rid)]))
+            if evicted is not None:
+                out = out + (evicted,)
+            return out
 
     def _guild_kick(self, rid, caller, gid, target):
         try:
@@ -15239,10 +15329,17 @@ class Session:
                     self.save_guild(guild)
             except Exception:
                 pass
+        try:
+            evicted = self._guildfuben_on_guild_leave(target, gid)
+        except Exception:
+            evicted = None
         self._guild_push(target, GUILD_PUSH_EXIT, [target])
         ok = self._guild_ok(CMD_GUILD_EXIT, 1)
-        return (ok,) + tuple(self._guild_broadcast(
+        out = (ok,) + tuple(self._guild_broadcast(
             gid, GUILD_PUSH_EXIT, [target], exclude=target))
+        if evicted is not None:
+            out = out + (evicted,)
+        return out
 
     def guild_by_role(self):
         """Command 53006: caller's guild VO, null when guildless."""
@@ -15321,10 +15418,14 @@ class Session:
         except Exception:
             members = []
         try:
+            evicted = self._guildfuben_on_guild_disband(gid, members)
+        except Exception:
+            evicted = []
+        try:
             self.delete_guild(gid)
         except Exception:
             return None
-        frames = []
+        frames = list(evicted or [])
         for m in members:
             frames.extend(self._guild_push(m.get('role_id'),
                                           GUILD_PUSH_DISBAND, [1]))
@@ -27765,6 +27866,886 @@ class Session:
             return self._zuwu_kill_progress(killer_role, tpl.get('id'))
         except Exception:
             return []
+
+    @staticmethod
+    def _guildfuben_json(cell):
+        """JSON object cell -> dict ('{}' / junk -> {})."""
+        try:
+            data = json.loads(cell or '{}')
+        except (TypeError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _guildfuben_guild(self, rid):
+        """(guild_id, guild row) for a role, or (None, None)."""
+        try:
+            gid = self.get_guild_id(str(rid))
+        except Exception:
+            return None, None
+        if not gid:
+            return None, None
+        try:
+            guild = self.get_guild(str(gid))
+        except Exception:
+            guild = None
+        if not guild:
+            return None, None
+        return str(gid), guild
+
+    def _guildfuben_stage_id(self, gid, mainid, map_id):
+        """Per-guild copy id: GUILDFUBEN-<guild>-<main>-<map>."""
+        return 'GUILDFUBEN-%s-%s-%s' % (gid, mainid, map_id)
+
+    def _guildfuben_config(self, mainid):
+        """Normalized dungeon row, or None when unconfigured."""
+        if self.config is None:
+            return None
+        try:
+            return self.config.guildfuben_row(mainid)
+        except Exception:
+            return None
+
+    def _guildfuben_row_ensure(self, gid, mainid):
+        """Guild dungeon row, inserting the sealed shell when missing.
+
+        Mirrors insertGuildFuben (killboss/rewardList '{}', open from
+        the config) and stamps the insert time so the lazy weekly
+        reset below does not fire on a brand-new row.
+        """
+        cfg = self._guildfuben_config(mainid)
+        if cfg is None or not gid:
+            return None
+        try:
+            row = self.get_guild_fuben(str(gid), int(mainid))
+        except Exception:
+            row = None
+        if row is None:
+            try:
+                now = int(self._world_now_ms())
+            except Exception:
+                now = 0
+            row = {'id': 'guildfuben-%s-%s' % (gid, mainid),
+                   'guild_id': str(gid), 'mainid': int(mainid),
+                   'stageid': self._guildfuben_stage_id(
+                       gid, mainid, cfg.get('map')),
+                   'open': int(cfg.get('isopen') or 0),
+                   'reward_list': '{}', 'killboss': '{}',
+                   'log_update_time': now}
+            try:
+                self.save_guild_fuben(row)
+            except Exception:
+                return None
+        return self._guildfuben_maybe_reset(str(gid), mainid, row)
+
+    def _guildfuben_maybe_reset(self, gid, mainid, row=None):
+        """Lazy weekly reset: refreshAll clears killboss/rewardList/open.
+
+        Java runs this on the quartz schedule (plus a 10-minute
+        re-entry cooldown via setRefMap); the port checks the boundary
+        on access with isRefResh against the row stamp instead.
+        """
+        if self.config is None:
+            return row
+        if row is None:
+            try:
+                row = self.get_guild_fuben(str(gid), int(mainid))
+            except Exception:
+                row = None
+            if row is None:
+                return None
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            return row
+        try:
+            due = self.config.guildfuben_refresh_due(
+                mainid, row.get('log_update_time') or 0, now)
+        except Exception:
+            due = False
+        if not due:
+            return row
+        row = dict(row)
+        row['killboss'] = '{}'
+        row['reward_list'] = '{}'
+        row['open'] = GUILDFUBEN_COLSE
+        try:
+            self.save_guild_fuben(row)
+        except Exception:
+            pass
+        self._guildfuben_ref[str(mainid)] = now
+        return row
+
+    def _guildfuben_reward_ensure(self, rid):
+        """Personal claim row, creating the '{}' shell like online()."""
+        try:
+            reward = self.get_guild_fuben_reward(str(rid))
+        except Exception:
+            return None
+        if reward is None:
+            reward = {'user_role_id': str(rid), 'reward_history': '{}',
+                      'update_time': '{}'}
+            try:
+                self.save_guild_fuben_reward(reward)
+            except Exception:
+                return None
+        return reward
+
+    def _guildfuben_is_enter(self, mainid):
+        """Re-entry gate: GuildFuBenUtil.isEnter (10-minute cooldown)."""
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            return True
+        try:
+            stamped = int(self._guildfuben_ref.get(str(mainid), 0) or 0)
+        except (TypeError, ValueError):
+            return True
+        if not stamped:
+            return True
+        return now - stamped >= 600000
+
+    def _guildfuben_clear(self, rid):
+        """clearData: drop claim history past the weekly boundary.
+
+        Per stored mainid: when re-entry is allowed and isRefResh
+        fires on the last-claim stamp, the reward entry is pruned and
+        the stamp re-anchored, exactly the Java loop.
+        """
+        if self.config is None:
+            return
+        try:
+            reward = self.get_guild_fuben_reward(str(rid))
+        except Exception:
+            return
+        if reward is None:
+            return
+        update = self._guildfuben_json(reward.get('update_time'))
+        if not update:
+            return
+        history = self._guildfuben_json(reward.get('reward_history'))
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            return
+        dirty = False
+        for key in list(update.keys()):
+            try:
+                mainid = int(key)
+            except (TypeError, ValueError):
+                continue
+            if not self._guildfuben_is_enter(mainid):
+                continue
+            try:
+                stamped = int(update.get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+            try:
+                due = self.config.guildfuben_refresh_due(
+                    mainid, stamped, now)
+            except Exception:
+                due = False
+            if not due:
+                continue
+            history.pop(key, None)
+            update[key] = now
+            dirty = True
+        if not dirty:
+            return
+        reward = dict(reward)
+        reward['reward_history'] = json.dumps(history)
+        reward['update_time'] = json.dumps(update)
+        try:
+            self.save_guild_fuben_reward(reward)
+        except Exception:
+            pass
+
+    def _guildfuben_killobj(self, killboss):
+        """getKillObj: [[bossTpl, killerName, killMs], ...]."""
+        out = []
+        for boss_tpl, entry in (killboss or {}).items():
+            try:
+                killer, when = entry[1], entry[2]
+            except (TypeError, IndexError):
+                continue
+            out.append([str(boss_tpl), killer, when])
+        return out
+
+    def _guildfuben_reward_pairs(self, mainid, history):
+        """getReward: [[bossTpl, 1], ...] claimed under a mainid."""
+        try:
+            claimed = history.get(str(mainid))
+        except AttributeError:
+            return []
+        if not isinstance(claimed, list):
+            try:
+                claimed = json.loads(claimed)
+            except (TypeError, ValueError):
+                return []
+        if not isinstance(claimed, list):
+            return []
+        return [[str(boss_tpl), 1] for boss_tpl in claimed]
+
+    def _guildfuben_vo_row(self, row, reward, now_ms):
+        """One getInfo panel row: [main, kills, rewards, open, deadline]."""
+        history = self._guildfuben_json((reward or {}).get(
+            'reward_history'))
+        try:
+            deadline = self.config.guildfuben_deadline_ms(
+                row.get('mainid'), now_ms)
+        except Exception:
+            deadline = 0
+        return [int(row.get('mainid') or 0),
+                self._guildfuben_killobj(
+                    self._guildfuben_json(row.get('killboss'))),
+                self._guildfuben_reward_pairs(row.get('mainid'), history),
+                int(row.get('open') or 0), int(deadline or 0)]
+
+    def _guildfuben_notice_guild(self, gid, code, *args):
+        """sendGuildNotice: 11130 ['11003', [code, ...]] to members."""
+        payload = [str(GUILDFUBEN_PUSH_GUILD_INNER), [int(code),
+                                                     *args]]
+        try:
+            return self._guild_broadcast(
+                gid, GUILDFUBEN_PUSH_GUILD, payload) or []
+        except Exception:
+            return []
+
+    @staticmethod
+    def _guildfuben_notice_world(code, *args):
+        """sendWorldNotice: 11101 [code, [...]] rides the actor's outbox.
+
+        Java send2All reaches every connection; the port has no
+        cross-session broadcast bus, so world notices travel with the
+        triggering reply like every other 11101 notice in this file.
+        """
+        return frame(amf3_encode(
+            [str(CMD_NOTICE_ALL), [int(code), list(args)]]))
+
+    def _guildfuben_cancel(self, rid, mainid):
+        """Drop the expiry timer for a finished attempt."""
+        try:
+            self.stage_scheduler.cancel(
+                'guildfuben_expire:%s:%s' % (rid, mainid))
+        except (AttributeError, KeyError, ValueError):
+            pass
+
+    def _guildfuben_drop_attempt(self, rid, mainid=None):
+        """Release presence and the attempt; the 118004 leave notice."""
+        rid = str(rid)
+        attempt = self._guildfuben_attempt.get(rid)
+        if attempt is not None and (mainid is None or
+                                    str(attempt.get('mainid')) ==
+                                    str(mainid)):
+            self._guildfuben_attempt.pop(rid, None)
+            self._guildfuben_cancel(rid, attempt.get('mainid'))
+        else:
+            attempt = None
+        self._guildfuben_inside.discard(rid)
+        if attempt is None:
+            return None
+        return frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_QUIT), [int(attempt.get('mainid'))]]))
+
+    def guildfuben_info(self):
+        """Command 118001: dungeon panel; guildless roles get [].
+
+        getInfo clears expired claims, ensures a row per configured
+        dungeon (moduleInit parity) with the lazy weekly reset, and
+        answers one 5-slot VO row per dungeon.
+        """
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        gid, _guild = self._guildfuben_guild(rid)
+        if gid is None:
+            return frame(amf3_encode([str(CMD_GUILDFUBEN_INFO), []]))
+        self._guildfuben_clear(rid)
+        try:
+            reward = self.get_guild_fuben_reward(str(rid))
+        except Exception:
+            reward = None
+        rows = []
+        if self.config is not None:
+            try:
+                mains = sorted(self.config.guildfuben_table(),
+                               key=lambda m: int(m))
+            except (TypeError, ValueError):
+                mains = []
+            for mainid in mains:
+                try:
+                    row = self._guildfuben_row_ensure(gid, int(mainid))
+                except Exception:
+                    row = None
+                if row is not None:
+                    rows.append(row)
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            now = 0
+        return frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_INFO),
+             [self._guildfuben_vo_row(row, reward, now) for row in rows]]))
+
+    def guildfuben_reward(self, msg):
+        """Command 118002 [mainid, bossTpl]: claim a boss chest.
+
+        getMonsterReward gates in order: guildless silence, already
+        claimed 118005, boss unslain or unlisted 118003, role not in the
+        kill roster 118004, short bag room 1006. The claim stamps
+        setReward, grants the concatenated baoxiangjiangli items through
+        the shared bag router, and answers [1, mainid, bossTpl].
+        """
+        role, rid = self._guild_self()
+        if role is None or rid is None:
+            return None
+        data = self.safe(msg, 1, [])
+        try:
+            mainid = int(data[0])
+            boss_tpl = str(data[1])
+        except (TypeError, IndexError, ValueError):
+            return None
+        gid, _guild = self._guildfuben_guild(rid)
+        if gid is None:
+            return None
+        try:
+            reward = self._guildfuben_reward_ensure(rid)
+        except Exception:
+            reward = None
+        if reward is None:
+            return None
+        history = self._guildfuben_json(reward.get('reward_history'))
+        try:
+            claimed = history.get(str(mainid)) or []
+            already = str(boss_tpl) in [str(b) for b in claimed]
+        except (AttributeError, TypeError):
+            already = False
+        if already:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_REWARD), [0, GUILDFUBEN_ERR_CLAIMED]]))
+        row = self._guildfuben_row_ensure(gid, mainid)
+        if row is None:
+            return None
+        killboss = self._guildfuben_json(row.get('killboss'))
+        roster = self._guildfuben_json(row.get('reward_list'))
+        if str(boss_tpl) not in killboss or \
+                str(boss_tpl) not in roster:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_REWARD), [0, GUILDFUBEN_ERR_NO_REWARD]]))
+        try:
+            eligible = str(rid) in [str(r) for r in
+                                    roster.get(str(boss_tpl)) or []]
+        except (AttributeError, TypeError):
+            eligible = False
+        if not eligible:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_REWARD),
+                 [0, GUILDFUBEN_ERR_NOT_ELIGIBLE]]))
+        boss = None
+        if self.config is not None:
+            try:
+                boss = self.config.guildfuben_boss_row(boss_tpl, mainid)
+            except Exception:
+                boss = None
+        if not boss:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_REWARD), [0, GUILDFUBEN_ERR_NO_REWARD]]))
+        try:
+            import types as _types
+            fits = all(
+                self._pickup_fits(
+                    str(rid), _types.SimpleNamespace(goods_id=str(gid),
+                                                     count=int(count)))
+                for gid, count, _bind in (boss.get('items') or []))
+        except Exception:
+            fits = False
+        if not fits:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_REWARD),
+                 [0, GUILDFUBEN_ERR_BAG_SHORT]]))
+        history.setdefault(str(mainid), []).append(str(boss_tpl))
+        update = self._guildfuben_json(reward.get('update_time'))
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            now = 0
+        update[str(mainid)] = now
+        reward = dict(reward)
+        reward['reward_history'] = json.dumps(history)
+        reward['update_time'] = json.dumps(update)
+        try:
+            self.save_guild_fuben_reward(reward)
+        except Exception:
+            return None
+        self._zuwu_grant_models(
+            role, [list(item) for item in boss.get('items') or []])
+        return frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_REWARD), [1, int(mainid), str(boss_tpl)]]))
+
+    def guildfuben_enter(self, msg):
+        """Command 118003 [mainid]: enter the guild dungeon.
+
+        inFuBen gates in order: 10-minute re-entry cooldown 118013,
+        unknown dungeon silence, guildless empty reply, sealed dungeon
+        118006, already inside silence. Entry moves the role onto the
+        dungeon map (the shared-world SC:APPLY_COPY), records presence,
+        pushes the 118006 stage-enter payload with the kill log,
+        notifies the guild 118011, and answers [1].
+        """
+        role, rid = self._guild_self()
+        if role is None or rid is None:
+            return None
+        try:
+            mainid = int(self.safe(msg, 1, 0))
+        except (TypeError, ValueError):
+            return None
+        if not self._guildfuben_is_enter(mainid):
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_ENTER),
+                 [0, GUILDFUBEN_ERR_ENTER_COOLDOWN]]))
+        self._guildfuben_clear(rid)
+        cfg = self._guildfuben_config(mainid)
+        if cfg is None:
+            return None
+        gid, guild = self._guildfuben_guild(rid)
+        if gid is None:
+            return frame(amf3_encode([str(CMD_GUILDFUBEN_ENTER), []]))
+        row = self._guildfuben_row_ensure(gid, mainid)
+        if row is None:
+            return None
+        if int(row.get('open') or 0) != GUILDFUBEN_OPEN:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_ENTER),
+                 [0, GUILDFUBEN_ERR_SEALED]]))
+        if str(rid) in self._guildfuben_inside:
+            return None
+        self._guildfuben_inside.add(str(rid))
+        pos = cfg.get('pos') or []
+        try:
+            old_map = str(role.get('map_id') or '')
+        except AttributeError:
+            old_map = ''
+        frames = list(self.change_map(
+            rid, str(cfg.get('map') or old_map),
+            int(pos[0]) if len(pos) > 0 else 0,
+            int(pos[1]) if len(pos) > 1 else 0))
+        self._guildfuben_attempt[str(rid)] = {'guild': str(gid),
+                                              'mainid': int(mainid)}
+        try:
+            deadline = self.config.guildfuben_deadline_ms(mainid,
+                                                           int(self._world_now_ms()))
+        except Exception:
+            deadline = 0
+        if deadline > 0:
+            try:
+                self.schedule_stage(
+                    'guildfuben_expire:%s:%s' % (rid, mainid),
+                    '118003',
+                    lambda: self._guildfuben_expire(str(rid), int(mainid)),
+                    delay=max(int(deadline // 1000), 1), unit='SECONDS')
+            except Exception:
+                pass
+        killboss = self._guildfuben_json(row.get('killboss'))
+        frames.append(frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_STAGE_ENTER),
+             [int(mainid),
+              [[boss_tpl, list(entry)] for boss_tpl, entry in
+               killboss.items()], 0]])))
+        try:
+            member_name = str(role.get('name') or '')
+        except AttributeError:
+            member_name = ''
+        try:
+            guild_name = str(guild.get('name') or '')
+        except AttributeError:
+            guild_name = ''
+        frames.extend(self._guildfuben_notice_guild(
+            gid, GUILDFUBEN_ERR_ENTER_NOTICE, member_name,
+            str(cfg.get('name') or ''), guild_name))
+        frames.append(frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_ENTER), [1]])))
+        return tuple(frames)
+
+    def guildfuben_quit(self, msg):
+        """Command 118004 [mainid]: leave the guild dungeon, [1].
+
+        quitFuBen drops presence and the attempt (already-out is still
+        [1]); the role keeps its map -- the SC:APPLY_CHANG_MAP home
+        routing needs the stagecontroll history (not yet ported),
+        exactly the zuwu_quit deviation. Members hear the 118012
+        guild notice.
+        """
+        role, rid = self._guild_self()
+        if role is None or rid is None:
+            return None
+        try:
+            mainid = int(str(self.safe(msg, 1, '') or ''))
+        except (TypeError, ValueError):
+            return None
+        if str(rid) not in self._guildfuben_inside:
+            return frame(amf3_encode([str(CMD_GUILDFUBEN_QUIT), [1]]))
+        gid, _guild = self._guildfuben_guild(rid)
+        cfg = self._guildfuben_config(mainid)
+        self._guildfuben_drop_attempt(rid, mainid)
+        frames = []
+        if gid is not None and cfg is not None:
+            try:
+                member_name = str(role.get('name') or '')
+            except AttributeError:
+                member_name = ''
+            frames.extend(self._guildfuben_notice_guild(
+                gid, GUILDFUBEN_ERR_QUIT_NOTICE, member_name,
+                str(cfg.get('name') or '')))
+        frames.append(frame(amf3_encode([str(CMD_GUILDFUBEN_QUIT), [1]])))
+        return tuple(frames)
+
+    def guildfuben_seal(self, msg):
+        """Command 118007 [mainid]: the master unseals a dungeon.
+
+        relieveSeal gates in order: guildless silence, non-master
+        118000, short guild funds 118002, already open 118001. The
+        unseal debits guild money, opens the row, broadcasts the 118008
+        world notice, and answers [1, mainid].
+        """
+        _role, rid = self._guild_self()
+        if rid is None:
+            return None
+        try:
+            mainid = int(self.safe(msg, 1, 0))
+        except (TypeError, ValueError):
+            return None
+        gid, guild = self._guildfuben_guild(rid)
+        if gid is None:
+            return None
+        try:
+            master = str(guild.get('user_role_id') or '')
+        except AttributeError:
+            master = ''
+        if master != str(rid):
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_SEAL), [0, GUILDFUBEN_ERR_NOT_MASTER]]))
+        cfg = self._guildfuben_config(mainid)
+        if cfg is None:
+            return None
+        try:
+            funds = int(guild.get('money') or 0)
+        except (TypeError, ValueError):
+            funds = 0
+        try:
+            cost = int(cfg.get('consume') or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        if funds < cost:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_SEAL),
+                 [0, GUILDFUBEN_ERR_MONEY_SHORT]]))
+        row = self._guildfuben_row_ensure(gid, mainid)
+        if row is None:
+            return None
+        if int(row.get('open') or 0) == GUILDFUBEN_OPEN:
+            return frame(amf3_encode(
+                [str(CMD_GUILDFUBEN_SEAL),
+                 [0, GUILDFUBEN_ERR_SEALED_OPEN]]))
+        try:
+            guild = dict(guild)
+            guild['money'] = funds - cost
+            guild['update_time'] = int(self._world_now_ms())
+            self.save_guild(guild)
+        except Exception:
+            return None
+        row = dict(row)
+        row['open'] = GUILDFUBEN_OPEN
+        try:
+            self.save_guild_fuben(row)
+        except Exception:
+            pass
+        try:
+            guild_name = str(guild.get('name') or '')
+        except AttributeError:
+            guild_name = ''
+        return (frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_SEAL), [1, int(mainid)]])),
+            self._guildfuben_notice_world(GUILDFUBEN_ERR_UNSEAL_NOTICE,
+                                          guild_name,
+                                          str(cfg.get('name') or '')))
+
+    def _guildfuben_kill_frames(self, actor, dead_monster):
+        """Guild-dungeon kill fan-out for one dead monster.
+
+        Only the killer's live attempt counts: the template must be
+        wanted, the kill must land on the dungeon map while the
+        killer's guild still owns the attempt. Non-wanted kills record
+        nothing (addMonsterLog only tracks the killboss map Java's
+        client log reads).
+        """
+        killer_role = None
+        try:
+            if actor.get('kind') == 'role':
+                killer_role = actor.get('role')
+            elif actor.get('kind') == 'pet':
+                roles = self.get_roles(self.authed_user or '',
+                                       self.server_id or '')
+                killer_role = _find_role(roles, actor.get('owner'))
+        except Exception:
+            killer_role = None
+        if killer_role is None:
+            return []
+        tpl = (dead_monster.get('template') or {})
+        try:
+            return self._guildfuben_kill_progress(killer_role,
+                                                  tpl.get('id'))
+        except Exception:
+            return []
+
+    def _guildfuben_kill_progress(self, owner_role, monster_tpl_id):
+        """GuildFuBenStageCopy.killMonster for a shared-world boss kill.
+
+        bossDie credits the killer's guild: the kill entry, the full
+        member roster as the claim list, the 118009 world notice, and
+        the 118010 finish notice when the last wanted boss falls. The
+        stage copy's forced wave sequence is not ported -- every wanted
+        boss counts in any order, and the completion condition (every
+        wanted template slain) is unchanged.
+        """
+        try:
+            rid = _wire_id(owner_role)
+        except Exception:
+            return []
+        attempt = self._guildfuben_attempt.get(str(rid))
+        if attempt is None:
+            return []
+        try:
+            mainid = int(attempt.get('mainid'))
+        except (TypeError, ValueError):
+            return []
+        cfg = self._guildfuben_config(mainid)
+        if cfg is None:
+            return []
+        wanted = {str(mid) for mid, _n in cfg.get('need') or []}
+        boss_tpl = str(monster_tpl_id or '')
+        if boss_tpl not in wanted:
+            return []
+        try:
+            if str(owner_role.get('map_id') or '') != str(cfg.get('map')):
+                return []
+        except AttributeError:
+            return []
+        gid, guild = self._guildfuben_guild(rid)
+        if gid is None or str(gid) != str(attempt.get('guild')):
+            return []
+        boss = None
+        if self.config is not None:
+            try:
+                boss = self.config.guildfuben_boss_row(boss_tpl, mainid)
+            except Exception:
+                boss = None
+        row = self._guildfuben_row_ensure(gid, mainid)
+        if row is None:
+            return []
+        try:
+            now = int(self._world_now_ms())
+        except Exception:
+            now = 0
+        try:
+            killer_name = str(owner_role.get('name') or '')
+        except AttributeError:
+            killer_name = ''
+        killboss = self._guildfuben_json(row.get('killboss'))
+        killboss[str(boss_tpl)] = [str(rid), killer_name, now]
+        try:
+            members = self.get_guild_members(str(gid)) or []
+            roster = [str(m.get('role_id')) for m in members]
+        except Exception:
+            roster = []
+        rewards = self._guildfuben_json(row.get('reward_list'))
+        rewards[str(boss_tpl)] = roster
+        row = dict(row)
+        row['killboss'] = json.dumps(killboss)
+        row['reward_list'] = json.dumps(rewards)
+        try:
+            self.save_guild_fuben(row)
+        except Exception:
+            return []
+        try:
+            guild_name = str(guild.get('name') or '')
+        except AttributeError:
+            guild_name = ''
+        out = [self._guildfuben_notice_world(
+            GUILDFUBEN_ERR_BOSS_NOTICE, guild_name,
+            str((boss or {}).get('name') or boss_tpl))]
+        try:
+            need = [str(mid) for mid, _n in cfg.get('need') or []]
+            finished = need and str(boss_tpl) == need[-1]
+        except (TypeError, IndexError):
+            finished = False
+        if finished:
+            out.append(self._guildfuben_notice_world(
+                GUILDFUBEN_ERR_FINISH_NOTICE, guild_name,
+                str(cfg.get('name') or '')))
+        return out
+
+    def _guildfuben_expire(self, rid, mainid):
+        """Copy-expiry forced leave: drop the attempt, push 118004."""
+        try:
+            return self._guildfuben_drop_attempt(rid, mainid)
+        except Exception:
+            return None
+
+    def _guildfuben_on_enter(self, rid):
+        """handleLogin: ensure the claim row and prune expired claims."""
+        try:
+            if self._guildfuben_reward_ensure(rid) is None:
+                return
+        except Exception:
+            return
+        try:
+            self._guildfuben_clear(rid)
+        except Exception:
+            pass
+
+    def _guildfuben_on_disconnect(self):
+        """role_logout/loginout: release presence and every attempt."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            roles = []
+        for role in roles or []:
+            try:
+                rid = str(_wire_id(role))
+            except Exception:
+                continue
+            if not rid:
+                continue
+            self._guildfuben_inside.discard(rid)
+            attempt = self._guildfuben_attempt.pop(rid, None)
+            if attempt is not None:
+                self._guildfuben_cancel(rid, attempt.get('mainid'))
+
+    def _guildfuben_on_guild_create(self, gid):
+        """listenGuildCreate/moduleInit: one sealed row per dungeon."""
+        if self.config is None or not gid:
+            return
+        try:
+            mains = list(self.config.guildfuben_table())
+        except Exception:
+            return
+        for mainid in mains:
+            try:
+                self._guildfuben_row_ensure(str(gid), int(mainid))
+            except Exception:
+                continue
+
+    def _guildfuben_evict(self, rid, mainid):
+        """Drop one role from a dungeon, cross-session when needed.
+
+        The attempt lives on the member's own session; when the evict
+        runs elsewhere the drop is queued on that session's tick (ops
+        ride the tick like peer pushes) so the 118004 notice is never
+        lost. Offline roles have no session, like Java's isOnline gate.
+        """
+        sess = None
+        try:
+            sess = self._team_session_of(str(rid))
+        except Exception:
+            sess = None
+        out = frame(amf3_encode(
+            [str(CMD_GUILDFUBEN_QUIT), [int(mainid)]]))
+        if sess is None:
+            try:
+                self._guildfuben_drop_attempt(str(rid), mainid)
+            except Exception:
+                pass
+            return None
+        if sess is self:
+            try:
+                self._guildfuben_drop_attempt(str(rid), mainid)
+            except Exception:
+                pass
+            return out
+        # The drop runs on the member session's tick and its return
+        # rides that tick exactly once (no separate push needed).
+        try:
+            sess.push_op(
+                lambda s=sess, r=str(rid), m=int(mainid):
+                s._guildfuben_drop_attempt(r, m))
+        except Exception:
+            pass
+        return None
+
+    def _guildfuben_on_guild_leave(self, rid, gid):
+        """listenGuildExit: an online leaver is kicked from the copy.
+
+        The attempt lives on the leaver's own session, so a kick from
+        another session reads it there and evicts cross-session; the
+        evict still mutates only through that session's tick.
+        """
+        if not rid or not gid:
+            return None
+        try:
+            sess = self._team_session_of(str(rid))
+        except Exception:
+            sess = None
+        holder = sess if sess is not None else self
+        try:
+            attempt = holder._guildfuben_attempt.get(str(rid))
+        except Exception:
+            attempt = None
+        if attempt is None or \
+                str(attempt.get('guild')) != str(gid):
+            if holder is self and \
+                    str(rid) in self._guildfuben_inside:
+                try:
+                    self._guildfuben_drop_attempt(str(rid))
+                except Exception:
+                    pass
+            return None
+        try:
+            mainid = int(attempt.get('mainid'))
+        except (TypeError, ValueError):
+            return None
+        return self._guildfuben_evict(str(rid), mainid)
+
+    def _guildfuben_on_guild_disband(self, gid, members):
+        """listenGuildResolving: evict everyone and delete the rows.
+
+        Same-session evict frames are returned for the caller to send;
+        cross-session evicts ride the members' own ticks.
+        """
+        own = []
+        if not gid:
+            return own
+        try:
+            rows = self.list_guild_fubens(str(gid)) or []
+            mainids = [int(r.get('mainid')) for r in rows]
+        except Exception:
+            mainids = []
+        if not mainids and self.config is not None:
+            try:
+                mainids = [int(m) for m in
+                           self.config.guildfuben_table()]
+            except Exception:
+                mainids = []
+        seen = set()
+        for member in members or []:
+            try:
+                mid = str((member or {}).get('role_id'))
+            except AttributeError:
+                continue
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+            for mainid in mainids:
+                try:
+                    out = self._guildfuben_evict(mid, mainid)
+                except Exception:
+                    continue
+                if out is not None:
+                    own.append(out)
+        try:
+            self.delete_guild_fubens(str(gid))
+        except Exception:
+            pass
+        return own
 
     def _zuwu_kill_progress(self, owner_role, monster_tpl_id):
         """ZuWuStageCopy.killMonster for shared-world dungeon kills.

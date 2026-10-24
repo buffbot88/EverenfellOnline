@@ -741,6 +741,28 @@ CREATE TABLE IF NOT EXISTS guild_info (
   msg TEXT DEFAULT '',
   create_time INTEGER DEFAULT 0
 );
+-- Guild dungeon (GuildFuben entity: one row per guild per dungeon
+-- mainid; killboss/reward_list are JSON maps keyed by boss template id).
+CREATE TABLE IF NOT EXISTS guild_fuben (
+  id TEXT PRIMARY KEY,
+  guild_id TEXT NOT NULL,
+  mainid INTEGER NOT NULL,
+  stageid TEXT DEFAULT '',
+  open INTEGER DEFAULT 0,
+  reward_list TEXT DEFAULT '{}',
+  killboss TEXT DEFAULT '{}',
+  log_update_time INTEGER DEFAULT 0,
+  UNIQUE(guild_id, mainid)
+);
+-- Guild dungeon personal claims (GuildFubenReward entity: one row per
+-- role; reward_history maps mainid to the claimed boss template list,
+-- update_time maps mainid to the last claim timestamp).
+CREATE TABLE IF NOT EXISTS guild_fuben_reward (
+  user_role_id TEXT PRIMARY KEY,
+  reward_history TEXT DEFAULT '{}',
+  update_time TEXT DEFAULT '{}',
+  log_update_time INTEGER DEFAULT 0
+);
 -- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
 -- lists back to the client; the id is the legacy row guid).
 CREATE TABLE IF NOT EXISTS role_bag_dummy (
@@ -3321,6 +3343,80 @@ class Store:
                 ' WHERE guild_id=? ORDER BY rowid',
                 (str(guild_id),)).fetchall()
             return [dict(row) for row in rows]
+
+    def get_guild_fuben(self, guild_id, mainid):
+        """Guild dungeon row for a guild and dungeon, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT id, guild_id, mainid, stageid, open, reward_list,'
+                ' killboss, log_update_time FROM guild_fuben'
+                ' WHERE guild_id=? AND mainid=?',
+                (str(guild_id), int(mainid))).fetchone()
+            return dict(row) if row else None
+
+    def list_guild_fubens(self, guild_id):
+        """Guild dungeon rows for a guild in mainid order."""
+        with self.lock:
+            rows = self.db.execute(
+                'SELECT id, guild_id, mainid, stageid, open, reward_list,'
+                ' killboss, log_update_time FROM guild_fuben'
+                ' WHERE guild_id=? ORDER BY mainid',
+                (str(guild_id),)).fetchall()
+            return [dict(row) for row in rows]
+
+    def save_guild_fuben(self, row):
+        """Upsert a guild dungeon row dict keyed by (guild_id, mainid)."""
+        cols = ('id', 'guild_id', 'mainid', 'stageid', 'open',
+                'reward_list', 'killboss', 'log_update_time')
+        with self.lock:
+            values = [row.get(c) for c in cols]
+            if values[7] in (None, 0, ''):
+                values[7] = int(time.time() * 1000)
+            self.db.execute(
+                f'INSERT INTO guild_fuben({",".join(cols)})'
+                f' VALUES({",".join(["?"] * len(cols))})'
+                ' ON CONFLICT(guild_id, mainid) DO UPDATE SET '
+                + ', '.join(f'{c}=excluded.{c}' for c in cols
+                            if c not in ('guild_id', 'mainid')),
+                values)
+            self.db.commit()
+            return True
+
+    def delete_guild_fubens(self, guild_id):
+        """Drop every guild dungeon row of a guild; row count."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM guild_fuben WHERE guild_id=?',
+                (str(guild_id),))
+            self.db.commit()
+            return cur.rowcount
+
+    def get_guild_fuben_reward(self, role_id):
+        """Guild dungeon claim row for a role, or None."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT user_role_id, reward_history, update_time,'
+                ' log_update_time FROM guild_fuben_reward'
+                ' WHERE user_role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_guild_fuben_reward(self, row):
+        """Upsert a guild dungeon claim row dict keyed by role."""
+        cols = ('user_role_id', 'reward_history', 'update_time',
+                'log_update_time')
+        with self.lock:
+            values = [row.get(c) for c in cols]
+            if values[3] in (None, 0, ''):
+                values[3] = int(time.time() * 1000)
+            self.db.execute(
+                f'INSERT INTO guild_fuben_reward({",".join(cols)})'
+                f' VALUES({",".join(["?"] * len(cols))})'
+                ' ON CONFLICT(user_role_id) DO UPDATE SET '
+                + ', '.join(f'{c}=excluded.{c}' for c in cols[1:]),
+                values)
+            self.db.commit()
+            return True
 
     def get_role_skillbook_slots(self, role_id, min_slot=10001,
                                  max_slot=10056):

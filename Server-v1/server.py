@@ -230,6 +230,12 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             delete_guild_gongxian=self.server.delete_guild_gongxian,
             add_guild_info=self.server.add_guild_info,
             list_guild_info=self.server.list_guild_info,
+            get_guild_fuben=self.server.get_guild_fuben,
+            list_guild_fubens=self.server.list_guild_fubens,
+            save_guild_fuben=self.server.save_guild_fuben,
+            delete_guild_fubens=self.server.delete_guild_fubens,
+            get_guild_fuben_reward=self.server.get_guild_fuben_reward,
+            save_guild_fuben_reward=self.server.save_guild_fuben_reward,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
             config=self.server.game_config,
@@ -278,14 +284,18 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 sess._zuwu_on_disconnect()
             except Exception:
                 pass
-            try:
-                sess._huodong_on_disconnect()
-            except Exception:
-                pass
-            try:
-                sess._team_on_disconnect()
-            except Exception:
-                pass
+        try:
+            sess._huodong_on_disconnect()
+        except Exception:
+            pass
+        try:
+            sess._guildfuben_on_disconnect()
+        except Exception:
+            pass
+        try:
+            sess._team_on_disconnect()
+        except Exception:
+            pass
             with self.server.sessions_lock:
                 self.server.sessions.pop(sess, None)
             self.server.stage_registry.unregister_session(sess)
@@ -524,6 +534,12 @@ def main():
     tcpd.delete_guild_gongxian = store.delete_guild_gongxian
     tcpd.add_guild_info = store.add_guild_info
     tcpd.list_guild_info = store.list_guild_info
+    tcpd.get_guild_fuben = store.get_guild_fuben
+    tcpd.list_guild_fubens = store.list_guild_fubens
+    tcpd.save_guild_fuben = store.save_guild_fuben
+    tcpd.delete_guild_fubens = store.delete_guild_fubens
+    tcpd.get_guild_fuben_reward = store.get_guild_fuben_reward
+    tcpd.save_guild_fuben_reward = store.save_guild_fuben_reward
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset
     tcpd.tz_id = a.tz_id

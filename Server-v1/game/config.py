@@ -1136,6 +1136,8 @@ class GameConfig:
         self._fujia_random = None
         self._mall = None
         self._zuwu = None
+        self._guildfuben = None
+        self._guildfuben_boss = None
         self._xishu = None
         self._dazuo = None
         self._vip = None
@@ -4266,6 +4268,167 @@ class GameConfig:
             'boss': str(row.get('boss') or ''),
             'amount': config_int(row.get('amount')),
         }
+
+    def guildfuben_table(self):
+        """bangpaifuben.jat rows keyed by mainid (str); empty when absent."""
+        if getattr(self, '_guildfuben', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'bangpaifuben.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad guildfuben table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if isinstance(row, dict) and row.get('mainid') is not None:
+                    table[str(row['mainid'])] = row
+            self._guildfuben = table
+        return self._guildfuben
+
+    def guildfuben_row(self, dungeon_id):
+        """Normalized guild-dungeon row, or None when unconfigured.
+
+        Key mapping from BangPaiFuBenConfigExportServiceImpl bytecode:
+        initial(x_y)->entry position, openrenwu->display level,
+        money->unseal guild-money cost, isopen->sealed flag,
+        mainname->name, complete(mon:count;)->ordered need-kill map,
+        guaiwuGPS(mon:x:y;)->spawn points, time1(days)->copy lifetime
+        in minutes (time1*24*60), time2(w|HH:MM)->weekly reset slot.
+        """
+        row = self.guildfuben_table().get(str(dungeon_id))
+        if row is None:
+            return None
+        try:
+            pos = [int(v) for v in str(row.get('initial') or '').split('_')]
+        except (TypeError, ValueError):
+            pos = []
+        spawns = []
+        for part in str(row.get('guaiwuGPS') or '').split(';'):
+            segs = part.split(':')
+            if len(segs) < 3 or not segs[0].strip():
+                continue
+            try:
+                spawns.append([segs[0].strip(), int(segs[1]),
+                               int(segs[2])])
+            except (TypeError, ValueError):
+                continue
+        try:
+            days = int(row.get('time1') or 0)
+        except (TypeError, ValueError):
+            days = 0
+        return {
+            'id': str(row.get('mainid')),
+            'map': str(row.get('map') or ''),
+            'pos': pos[:2] if len(pos) >= 2 else [],
+            'level': config_int(row.get('openrenwu')),
+            'consume': config_int(row.get('money')),
+            'isopen': config_int(row.get('isopen')),
+            'name': str(row.get('mainname') or ''),
+            'need': self._juqing_pairs(row.get('complete')),
+            'spawns': spawns,
+            'expire_min': days * 24 * 60,
+            'shijian': str(row.get('time2') or ''),
+        }
+
+    def guildfuben_boss_table(self):
+        """bangpaifubenboss.jat rows keyed by id-guanka; empty when absent."""
+        if getattr(self, '_guildfuben_boss', None) is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'bangpaifubenboss.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad guildfuben boss table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                table['%s-%s' % (row.get('id'), row.get('guanka'))] = row
+            self._guildfuben_boss = table
+        return self._guildfuben_boss
+
+    def guildfuben_boss_row(self, boss_id, num):
+        """Normalized boss reward row, or None when unconfigured.
+
+        Items concatenate baoxiangjiangli1..4 (the boss key is
+        id-guanka, matching getKey); names come from bossname.
+        """
+        row = self.guildfuben_boss_table().get(
+            '%s-%s' % (boss_id, num))
+        if row is None:
+            return None
+        items = []
+        for idx in range(1, 5):
+            items.extend(GameConfig.parse_goods_string(
+                row.get('baoxiangjiangli%d' % idx)))
+        return {
+            'key': '%s-%s' % (boss_id, num),
+            'name': str(row.get('bossname') or ''),
+            'items': [[gid, count, bind] for gid, count, bind in items],
+        }
+
+    @staticmethod
+    def _guildfuben_slot_ms(shijian, after_ms):
+        """Next weekly reset instant after a timestamp (getT port).
+
+        shijian is 'weekday|HH:MM' (Monday 1..Sunday 7); the slot is
+        the next strictly-future occurrence, like Calendar.set on
+        DAY_OF_WEEK. 0 when unparseable.
+        """
+        try:
+            week, _, clock = str(shijian or '').partition('|')
+            hour_s, _, min_s = str(clock or '').partition(':')
+            target, hour, minute = int(week), int(hour_s), int(min_s)
+        except (TypeError, ValueError):
+            return 0
+        if not 1 <= target <= 7:
+            return 0
+        import datetime as _dt
+        base = _dt.datetime.fromtimestamp(after_ms / 1000.0)
+        try:
+            slot = base.replace(hour=hour, minute=minute, second=0,
+                                microsecond=0)
+        except ValueError:
+            return 0
+        ahead = (target - base.isoweekday()) % 7
+        slot = slot + _dt.timedelta(days=ahead)
+        try:
+            slot_ms = int(slot.timestamp() * 1000)
+        except (OSError, OverflowError, ValueError):
+            # Near-epoch slots are unrepresentable on some platforms;
+            # any weekly boundary since such a stamp has surely passed.
+            return -1
+        if slot_ms <= int(after_ms):
+            slot = slot + _dt.timedelta(days=7)
+            try:
+                slot_ms = int(slot.timestamp() * 1000)
+            except (OSError, OverflowError, ValueError):
+                return -1
+        return slot_ms
+
+    def guildfuben_deadline_ms(self, dungeon_id, now_ms):
+        """Millis until the dungeon's next weekly reset (getDeadline)."""
+        row = self.guildfuben_row(dungeon_id)
+        if row is None:
+            return 0
+        slot = self._guildfuben_slot_ms(row.get('shijian'), now_ms)
+        if slot <= int(now_ms):
+            return 0
+        return slot - int(now_ms)
+
+    def guildfuben_refresh_due(self, dungeon_id, stamp_ms, now_ms):
+        """A reset boundary passed since the stamp (isRefResh port)."""
+        row = self.guildfuben_row(dungeon_id)
+        if row is None:
+            return False
+        slot = self._guildfuben_slot_ms(row.get('shijian'), stamp_ms)
+        if slot == 0:
+            return False
+        if slot < 0:
+            return True
+        return int(now_ms) > slot
 
     def zuwu_goumai_table(self):
         """ZuWuCiShuGouMai.jat {buyIndex: yuanbao}; empty when absent."""

@@ -220,6 +220,18 @@ CMD_GUILDFUBEN_ENTER = 118003
 CMD_GUILDFUBEN_QUIT = 118004
 CMD_GUILDFUBEN_STAGE_ENTER = 118006
 CMD_GUILDFUBEN_SEAL = 118007
+# Marriage inbound routes (MarryAction): 135000 panel, 135001 proposal,
+# 135002 answer, 135004 divorce, 135005 spouse teleport, 135006 ring
+# strengthen. 135003 carries only the proposal result (push-only) and
+# 11131 the wedding notice (broadcast); neither has an inbound route.
+CMD_MARRY_INFO = 135000
+CMD_MARRY_QIUHUN = 135001
+CMD_MARRY_ACCEPT = 135002
+CMD_MARRY_RESULT = 135003
+CMD_MARRY_LIHUN = 135004
+CMD_MARRY_CHUANSONG = 135005
+CMD_MARRY_QIANGHUA = 135006
+CMD_MARRY_WEDDING = 11131
 CMD_ROLE_SETTINGS = 13000
 CMD_SETTING_QUICKBAR = 13001
 CMD_SETTING_PANEL = 13002
@@ -657,6 +669,20 @@ GUILDFUBEN_ERR_BAG_SHORT = 1006
 # sendGuildNotice's send2Many(memberIds, '11130', ['11003', [...]]).
 GUILDFUBEN_PUSH_GUILD = 11130
 GUILDFUBEN_PUSH_GUILD_INNER = 11003
+# MarryErrorCode (jar clinit) + GeneralErrorCode money/goods cells.
+MARRY_ERR_HAS_MARRY = 135001
+MARRY_ERR_HUNJIE_NOT_EXIST = 135002
+MARRY_ERR_NOT_ON_LINE = 135003
+MARRY_ERR_NOT_MARRY = 135004
+MARRY_ERR_MANOR_ING = 135006
+MARRY_ERR_HAS_DEAD = 135007
+MARRY_ERR_IN_COPY = 135008
+MARRY_ERR_LEVEL_MAX = 135009
+MARRY_ERR_QINGMIDU_NOT_ENOUGH = 135010
+MARRY_ERR_CHUANGSONG_CD = 135011
+MARRY_ERR_LEVEL_NOT_ENOUGH = 1000
+MARRY_ERR_YB_NOT_ENOUGH = 1002
+MARRY_ERR_GOODS_NOT_ENOUGH = 1005
 # Pozhen inbound routes (PoZhenAction): 48001 info, 48002 start,
 # 48003 saodang, 48004 refresh, 48005 move, 48006 buy count, 48007 sweep
 # end, 48008 quick sweep, 48009 recovery, 48010 stop, 48011 claim goods
@@ -1278,6 +1304,9 @@ class Session:
                  save_guild_fuben=None, delete_guild_fubens=None,
                  get_guild_fuben_reward=None,
                  save_guild_fuben_reward=None,
+                 get_role_marry=None, save_role_marry=None,
+                 marry_tx=None, marry_spend_yb=None,
+                 count_role_marry=None,
                  team_state=None,
                   config=None, stage_registry=None):
         self.conn_id = conn_id
@@ -1566,6 +1595,11 @@ class Session:
             (lambda r: None)
         self.save_guild_fuben_reward = save_guild_fuben_reward or \
             (lambda row: False)
+        self.get_role_marry = get_role_marry or (lambda r: None)
+        self.save_role_marry = save_role_marry or (lambda row: False)
+        self.marry_tx = marry_tx or (lambda a, b: False)
+        self.marry_spend_yb = marry_spend_yb or (lambda r, c: False)
+        self.count_role_marry = count_role_marry or (lambda: 0)
         self.buf = bytearray()
         self.frame_bucket = TokenBucket(FRAME_RATE_PER_S, FRAME_BURST)
         self.cipher = None
@@ -1669,6 +1703,12 @@ class Session:
         self._guildfuben_inside = set()
         self._guildfuben_ref = {}
         self._guildfuben_attempt = {}
+        # Marriage: pending proposals by target rid (QIUHUN_LIST_KEY +
+        # target, DataContainer region; per-session like the attempt maps,
+        # so proposals do not survive the target's reconnect) and the
+        # daily intimacy pairs rid -> spouse (SCHEDULE_QINGMIDU_KEY).
+        self._marry_pending = {}
+        self._marry_pairs = {}
         self._ops = []
 
     def feed(self, data: bytes):
@@ -2208,6 +2248,18 @@ class Session:
             return self.guildfuben_quit(msg)
         if cmd_num == CMD_GUILDFUBEN_SEAL:
             return self.guildfuben_seal(msg)
+        if cmd_num == CMD_MARRY_INFO:
+            return self.marry_info()
+        if cmd_num == CMD_MARRY_QIUHUN:
+            return self.marry_qiuhun(msg)
+        if cmd_num == CMD_MARRY_ACCEPT:
+            return self.marry_accept(msg)
+        if cmd_num == CMD_MARRY_LIHUN:
+            return self.marry_lihun()
+        if cmd_num == CMD_MARRY_CHUANSONG:
+            return self.marry_chuansong()
+        if cmd_num == CMD_MARRY_QIANGHUA:
+            return self.marry_qianghua()
         if cmd_num == CMD_BUFF:
             return self.buff_query(msg)
         if cmd_num == CMD_ZUOQI_HP:
@@ -4341,6 +4393,10 @@ class Session:
                 pass
             try:
                 self._guildfuben_on_enter(_wire_id(role))
+            except Exception:
+                pass
+            try:
+                self._marry_on_enter(str((role or {}).get('id')))
             except Exception:
                 pass
             task_frames = []
@@ -28746,6 +28802,857 @@ class Session:
         except Exception:
             pass
         return own
+
+    # -- Marriage (MarryServiceImpl) ------------------------------------------
+    @staticmethod
+    def _marry_err(cmd, code):
+        """MarryErrorCodeOutput shape: [0, code] under the command id."""
+        return frame(amf3_encode([str(cmd), [0, int(code)]]))
+
+    def _marry_push(self, cid, cmd, payload):
+        """BusMsgQueue route to one role: live sessions get frames."""
+        if self.stage_registry is None:
+            return []
+        try:
+            sess = self.stage_registry.session_of(str(cid))
+        except Exception:
+            sess = None
+        if sess is None:
+            try:
+                sess = self.stage_registry.presence_of(str(cid))
+            except Exception:
+                sess = None
+        if sess is None:
+            return []
+        out = frame(amf3_encode([str(cmd), payload]))
+        if sess is self:
+            return [out]
+        try:
+            sess.push_frames([out])
+        except Exception:
+            pass
+        return []
+
+    def _marry_online(self, cid):
+        """Public online state: placed session or login presence."""
+        if self.stage_registry is None:
+            return False
+        try:
+            if self.stage_registry.session_of(str(cid)) is not None:
+                return True
+            return self.stage_registry.presence_of(str(cid)) is not None
+        except Exception:
+            return False
+
+    def _marry_self(self):
+        """(role, rid) of the caller's first role, or (None, None)."""
+        try:
+            role, rid = self._task_role()
+        except Exception:
+            return None, None
+        if role is None or rid is None:
+            return None, None
+        return role, str(rid)
+
+    def _marry_row(self, rid):
+        """RoleMarry row for a role, or None."""
+        try:
+            return self.get_role_marry(str(rid))
+        except Exception:
+            return None
+
+    def _marry_name(self, rid):
+        """Display name for a role id (own rows first, then the brief)."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '') or []
+        except Exception:
+            roles = []
+        for role in roles:
+            try:
+                if str((role or {}).get('id')) == str(rid):
+                    return str((role or {}).get('name') or '')
+            except AttributeError:
+                continue
+        try:
+            brief = self.get_role_brief(str(rid)) or {}
+        except Exception:
+            brief = {}
+        try:
+            return str(brief.get('name') or '')
+        except AttributeError:
+            return ''
+
+    def _marry_guild_name(self, rid):
+        """Proposer's guild name, or None (the card's null guild slot)."""
+        try:
+            gid = self.get_guild_id(str(rid))
+        except Exception:
+            return None
+        if not gid:
+            return None
+        try:
+            guild = self.get_guild(str(gid)) or {}
+        except Exception:
+            return None
+        try:
+            return str(guild.get('name') or '') or None
+        except AttributeError:
+            return None
+
+    def _marry_resolve(self, name):
+        """Role id for an exact role name (getRoleId), or None."""
+        if not name:
+            return None
+        try:
+            roles = self.find_roles_by_name(str(name)) or []
+        except Exception:
+            return None
+        for role in roles:
+            try:
+                if str((role or {}).get('name')) == str(name):
+                    return str((role or {}).get('id'))
+            except AttributeError:
+                continue
+        return None
+
+    def _marry_info_payload(self, rid, row, spouse_row):
+        """getInfo 9-slot panel for a married role."""
+        from . import marry as marry_lib
+        row = dict(row or {})
+        spouse_row = dict(spouse_row or {})
+        spouse = str(row.get('marry_user_role_id') or '')
+        try:
+            count = int(self.count_role_marry())
+        except Exception:
+            count = 0
+        try:
+            online = self._marry_online(spouse)
+        except Exception:
+            online = False
+        stamp = 0
+        if online:
+            try:
+                anchor = (self.get_role_online_reward(spouse) or {})
+                stamp = int(anchor.get('role_online_time') or 0)
+            except Exception:
+                stamp = 0
+        try:
+            create_ms = int(row.get('create_time') or 0)
+        except (TypeError, ValueError):
+            create_ms = 0
+        try:
+            fly_ms = int(row.get('chuansong_time') or 0)
+        except (TypeError, ValueError):
+            fly_ms = 0
+        try:
+            divorced = 1 if int(row.get('lihun') or 0) else 0
+        except (TypeError, ValueError):
+            divorced = 0
+        return [fly_ms, create_ms, spouse,
+                self._marry_name(spouse),
+                marry_lib.ring_formart(spouse, spouse_row),
+                count,
+                marry_lib.ring_formart(str(rid), row),
+                divorced, stamp]
+
+    def marry_info(self):
+        """Command 135000: the marriage panel, silent when never married."""
+        _role, rid = self._marry_self()
+        if rid is None:
+            return None
+        row = self._marry_row(rid)
+        if not row:
+            return None
+        spouse = str(row.get('marry_user_role_id') or '')
+        payload = self._marry_info_payload(
+            rid, row, self._marry_row(spouse))
+        return frame(amf3_encode([str(CMD_MARRY_INFO), payload]))
+
+    def _marry_take_ring(self, rid, guid, take=1):
+        """Consume take units of one bag row; False when missing/short."""
+        try:
+            row = self.get_role_bag_slot_by_bag_id(str(rid), str(guid))
+        except Exception:
+            return False
+        if not row:
+            return False
+        try:
+            have = int(row.get('count') or 0)
+        except (TypeError, ValueError):
+            return False
+        if have < take:
+            return False
+        try:
+            if have > take:
+                self.update_role_bag_slot(str(rid), row.get('slot_num'),
+                                          count=have - take)
+            else:
+                self.delete_role_bag_slot(str(rid), row.get('slot_num'))
+        except Exception:
+            return False
+        return True
+
+    def marry_qiuhun(self, msg):
+        """Command 135001 [name, ringGuid, text, broadcast]: propose."""
+        from . import marry as marry_lib
+        role, rid = self._marry_self()
+        if role is None or rid is None:
+            return None
+        cfg = None
+        try:
+            cfg = self.config.hunjie_table() if self.config else None
+        except Exception:
+            cfg = None
+        if not cfg:
+            return None
+        data = self.safe(msg, 1, []) or []
+        try:
+            level = int((role or {}).get('level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        if level < int(cfg.get('needlevel') or 0):
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   MARRY_ERR_LEVEL_NOT_ENOUGH)
+        if marry_lib.is_married(self._marry_row(rid)):
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   marry_lib.ERR_HAS_MARRY)
+        target = self._marry_resolve(
+            data[0] if len(data) > 0 else None)
+        if target is None:
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   marry_lib.ERR_NOT_ON_LINE)
+        guid = str(data[1]) if len(data) > 1 and data[1] else ''
+        try:
+            ring = self.get_role_bag_slot_by_bag_id(rid, guid)
+        except Exception:
+            ring = None
+        if not ring:
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   marry_lib.ERR_HUNJIE_NOT_EXIST)
+        if not self._marry_online(target):
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   marry_lib.ERR_NOT_ON_LINE)
+        if marry_lib.is_married(self._marry_row(target)):
+            return self._marry_err(CMD_MARRY_QIUHUN,
+                                   marry_lib.ERR_HAS_MARRY)
+        text = str(data[2]) if len(data) > 2 and data[2] else ''
+        try:
+            broadcast = int(data[3]) if len(data) > 3 else 0
+        except (TypeError, ValueError):
+            broadcast = 0
+        if broadcast:
+            try:
+                cost = int(cfg.get('yuanbao_broadcast') or 0)
+            except (TypeError, ValueError):
+                cost = 0
+            if cost > 0:
+                try:
+                    paid = self.marry_spend_yb(rid, cost)
+                except Exception:
+                    paid = False
+                if not paid:
+                    return self._marry_err(CMD_MARRY_QIUHUN,
+                                           MARRY_ERR_YB_NOT_ENOUGH)
+        out = []
+        if broadcast:
+            out.append(frame(amf3_encode(
+                [str(CMD_NOTICE_ALL), [text]])))
+        try:
+            goods_id = str((ring or {}).get('goods_id') or '')
+        except AttributeError:
+            goods_id = ''
+        try:
+            card = [rid, self._marry_name(rid),
+                    self._marry_guild_name(rid), level, goods_id,
+                    text, guid]
+        except Exception:
+            card = [rid, '', None, level, goods_id, text, guid]
+        out.extend(self._marry_push(target, CMD_MARRY_ACCEPT, card))
+        out.append(frame(amf3_encode(
+            [str(CMD_MARRY_QIUHUN), [1]])))
+        try:
+            holder = self
+            if self.stage_registry is not None:
+                try:
+                    sess = self.stage_registry.session_of(target)
+                except Exception:
+                    sess = None
+                if sess is None:
+                    try:
+                        sess = self.stage_registry.presence_of(target)
+                    except Exception:
+                        sess = None
+                if sess is not None:
+                    holder = sess
+            pending = holder._marry_pending.setdefault(target, [])
+            if rid not in pending:
+                pending.append(rid)
+        except Exception:
+            pass
+        return tuple(out)
+
+    def marry_accept(self, msg):
+        """Command 135002 [proposer, ringGuid, accept]: answer a proposal."""
+        from . import marry as marry_lib
+        _role, rid = self._marry_self()
+        if rid is None:
+            return None
+        data = self.safe(msg, 1, []) or []
+        other = str(data[0]) if len(data) > 0 else ''
+        guid = str(data[1]) if len(data) > 1 and data[1] else ''
+        try:
+            accept = int(data[2]) if len(data) > 2 else 0
+        except (TypeError, ValueError):
+            accept = 0
+        if marry_lib.is_married(self._marry_row(rid)):
+            return self._marry_err(CMD_MARRY_RESULT,
+                                   marry_lib.ERR_HAS_MARRY)
+        if not accept:
+            out = [frame(amf3_encode(
+                [str(CMD_MARRY_RESULT), [1, other, 0]]))]
+            out.extend(self._marry_push(other, CMD_MARRY_RESULT,
+                                        [1, other, 0]))
+            return tuple(out)
+        if marry_lib.is_married(self._marry_row(other)):
+            return self._marry_err(CMD_MARRY_RESULT,
+                                   marry_lib.ERR_HAS_MARRY)
+        try:
+            ring = self.get_role_bag_slot_by_bag_id(other, guid)
+        except Exception:
+            ring = None
+        if not ring:
+            return None
+        try:
+            goods_id = str((ring or {}).get('goods_id') or '')
+        except AttributeError:
+            goods_id = ''
+        self._marry_take_ring(other, guid)
+        now = int(self._world_now_ms())
+        mine = marry_lib.fresh_row(rid, other, goods_id, now)
+        theirs = marry_lib.fresh_row(other, rid, goods_id, now)
+        try:
+            wed = self.marry_tx(theirs, mine)
+        except Exception:
+            wed = False
+        if not wed:
+            return None
+        try:
+            self._marry_pairs.pop(str(rid), None)
+        except Exception:
+            pass
+        out = [frame(amf3_encode(
+            [str(CMD_MARRY_INFO),
+             self._marry_info_payload(
+                 rid, mine, theirs)]))]
+        try:
+            their_info = self._marry_info_payload(
+                other, theirs, mine)
+        except Exception:
+            their_info = None
+        if their_info is not None:
+            out.extend(self._marry_push(other, CMD_MARRY_INFO,
+                                        their_info))
+        out.append(frame(amf3_encode(
+            [str(CMD_MARRY_RESULT), [1, other, 1]])))
+        out.extend(self._marry_push(other, CMD_MARRY_RESULT,
+                                    [1, other, 1]))
+        try:
+            pair_name = self._marry_name(other)
+        except Exception:
+            pair_name = ''
+        try:
+            wedding = frame(amf3_encode(
+                [str(CMD_MARRY_WEDDING),
+                 [self._marry_name(rid), pair_name]]))
+        except Exception:
+            wedding = None
+        if wedding is not None:
+            try:
+                self.push_frames([wedding])
+            except Exception:
+                pass
+            try:
+                self._marry_push(other, CMD_MARRY_WEDDING,
+                                 [self._marry_name(rid), pair_name])
+            except Exception:
+                pass
+        out.extend(self._marry_reject_others(rid, other))
+        return tuple(out)
+
+    def _marry_reject_others(self, rid, other):
+        """rejectOthers: remaining proposers hear 135003 [1, rid, 0]."""
+        try:
+            pending = self._marry_pending.get(str(rid)) or []
+        except Exception:
+            return []
+        try:
+            if str(other) in pending:
+                pending.remove(str(other))
+        except (TypeError, ValueError):
+            pass
+        if not pending:
+            return []
+        out = []
+        for proposer in list(pending):
+            try:
+                out.extend(self._marry_push(proposer, CMD_MARRY_RESULT,
+                                            [1, str(rid), 0]))
+            except Exception:
+                continue
+        return out
+
+    def marry_lihun(self):
+        """Command 135004: divorce; free when the spouse is offline."""
+        from . import marry as marry_lib
+        _role, rid = self._marry_self()
+        if rid is None:
+            return None
+        cfg = None
+        try:
+            cfg = self.config.hunjie_table() if self.config else None
+        except Exception:
+            cfg = None
+        if not cfg:
+            return None
+        mine = self._marry_row(rid)
+        if not marry_lib.is_married(mine):
+            return self._marry_err(CMD_MARRY_LIHUN,
+                                   marry_lib.ERR_NOT_MARRY)
+        spouse = str(mine.get('marry_user_role_id') or '')
+        try:
+            online = self._marry_online(spouse)
+        except Exception:
+            online = False
+        try:
+            cost = int(cfg.get('yuanbao_divorce') or 0) if online else 0
+        except (TypeError, ValueError):
+            cost = 0
+        if cost > 0:
+            try:
+                paid = self.marry_spend_yb(rid, cost)
+            except Exception:
+                paid = False
+            if not paid:
+                return self._marry_err(CMD_MARRY_LIHUN,
+                                       MARRY_ERR_YB_NOT_ENOUGH)
+        now = int(self._world_now_ms())
+        hers = self._marry_row(spouse)
+        if not hers:
+            hers = marry_lib.fresh_row(spouse, rid, '', now)
+        try:
+            done = self.marry_tx(marry_lib.divorce_row(mine, now),
+                                 marry_lib.divorce_row(hers, now))
+        except Exception:
+            done = False
+        if not done:
+            return None
+        try:
+            self._marry_pairs.pop(str(rid), None)
+        except Exception:
+            pass
+        out = [frame(amf3_encode([str(CMD_MARRY_LIHUN), [1]]))]
+        out.extend(self._marry_push(spouse, CMD_MARRY_LIHUN, [1]))
+        return tuple(out)
+
+    def marry_chuansong(self):
+        """Command 135005: teleport to the spouse's side, else error."""
+        from . import marry as marry_lib
+        _role, rid = self._marry_self()
+        if rid is None:
+            return None
+        mine = self._marry_row(rid)
+        if not marry_lib.is_married(mine):
+            return self._marry_err(CMD_MARRY_CHUANSONG,
+                                   marry_lib.ERR_NOT_MARRY)
+        spouse = str(mine.get('marry_user_role_id') or '')
+        if not self._marry_online(spouse):
+            return self._marry_err(CMD_MARRY_CHUANSONG,
+                                   marry_lib.ERR_NOT_ON_LINE)
+        if self.stage_registry is None:
+            return None
+        try:
+            smap = self.stage_registry.map_of(spouse)
+        except Exception:
+            smap = None
+        if not smap:
+            return self._marry_err(CMD_MARRY_CHUANSONG,
+                                   marry_lib.ERR_NOT_ON_LINE)
+        try:
+            dead = str(spouse) in self._dead
+        except Exception:
+            dead = False
+        if dead:
+            return self._marry_err(CMD_MARRY_CHUANSONG,
+                                   marry_lib.ERR_HAS_DEAD)
+        try:
+            detail = None
+            if self.config is not None:
+                detail = self.config.hunjieqianghua_detail(
+                    str(mine.get('goods_id') or ''),
+                    int(mine.get('item_level') or 0))
+        except Exception:
+            detail = None
+        if detail:
+            try:
+                cd_ms = int(detail.get('skill_cd') or 0) * 1000
+            except (TypeError, ValueError):
+                cd_ms = 0
+            try:
+                last = int(mine.get('chuansong_time') or 0)
+            except (TypeError, ValueError):
+                last = 0
+            try:
+                now_ms = int(self._world_now_ms())
+            except Exception:
+                now_ms = 0
+            if cd_ms > 0 and now_ms - last < cd_ms:
+                return self._marry_err(CMD_MARRY_CHUANSONG,
+                                       marry_lib.ERR_CHUANGSONG_CD)
+        else:
+            try:
+                now_ms = int(self._world_now_ms())
+            except Exception:
+                now_ms = 0
+        try:
+            pos = self.stage_registry.position_of(spouse)
+        except Exception:
+            pos = None
+        try:
+            sx, sy = (int(pos[0]), int(pos[1])) if pos else (0, 0)
+        except (TypeError, ValueError):
+            sx, sy = 0, 0
+        mine = dict(mine)
+        mine['chuansong_time'] = now_ms
+        try:
+            self.save_role_marry(mine)
+        except Exception:
+            pass
+        return tuple(self.change_map(rid, str(smap), sx, sy))
+
+    def marry_qianghua(self):
+        """Command 135006: strengthen the wedding ring one tier."""
+        from . import marry as marry_lib
+        _role, rid = self._marry_self()
+        if rid is None:
+            return None
+        mine = self._marry_row(rid)
+        if not mine:
+            return self._marry_err(CMD_MARRY_QIANGHUA,
+                                   marry_lib.ERR_NOT_MARRY)
+        table = {}
+        try:
+            table = self.config.hunjieqianghua_table() \
+                if self.config else {}
+        except Exception:
+            table = {}
+        try:
+            level = int(mine.get('item_level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        try:
+            entry = (table or {}).get(str(mine.get('goods_id') or ''))
+        except Exception:
+            entry = None
+        if not entry:
+            return None
+        try:
+            top = int(entry.get('max') or 0)
+        except (TypeError, ValueError):
+            top = 0
+        if level >= top:
+            return self._marry_err(CMD_MARRY_QIANGHUA,
+                                   marry_lib.ERR_LEVEL_MAX)
+        try:
+            detail = (entry.get('details') or {}).get(level)
+        except Exception:
+            detail = None
+        if not detail:
+            return None
+        try:
+            need_id = detail.get('need_id')
+            need = int(detail.get('need_count') or 0)
+        except (TypeError, ValueError):
+            need_id, need = None, 0
+        if need_id and need > 0 and not self._marry_have_goods(
+                rid, need_id, need):
+            return self._marry_err(CMD_MARRY_QIANGHUA,
+                                   MARRY_ERR_GOODS_NOT_ENOUGH)
+        try:
+            have_qin = int(mine.get('qingmidu') or 0)
+        except (TypeError, ValueError):
+            have_qin = 0
+        try:
+            want_qin = int(detail.get('cohesion') or 0)
+        except (TypeError, ValueError):
+            want_qin = 0
+        if have_qin < want_qin:
+            return self._marry_err(CMD_MARRY_QIANGHUA,
+                                   marry_lib.ERR_QINGMIDU_NOT_ENOUGH)
+        if need_id and need > 0:
+            try:
+                self._marry_take_goods(rid, need_id, need)
+            except Exception:
+                return self._marry_err(CMD_MARRY_QIANGHUA,
+                                       MARRY_ERR_GOODS_NOT_ENOUGH)
+        try:
+            nxt = (entry.get('details') or {}).get(level + 1)
+        except Exception:
+            nxt = None
+        if not nxt:
+            return self._marry_err(CMD_MARRY_QIANGHUA,
+                                   marry_lib.ERR_LEVEL_MAX)
+        mine = dict(mine)
+        mine['goods_id'] = str(nxt.get('hunjieid') or '')
+        try:
+            mine['item_level'] = int(nxt.get('tier') or 0)
+        except (TypeError, ValueError):
+            pass
+        try:
+            self.save_role_marry(mine)
+        except Exception:
+            return None
+        return frame(amf3_encode([str(CMD_MARRY_QIANGHUA), [1]]))
+
+    def _marry_have_goods(self, rid, goods_id, need):
+        """checkGoodsMoneyEnough over the bag slots for one goods id."""
+        try:
+            need = int(need or 0)
+        except (TypeError, ValueError):
+            return False
+        if need <= 0:
+            return True
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            return False
+        have = 0
+        for slot in slots:
+            try:
+                if str((slot or {}).get('goods_id')) != str(goods_id):
+                    continue
+                have += int((slot or {}).get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+        return have >= need
+
+    def _marry_take_goods(self, rid, goods_id, need):
+        """decrGoodses across slots; raises when stock runs short."""
+        try:
+            need = int(need or 0)
+        except (TypeError, ValueError):
+            raise ValueError('bad need')
+        try:
+            slots = self.get_role_bag_slots(rid, -1000000, 1000000) or []
+        except Exception:
+            raise ValueError('no bag')
+        left = need
+        for slot in slots:
+            if left <= 0:
+                break
+            try:
+                if str((slot or {}).get('goods_id')) != str(goods_id):
+                    continue
+                count = int((slot or {}).get('count') or 0)
+            except (TypeError, ValueError):
+                continue
+            take = min(count, left)
+            if take <= 0:
+                continue
+            rest = count - take
+            if rest > 0:
+                self.update_role_bag_slot(str(rid),
+                                          (slot or {}).get('slot_num'),
+                                          count=rest)
+            else:
+                self.delete_role_bag_slot(str(rid),
+                                          (slot or {}).get('slot_num'))
+            left -= take
+        if left > 0:
+            raise ValueError('goods short')
+
+    def _marry_schedule_qingmidu(self, now_ms=None):
+        """scheduleQingmidu: daily intimacy for the registered pairs.
+
+        Mirrors the quartz body over this session's pair map (rid ->
+        spouse, filled at login while the spouse is online): both sides
+        gain qinmi while the day counter stays under maqinmi, then the
+        quartz re-arms itself for the next config `time` delay.
+        """
+        from . import marry as marry_lib
+        cfg = None
+        try:
+            cfg = self.config.hunjie_table() if self.config else None
+        except Exception:
+            cfg = None
+        if not cfg:
+            return
+        try:
+            pairs = list((self._marry_pairs or {}).items())
+        except Exception:
+            pairs = []
+        try:
+            day_cap = int(cfg.get('maqinmi') or 0)
+            gain = int(cfg.get('qinmi') or 0)
+        except (TypeError, ValueError):
+            return
+        if gain <= 0:
+            return
+        for rid, spouse in pairs:
+            try:
+                mine = self._marry_row(rid)
+                hers = self._marry_row(spouse)
+            except Exception:
+                continue
+            if not marry_lib.is_married(mine) or \
+                    not marry_lib.is_married(hers):
+                continue
+            try:
+                day = int((mine or {}).get('day_qingmidu') or 0)
+            except (TypeError, ValueError):
+                continue
+            if day >= day_cap:
+                continue
+            mine = dict(mine)
+            hers = dict(hers)
+            try:
+                mine['qingmidu'] = int(mine.get('qingmidu') or 0) + gain
+                mine['day_qingmidu'] = day + gain
+                hers['qingmidu'] = int(hers.get('qingmidu') or 0) + gain
+                hers['day_qingmidu'] = \
+                    int(hers.get('day_qingmidu') or 0) + gain
+            except (TypeError, ValueError):
+                continue
+            try:
+                self.marry_tx(mine, hers)
+            except Exception:
+                continue
+        try:
+            delay = int(cfg.get('time') or 0)
+        except (TypeError, ValueError):
+            delay = 0
+        if delay <= 0:
+            delay = 86400
+        try:
+            self.schedule_stage('marry_qingmidu', 'SCHEDULE_QINGMIDU',
+                                lambda: self._marry_schedule_qingmidu(),
+                                delay=delay, unit='SECONDS')
+        except Exception:
+            pass
+
+    def _marry_on_enter(self, rid):
+        """handleLogin online(): register the pair and reset the day avg."""
+        from . import marry as marry_lib
+        if not rid:
+            return
+        cfg = None
+        try:
+            cfg = self.config.hunjie_table() if self.config else None
+        except Exception:
+            cfg = None
+        if not cfg:
+            return
+        mine = self._marry_row(rid)
+        if not marry_lib.is_married(mine):
+            return
+        spouse = str(mine.get('marry_user_role_id') or '')
+        if spouse and self._marry_online(spouse):
+            try:
+                self._marry_pairs[str(rid)] = spouse
+            except Exception:
+                pass
+        elif spouse:
+            try:
+                missing = int(cfg.get('missing_linit') or 0)
+            except (TypeError, ValueError):
+                missing = 0
+            if missing > 0:
+                try:
+                    anchor = (self.get_role_online_reward(spouse)
+                              or {})
+                    stamp = int(anchor.get('role_online_time') or 0)
+                except Exception:
+                    stamp = 0
+                if marry_lib.days_since(stamp) >= missing:
+                    try:
+                        hers = self._marry_row(spouse)
+                        if hers:
+                            now = int(self._world_now_ms())
+                            self.marry_tx(
+                                marry_lib.divorce_row(mine, now),
+                                marry_lib.divorce_row(hers, now))
+                            return
+                    except Exception:
+                        pass
+        try:
+            anchor = (self.get_role_online_reward(str(rid)) or {})
+            login_ms = int(anchor.get('role_online_time') or 0)
+        except Exception:
+            login_ms = 0
+        if login_ms and not marry_lib.is_today(login_ms):
+            mine = dict(mine)
+            mine['day_qingmidu'] = 0
+            try:
+                self.save_role_marry(mine)
+            except Exception:
+                pass
+
+    def _marry_on_disconnect(self):
+        """role_logout loginout(): drop pairs and pending proposals."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            roles = []
+        for role in roles or []:
+            try:
+                rid = str(_wire_id(role))
+            except Exception:
+                continue
+            if not rid:
+                continue
+            try:
+                self._marry_pairs.pop(rid, None)
+            except Exception:
+                pass
+            local = None
+            try:
+                local = str((role or {}).get('id'))
+            except AttributeError:
+                local = None
+            if local and local != rid:
+                try:
+                    self._marry_pairs.pop(local, None)
+                except Exception:
+                    pass
+            try:
+                self._marry_pending.pop(rid, None)
+            except Exception:
+                pass
+            if local and local != rid:
+                try:
+                    self._marry_pending.pop(local, None)
+                except Exception:
+                    pass
+            try:
+                spouse = ''
+                row = self._marry_row(local or rid)
+                if row:
+                    spouse = str(row.get('marry_user_role_id') or '')
+            except Exception:
+                spouse = ''
+            if spouse:
+                try:
+                    sess = None
+                    if self.stage_registry is not None:
+                        sess = self.stage_registry.session_of(spouse)
+                    if sess is None and \
+                            self.stage_registry is not None:
+                        sess = self.stage_registry.presence_of(spouse)
+                    if sess is not None and sess is not self:
+                        sess._marry_pairs.pop(spouse, None)
+                except Exception:
+                    pass
 
     def _zuwu_kill_progress(self, owner_role, monster_tpl_id):
         """ZuWuStageCopy.killMonster for shared-world dungeon kills.

@@ -1138,6 +1138,8 @@ class GameConfig:
         self._zuwu = None
         self._guildfuben = None
         self._guildfuben_boss = None
+        self._hunjie = None
+        self._hunjieqianghua = None
         self._xishu = None
         self._dazuo = None
         self._vip = None
@@ -4429,6 +4431,102 @@ class GameConfig:
         if slot < 0:
             return True
         return int(now_ms) > slot
+
+    def hunjie_table(self):
+        """hunjiebiao.jat wedding row, or None when the file is absent.
+
+        Keys mirror HunjieConfigExportServiceImpl.createHunjieConfig:
+        needlevel/time/missing_linit/maqinmi/qinmi/yuanbao_divorce/
+        yuanbao_broadcast. The legacy tree does not ship this file, so
+        marriage gates stay silent there exactly like Java with no rows.
+        """
+        if self._hunjie is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'hunjiebiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad hunjie table: %s', e)
+                rows = []
+            table = None
+            for row in rows:
+                if isinstance(row, dict):
+                    table = row
+                    break
+            self._hunjie = table
+        if self._hunjie is None:
+            return None
+        row = self._hunjie
+        return {
+            'needlevel': config_int(row.get('needlevel')),
+            'time': config_int(row.get('time')),
+            'missing_linit': config_int(row.get('missing_linit')),
+            'maqinmi': config_int(row.get('maqinmi')),
+            'qinmi': config_int(row.get('qinmi')),
+            'yuanbao_divorce': config_int(row.get('yuanbao_divorce')),
+            'yuanbao_broadcast': config_int(
+                row.get('yuanbao_broadcast')),
+        }
+
+    def hunjieqianghua_table(self):
+        """hunjieqianghua.jat rows grouped by hunjieid, or {} when absent.
+
+        Each detail mirrors createHunjieqianghuaConfig (tier key is
+        rideweapon, cost is needthingsid/needthingsvalue, intimacy gate
+        is cohesion, teleport cooldown is skillcd, next tier carries
+        hunjieid/rideweapon); attributes ride the parsed attribute map.
+        """
+        if self._hunjieqianghua is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'hunjieqianghua.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad hunjieqianghua table: %s', e)
+                rows = []
+            table = {}
+            for row in rows:
+                if not isinstance(row, dict) or not row.get('hunjieid'):
+                    continue
+                try:
+                    tier = config_int(row.get('rideweapon'))
+                except (TypeError, ValueError):
+                    continue
+                entry = table.setdefault(str(row.get('hunjieid')),
+                                         {'details': {}, 'max': 0})
+                try:
+                    need_id = str(row.get('needthingsid') or '') or None
+                except (TypeError, ValueError):
+                    need_id = None
+                detail = {
+                    'tier': tier,
+                    'hunjieid': str(row.get('hunjieid')),
+                    'need_id': need_id,
+                    'need_count': config_int(row.get('needthingsvalue')),
+                    'cohesion': config_int(row.get('cohesion')),
+                    'skill_cd': config_int(row.get('skillcd')),
+                    'attributes': (row.get('attribute')
+                                   if isinstance(row.get('attribute'),
+                                                dict) else {}),
+                }
+                entry['details'][tier] = detail
+                if tier > entry['max']:
+                    entry['max'] = tier
+            self._hunjieqianghua = table
+        return self._hunjieqianghua
+
+    def hunjieqianghua_detail(self, hunjieid, tier):
+        """Ring tier detail (loadByIdAndJieshu), or None."""
+        try:
+            entry = self.hunjieqianghua_table().get(str(hunjieid))
+        except Exception:
+            return None
+        if not entry:
+            return None
+        try:
+            return entry['details'].get(int(tier))
+        except (TypeError, ValueError):
+            return None
 
     def zuwu_goumai_table(self):
         """ZuWuCiShuGouMai.jat {buyIndex: yuanbao}; empty when absent."""

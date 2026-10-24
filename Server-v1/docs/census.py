@@ -28,6 +28,7 @@ STUB_MARKERS = ('stub', 'deferred', 'no handler', 'not ported',
 # dispatching them. Classified only from action/ledger evidence as each
 # family lands; never inferred from a missing dispatch alone.
 PUSH_ONLY = frozenset('''
+11131 135003
 35108
 50004 50006 50007 50012 50102 50104 50105 50207 50208 50210 50211
 51010 51012 51013 51014 51016 51017

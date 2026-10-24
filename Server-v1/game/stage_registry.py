@@ -105,6 +105,17 @@ class StageRegistry:
         with self._lock:
             return self._where.get(str(role_id))
 
+    def position_of(self, role_id):
+        """Tile (x, y) of a placed role, or None."""
+        with self._lock:
+            pos = self._pos.get(str(role_id))
+        if pos is None:
+            return None
+        try:
+            return (int(pos[0]), int(pos[1]))
+        except (TypeError, ValueError, IndexError):
+            return None
+
     def mark_online(self, role_id, session):
         """Login presence (PublicRoleState): placed or not."""
         with self._lock:

@@ -235,6 +235,11 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             save_guild_fuben=self.server.save_guild_fuben,
             delete_guild_fubens=self.server.delete_guild_fubens,
             get_guild_fuben_reward=self.server.get_guild_fuben_reward,
+            get_role_marry=self.server.get_role_marry,
+            save_role_marry=self.server.save_role_marry,
+            marry_tx=self.server.marry_tx,
+            marry_spend_yb=self.server.marry_spend_yb,
+            count_role_marry=self.server.count_role_marry,
             save_guild_fuben_reward=self.server.save_guild_fuben_reward,
             tz_raw_offset=self.server.tz_raw_offset,
             tz_id=self.server.tz_id,
@@ -290,6 +295,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
             pass
         try:
             sess._guildfuben_on_disconnect()
+        except Exception:
+            pass
+        try:
+            sess._marry_on_disconnect()
         except Exception:
             pass
         try:
@@ -539,6 +548,11 @@ def main():
     tcpd.save_guild_fuben = store.save_guild_fuben
     tcpd.delete_guild_fubens = store.delete_guild_fubens
     tcpd.get_guild_fuben_reward = store.get_guild_fuben_reward
+    tcpd.get_role_marry = store.get_role_marry
+    tcpd.save_role_marry = store.save_role_marry
+    tcpd.marry_tx = store.marry_tx
+    tcpd.marry_spend_yb = store.marry_spend_yb
+    tcpd.count_role_marry = store.count_role_marry
     tcpd.save_guild_fuben_reward = store.save_guild_fuben_reward
     tcpd.log_frames = a.log_frames
     tcpd.tz_raw_offset = a.tz_offset

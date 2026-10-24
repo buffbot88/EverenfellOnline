@@ -763,6 +763,25 @@ CREATE TABLE IF NOT EXISTS guild_fuben_reward (
   update_time TEXT DEFAULT '{}',
   log_update_time INTEGER DEFAULT 0
 );
+-- Marriage state (RoleMarry entity: one row per role; marry_user_role_id
+-- is the spouse, lihun marks a divorced row kept for history; intimacy
+-- accrues in qingmidu/day_qingmidu, the ring tier in item_level).
+CREATE TABLE IF NOT EXISTS role_marry (
+  user_role_id TEXT PRIMARY KEY,
+  marry_user_role_id TEXT DEFAULT '',
+  qingmidu INTEGER DEFAULT 0,
+  chuansong_time INTEGER DEFAULT 0,
+  create_time INTEGER DEFAULT 0,
+  goods_id TEXT DEFAULT '',
+  bind INTEGER DEFAULT 0,
+  expire_time INTEGER DEFAULT 0,
+  rare_level INTEGER DEFAULT 0,
+  item_level INTEGER DEFAULT 0,
+  attributes TEXT,
+  lihun INTEGER DEFAULT 0,
+  day_qingmidu INTEGER DEFAULT 0,
+  log_update_time INTEGER DEFAULT 0
+);
 -- Bag dummy goods per role (legacy role_bag_dummy: goods a bagdummy query
 -- lists back to the client; the id is the legacy row guid).
 CREATE TABLE IF NOT EXISTS role_bag_dummy (
@@ -3417,6 +3436,107 @@ class Store:
                 values)
             self.db.commit()
             return True
+
+    def get_role_marry(self, role_id):
+        """Marriage row for a role, or None (RoleMarryDao.cacheLoad)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT user_role_id, marry_user_role_id, qingmidu,'
+                ' chuansong_time, create_time, goods_id, bind, expire_time,'
+                ' rare_level, item_level, attributes, lihun, day_qingmidu,'
+                ' log_update_time FROM role_marry'
+                ' WHERE user_role_id=?',
+                (str(role_id),)).fetchone()
+            return dict(row) if row else None
+
+    def save_role_marry(self, row):
+        """Upsert a marriage row dict keyed by role."""
+        cols = ('user_role_id', 'marry_user_role_id', 'qingmidu',
+                'chuansong_time', 'create_time', 'goods_id', 'bind',
+                'expire_time', 'rare_level', 'item_level', 'attributes',
+                'lihun', 'day_qingmidu', 'log_update_time')
+        with self.lock:
+            values = [row.get(c) for c in cols]
+            if values[13] in (None, 0, ''):
+                values[13] = int(time.time() * 1000)
+            self.db.execute(
+                f'INSERT INTO role_marry({",".join(cols)})'
+                f' VALUES({",".join(["?"] * len(cols))})'
+                ' ON CONFLICT(user_role_id) DO UPDATE SET '
+                + ', '.join(f'{c}=excluded.{c}' for c in cols[1:]),
+                values)
+            self.db.commit()
+            return True
+
+    def marry_tx(self, row_a, row_b):
+        """Upsert both spouses' rows atomically (accept/divorce writes)."""
+        cols = ('user_role_id', 'marry_user_role_id', 'qingmidu',
+                'chuansong_time', 'create_time', 'goods_id', 'bind',
+                'expire_time', 'rare_level', 'item_level', 'attributes',
+                'lihun', 'day_qingmidu', 'log_update_time')
+        with self.atomic() as db:
+            for row in (row_a, row_b):
+                values = [row.get(c) for c in cols]
+                if values[13] in (None, 0, ''):
+                    values[13] = int(time.time() * 1000)
+                db.execute(
+                    f'INSERT INTO role_marry({",".join(cols)})'
+                    f' VALUES({",".join(["?"] * len(cols))})'
+                    ' ON CONFLICT(user_role_id) DO UPDATE SET '
+                    + ', '.join(f'{c}=excluded.{c}' for c in cols[1:]),
+                    values)
+            return True
+
+    def marry_spend_yb(self, role_id, cost):
+        """Atomically check and debit role lingshi; False when short."""
+        try:
+            cost = int(cost or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        if cost <= 0:
+            return True
+        with self.atomic() as db:
+            row = db.execute(
+                'SELECT lingshi FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(role_id), str(role_id))).fetchone()
+            if row is None:
+                return False
+            try:
+                balance = int(row['lingshi'] or 0)
+            except (TypeError, ValueError):
+                balance = 0
+            if balance < cost:
+                return False
+            db.execute(
+                'UPDATE characters SET lingshi=?'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (balance - cost, str(role_id), str(role_id)))
+            return True
+
+    def get_character_lingshi(self, role_id):
+        """Current lingshi balance for a role (test/wallet reads)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT lingshi FROM characters'
+                ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                (str(role_id), str(role_id))).fetchone()
+            if row is None:
+                return 0
+            try:
+                return int(row['lingshi'] or 0)
+            except (TypeError, ValueError):
+                return 0
+
+    def count_role_marry(self):
+        """Marriage rows ever written (getInfo pair-count slot)."""
+        with self.lock:
+            row = self.db.execute(
+                'SELECT COUNT(*) AS n FROM role_marry').fetchone()
+            try:
+                return int(row['n'] or 0)
+            except (TypeError, ValueError):
+                return 0
 
     def get_role_skillbook_slots(self, role_id, min_slot=10001,
                                  max_slot=10056):

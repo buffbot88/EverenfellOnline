@@ -1,20 +1,20 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (307 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (313 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 
 - total Java numeric command IDs: 497
-- implemented: 234
+- implemented: 240
 - implemented-untested: 8
 - partial: 0
 - dispatched-no-direct-handler: 0
 - inline: 5
 - inline-untested: 0
 - stub: 2
-- push-only: 24
+- push-only: 26
 - known-unhandled: 0
-- missing: 224
+- missing: 216
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -33,7 +33,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | gm | 1 | 0 | 0 | 0 | 24 | 25 |
 | huodong | 12 | 0 | 0 | 2 | 24 | 38 |
 | pet | 3 | 0 | 0 | 0 | 10 | 13 |
-| marry | 0 | 0 | 0 | 0 | 9 | 9 |
 | kuafu | 0 | 0 | 0 | 0 | 7 | 7 |
 | xianjiechenhao | 0 | 0 | 0 | 0 | 7 | 7 |
 | hefuhuodong | 0 | 0 | 0 | 0 | 7 | 7 |
@@ -84,6 +83,7 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | jiangli | 13 | 0 | 0 | 0 | 1 | 14 |
 | pozhen | 11 | 0 | 0 | 0 | 1 | 12 |
 | baoshi | 3 | 0 | 0 | 0 | 1 | 4 |
+| marry | 6 | 0 | 0 | 2 | 1 | 9 |
 | qizhanbinqi | 3 | 0 | 0 | 0 | 1 | 4 |
 | command | 1 | 0 | 0 | 0 | 1 | 2 |
 | goodsbuyback | 3 | 0 | 0 | 0 | 1 | 4 |
@@ -116,7 +116,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - gm (24): 100 (GM_100), 101 (GM_101), 102 (GM_102), 103 (GM_103), 104 (GM_104), 105 (GM_105), 106 (GM_106), 107 (GM_107), 108 (GM_108), 109 (GM_109), 110 (GM_110), 111 (GM_111), 113 (GM_113), 114 (GM_114), 115 (GM_115), 116 (GM_116), 117 (GM_117), 118 (GM_118), 120 (GM_120), 130 (GM_130), 131 (GM_131), 140 (GM_140), 141 (GM_141), 200 (GM_200)
 - huodong (24): 70100 (h70100), 70502 (h70502), 70503 (h70503), 70504 (h70504), 70505 (h70505), 70509 (h70509), 70510 (h70510), 70511 (h70511), 70530 (h70530), 70552 (CMD_70552), 70553 (CMD_70553), 70554 (CMD_70554), 70556 (ZUOQI_JINJIE), 70558 (GET_PROP), 70559 (RECHARGE_YB), 94002 (RANKHUODONG_LIST), 94003 (RANKHUODONG_SINGLE), 94004 (RANKHUODONG_MONSTER), 94005 (RANKHUODONG_GAIN), 94100 (RANKHUODONG2_LIST), 94101 (RANKHUODONG2_SINGLE), 94102 (RANKHUODONG2_MONSTER), 94103 (RANKHUODONG2_GAIN), 101000 (CMD_101000)
 - pet (9): 136001 (CMD_136001), 136002 (CMD_136002), 136003 (CMD_136003), 136004 (CMD_136004), 136007 (CMD_136007), 136008 (CMD_136008), 136009 (CMD_136009), 136010 (CMD_136010), 136011 (CMD_136011)
-- marry (8): 11131 (h11131), 135000 (GET_INFO), 135001 (QIUHUN), 135002 (ACCEPT_QIUHUN), 135003 (QIUHUN_RESULT), 135004 (LIHUN), 135005 (CHUANSONG), 135006 (QIANGHUA)
 - xianjiechenhao (7): 91002 (CMD_91002), 91003 (CMD_91003), 91004 (CMD_91004), 91005 (CMD_91005), 91006 (CMD_91006), 91007 (CMD_91007), 91009 (CMD_91009)
 - hefuhuodong (7): 113000 (CMD_113000), 113001 (CMD_113001), 113002 (CMD_113002), 113003 (CMD_113003), 113004 (CMD_113004), 113005 (CMD_113005), 113006 (CMD_113006)
 - kuafu (6): 125000 (CMD_125000), 125001 (CMD_125001), 125008 (CMD_125008), 125009 (CMD_125009), 125012 (CMD_125012), 125016 (_125016)

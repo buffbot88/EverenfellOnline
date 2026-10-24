@@ -12,9 +12,9 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - inline: 5
 - inline-untested: 0
 - stub: 2
-- push-only: 23
+- push-only: 24
 - known-unhandled: 0
-- missing: 233
+- missing: 232
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -30,8 +30,8 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 
 | module | done | untested | stub | push | missing | total |
 | --- | --- | --- | --- | --- | --- | --- |
-| huodong | 12 | 0 | 0 | 1 | 25 | 38 |
 | gm | 1 | 0 | 0 | 0 | 24 | 25 |
+| huodong | 12 | 0 | 0 | 2 | 24 | 38 |
 | pet | 3 | 0 | 0 | 0 | 10 | 13 |
 | marry | 0 | 0 | 0 | 0 | 9 | 9 |
 | guildfuben | 0 | 0 | 0 | 0 | 8 | 8 |
@@ -113,8 +113,8 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 
 ## Missing IDs by module (id: const / python handler)
 
-- huodong (25): 70100 (h70100), 70502 (h70502), 70503 (h70503), 70504 (h70504), 70505 (h70505), 70509 (h70509), 70510 (h70510), 70511 (h70511), 70520 (h70520), 70530 (h70530), 70552 (CMD_70552), 70553 (CMD_70553), 70554 (CMD_70554), 70556 (ZUOQI_JINJIE), 70558 (GET_PROP), 70559 (RECHARGE_YB), 94002 (RANKHUODONG_LIST), 94003 (RANKHUODONG_SINGLE), 94004 (RANKHUODONG_MONSTER), 94005 (RANKHUODONG_GAIN), 94100 (RANKHUODONG2_LIST), 94101 (RANKHUODONG2_SINGLE), 94102 (RANKHUODONG2_MONSTER), 94103 (RANKHUODONG2_GAIN), 101000 (CMD_101000)
 - gm (24): 100 (GM_100), 101 (GM_101), 102 (GM_102), 103 (GM_103), 104 (GM_104), 105 (GM_105), 106 (GM_106), 107 (GM_107), 108 (GM_108), 109 (GM_109), 110 (GM_110), 111 (GM_111), 113 (GM_113), 114 (GM_114), 115 (GM_115), 116 (GM_116), 117 (GM_117), 118 (GM_118), 120 (GM_120), 130 (GM_130), 131 (GM_131), 140 (GM_140), 141 (GM_141), 200 (GM_200)
+- huodong (24): 70100 (h70100), 70502 (h70502), 70503 (h70503), 70504 (h70504), 70505 (h70505), 70509 (h70509), 70510 (h70510), 70511 (h70511), 70530 (h70530), 70552 (CMD_70552), 70553 (CMD_70553), 70554 (CMD_70554), 70556 (ZUOQI_JINJIE), 70558 (GET_PROP), 70559 (RECHARGE_YB), 94002 (RANKHUODONG_LIST), 94003 (RANKHUODONG_SINGLE), 94004 (RANKHUODONG_MONSTER), 94005 (RANKHUODONG_GAIN), 94100 (RANKHUODONG2_LIST), 94101 (RANKHUODONG2_SINGLE), 94102 (RANKHUODONG2_MONSTER), 94103 (RANKHUODONG2_GAIN), 101000 (CMD_101000)
 - pet (9): 136001 (CMD_136001), 136002 (CMD_136002), 136003 (CMD_136003), 136004 (CMD_136004), 136007 (CMD_136007), 136008 (CMD_136008), 136009 (CMD_136009), 136010 (CMD_136010), 136011 (CMD_136011)
 - marry (8): 11131 (h11131), 135000 (GET_INFO), 135001 (QIUHUN), 135002 (ACCEPT_QIUHUN), 135003 (QIUHUN_RESULT), 135004 (LIHUN), 135005 (CHUANSONG), 135006 (QIANGHUA)
 - guildfuben (7): 11003 (GUILDGUANGBO), 11130 (_11130), 118001 (CMD_118001), 118002 (CMD_118002), 118003 (CMD_118003), 118004 (CMD_118004), 118007 (CMD_118007)

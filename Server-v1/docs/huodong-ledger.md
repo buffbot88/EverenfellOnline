@@ -424,10 +424,10 @@ real rows, dup/repeat protection, the 12301 gate (type 3
 finishes credit-only), and debit/accounting atomicity.
 Census unchanged (12301 is a push, not a dispatch).
 
-Still unported: the 70520 threshold push on consume completion
-(no 70520 consumer exists in the port), the category-level
+Still unported: the category-level
 accumlatePayYb column (no reader ported), and
-`revocationOrder`. The mall/exchange in-tx YB debits feed
+`revocationOrder`. The 70520 threshold push on consume
+completion landed in batch 14. The mall/exchange in-tx YB debits feed
 consume via an optional trailing `consume_acts` on both txs
 (Session passes the live YB_CONSUME ids; zero-cost grants,
 yxb-only debits and empty live sets bump nothing, same-commit
@@ -447,7 +447,7 @@ rank range 11-17 is RANK1-7, a different paihang-backed family)
 and HuodongModuleInit (`hd_mod.txt`). No rank feed is a
 paihang read — both commands render per-activity threshold rows
 against a progression metric, refreshed client-side by 70520
-pushes, none of which the port emits yet.
+pushes (the port emits them since batch 14).
 
 | cmd | action entry | service read | metric source |
 | --- | ------------ | ------------ | ------------- |
@@ -475,15 +475,18 @@ progression timer, not a display reset.
 Fan-in that moves these displays: `decrYb`, `zuoqiJinjie`,
 `qibingJinjie`, `baoshiLevelUp`, `getProp` and `vipLevel` each
 queue `70520 [actId, 1]` when its metric crosses
-`con*(max+1)`; the port has the metric readers but emits no
-70520. Qibing progression surface (still unported source for
+`con*(max+1)`; the port emits them since batch 14 (queued on
+the synchronous return path — the port's `send2One` — never
+the registry outbox). Qibing progression surface (still
+unported source for
 ct-30): `87000 getData` / `87001 upgrade(Boolean)` /
 `87002 getbinqi` / `schedule`; service impl and storage were
 not recovered, so `getQizhanBinLevel` stays injected.
 
 - Zonghe service port for 70502/70505/70509/
-  70530/70552-70554/70520 (routing-only: all verbatim `send2One`
-  except null-guarded 70530). Batch 13 ports the batch-12
+  70530/70552-70554 (routing-only: all verbatim `send2One`
+  except null-guarded 70530); 70520 is push-only (census) since
+  batch 14. Batch 13 ports the batch-12
   map: `Session.huodong_zuoqi_rank` (70508) +
   `Session.huodong_qibing_rank` (70580, any converted typeId,
   null/garbage → -1 → `[0, 792005]`) over the shared
@@ -498,10 +501,35 @@ not recovered, so `getQizhanBinLevel` stays injected.
   first-recharge core + 70000/70001 (batch 2) + 70500 panel
   (batch 3) + 70501 display (batch 4) + 70506 display (batch 5)
   + 70507 display (batch 6) + 70550/70551 durable buy/claim
-  lifecycle (batch 7) + 70551 ct-1/ct-10 claims (batch 8) +
-  70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims (batch 9) +
-  70508/70580 rank displays (batch 13) are
-  in. No seeded stand-in.
+  lifecycle (batch 7) + 70551 ct-1/ct-10 claims (batch 8)  + 70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims (batch 9) +
+  70508/70580 rank displays (batch 13) + 70520 threshold pushes
+  (batch 14) are in. No seeded stand-in.
+
+## Batch 14: 70520 threshold pushes (send2One fan-in)
+
+`CMD_HUODONG_NOTIFY` (push-only, no dispatch) plus the shared
+`_zonghe_notify_frames(role, rid, ctype, old, new, now_ms)`
+helper: per live activity of the first-live category, the
+claim-shaped threshold (`con*(max+1)` for ct-3, `con` for the
+rank families) with the display's show-gate and day/max floors —
+only a genuine old-below/new-at-or-above crossing queues
+`[actId, 1]`, so repeats and completed states stay silent.
+Producers: `_bag_money_decr` YB debits and the mall/exchange tx
+sites (decrYb, before/after payYb diff), `zuoqi_jinjie` success
+plus `zuoqi_claim` and `_zonghe_first_mount` (all genuine mount-
+rank increases, old/new rank), `baoshi_jihuo` socketing and
+`baoshi_upgrade` level-ups (gem-sum before/after),
+`vip_upgrade_level` on a real level change (ct-32, threaded
+through the recharge grant fan-out). Queued on
+`_huodong_pushes`, drained by `feed` behind the triggering
+reply. No bus, no second event path. `getProp` (dead 70558,
+no item-count family in fu0) and `qibingJinjie` (87000-87002
+unported, no mutation path) have no producer yet — the helper
+covers ct-30 for when the qibing service lands, pinned
+helper-level. `tests/test_huodong_notify.py` (11) proves
+crossing-once, non-crossing silence and completed-state
+silence per family through the encrypted feed (VIP through its
+genuine recharge producer).
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/
   handleKillBossRankData + quartz settlement); paihang itself is unported.

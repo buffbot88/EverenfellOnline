@@ -538,6 +538,12 @@ CMD_HUODONG_ZUOQI_RANK = 70508
 # HuodongAction.getQibingRank -> getQibingRank(roleId, typeId)
 # for the 22/30/31/32 rank-display families.
 CMD_HUODONG_QIBING_RANK = 70580
+# Push-only client notify: the zonghe services queue [actId, 1]
+# via send2One when a progression event newly crosses an
+# activity threshold (decrYb, zuoqiJinjie, qibingJinjie,
+# baoshiLevelUp, getProp, vipLevel). No inbound handler exists
+# by design, like the other push-only IDs.
+CMD_HUODONG_NOTIFY = 70520
 # HuodongAction.getLimitedExchange -> getLimitedExchange (ct-9).
 CMD_HUODONG_LIMITED_EXCHANGE = 70507
 # HuodongAction.buyHuodongMallGoods route (bytecode):
@@ -1394,6 +1400,10 @@ class Session:
         self.stage_registry = stage_registry
         self.outbox = []
         self.outbox_lock = threading.Lock()
+        # Same-response 70520 threshold pushes queued by progression
+        # events during feed handling; _feed_unlocked drains them
+        # behind the triggering command's reply (the port's send2One).
+        self._huodong_pushes = []
         # Meditation: role id -> {'daZuo': bool, 'target': role id or None}, and
         # state changes queued by other connections, run under this tick.
         self._dazuo = {}
@@ -1433,11 +1443,14 @@ class Session:
             except Exception:
                 log.warning('conn %d: handler failed, continuing',
                             self.conn_id, exc_info=True)
-                continue
+                reply = None
             if isinstance(reply, tuple):
                 out.extend(reply)
             elif reply is not None:
                 out.append(reply)
+            if self._huodong_pushes:
+                out.extend(self._huodong_pushes)
+                del self._huodong_pushes[:]
         return out
 
     def handle(self, payload: bytes):
@@ -8229,15 +8242,38 @@ class Session:
         self.save_role_vip(rid, **fields)
         return [frame(amf3_encode([str(CMD_VIP_LEVEL_UP), level]))]
 
-    def vip_upgrade_level(self, role, charge_total):
+    def vip_upgrade_level(self, role, charge_total, now_ms=None):
         """VipServiceImpl.upgradeVipLevel (extra 0): push 62003 on a level change.
 
         Needs the recharge total, which the recharge slice supplies. Returns
-        the pushed frames.
+        the pushed frames. vipLevel's fan-in rides along: a fresh VIP
+        level may newly cross a ct-32 threshold, queuing 70520 (kept
+        on the synchronous return path, never the registry outbox).
         """
         if self.config is None:
             return []
-        return self._vip_push(role, self._vip_upgrade(role['id'], charge_total))
+        try:
+            old_level = int(
+                (self.get_role_vip(role['id']) or {}).get('vip_level')
+                or 0)
+        except (TypeError, ValueError):
+            old_level = 0
+        frames = list(self._vip_push(
+            role, self._vip_upgrade(role['id'], charge_total)))
+        try:
+            new_level = int(
+                (self.get_role_vip(role['id']) or {}).get('vip_level')
+                or 0)
+        except (TypeError, ValueError):
+            new_level = old_level
+        if new_level != old_level:
+            try:
+                frames.extend(self._zonghe_notify_frames(
+                    role, role['id'], 32, old_level, new_level,
+                    now_ms))
+            except Exception:
+                pass
+        return frames
 
     def vip_add_prop_value(self, role, value, charge_total):
         """VipServiceImpl.addPropValue: add to today's prop value, push 62006, re-level.
@@ -10893,10 +10929,27 @@ class Session:
                 except Exception:
                     acts = []
                 if acts:
+                    before = self._zonghe_consume_paid(rid)
                     try:
-                        return bool(self.yb_consume_tx(rid, debit, acts))
+                        ok = bool(self.yb_consume_tx(rid, debit, acts))
                     except Exception:
                         return False
+                    if ok:
+                        # decrYb's fan-in: a freshly crossed consume
+                        # threshold queues 70520 behind the reply.
+                        try:
+                            roles = self.get_roles(
+                                self.authed_user or '',
+                                self.server_id or '')
+                            decr_role = roles[0] if roles else None
+                            after = self._zonghe_consume_paid(rid)
+                            self._huodong_pushes.extend(
+                                self._zonghe_notify_frames(
+                                    decr_role, rid, 3, before, after,
+                                    now_ms))
+                        except Exception:
+                            pass
+                    return ok
         column = BAG_MONEY_COLUMNS[money]
         try:
             roles = self.get_roles(self.authed_user or '', self.server_id or '')
@@ -15504,6 +15557,94 @@ class Session:
             return self._zonghe_vip_level(rid)
         return 0
 
+    @staticmethod
+    def _zonghe_notify_threshold(act, max_val, ctype):
+        """Claimable threshold for one activity: con*(max+1) for ct-3,
+        con for the rank families (the claim arms' formulas)."""
+        try:
+            con = int(str(act.get('con1') or 0))
+        except (TypeError, ValueError):
+            con = 0
+        if ctype == 3:
+            try:
+                return con * (int(max_val or 0) + 1)
+            except (TypeError, ValueError):
+                return con
+        return con
+
+    def _zonghe_notify_frames(self, role, rid, ctype, old, new,
+                              now_ms=None):
+        """70520 [actId, 1] frames for newly crossed live thresholds.
+
+        Ports the services' threshold fan-in (decrYb, zuoqiJinjie,
+        qibingJinjie, baoshiLevelUp, getProp, vipLevel): each
+        activity of the first-live category whose threshold the
+        event just crossed — old below, new at or above — queues
+        one push. old/new are ints, except ct-3 where they are
+        {actId: paid} maps. Completed states (day/max floors) and
+        unshown rows (huodongIsShow) stay silent, and an unchanged
+        metric (old == new) can never cross, so repeated checks
+        emit nothing.
+        """
+        found, missing = self._zonghe_live_cat(ctype, now_ms)
+        if missing or found is None:
+            return []
+        acts = found.get('activities') or []
+        if not acts:
+            return []
+        # Non-creating read: a missing row is zero counters (never a
+        # skip), and the helper itself must not materialize one.
+        try:
+            row = self.get_role_huodong(rid)
+        except Exception:
+            row = None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        level = self._zonghe_int((role or {}).get('level'))
+        try:
+            total = self._zonghe_charge_total_all(rid)
+        except Exception:
+            total = 0
+        try:
+            scalar_old = int(old or 0)
+            scalar_new = int(new or 0)
+        except (TypeError, ValueError):
+            scalar_old, scalar_new = 0, 0
+        frames = []
+        for act in acts:
+            need = self._zonghe_int(act.get('need_level'))
+            need_pay = self._zonghe_int(act.get('need_pay_yb'))
+            if level < need or total < need_pay:
+                continue
+            day_limit = self._zonghe_int(act.get('day_count'))
+            max_limit = self._zonghe_int(act.get('max_count'))
+            day_val = self._zonghe_acc_value(counters, act.get('id'))
+            max_val = self._zonghe_acc_value(counters_max,
+                                             act.get('id'))
+            if day_val >= day_limit or max_val >= max_limit:
+                continue
+            threshold = self._zonghe_notify_threshold(
+                act, max_val, ctype)
+            if threshold <= 0:
+                continue
+            if ctype == 3:
+                try:
+                    before = int((old or {}).get(str(act.get('id'))) or 0)
+                except (TypeError, ValueError):
+                    before = 0
+                try:
+                    after = int((new or {}).get(str(act.get('id'))) or 0)
+                except (TypeError, ValueError):
+                    after = 0
+            else:
+                before, after = scalar_old, scalar_new
+            if before < threshold <= after:
+                frames.append(frame(amf3_encode(
+                    [str(CMD_HUODONG_NOTIFY), [act.get('id'), 1]])))
+        return frames
+
     def _zonghe_rank(self, role, clienttype, now_ms=None):
         """70508/70580 payload: rows else [2]/[0, 792005]."""
         found, missing = self._zonghe_live_cat(clienttype, now_ms)
@@ -16256,6 +16397,22 @@ class Session:
         except (TypeError, ValueError):
             return 0
 
+    def _zonghe_consume_paid(self, rid):
+        """Current per-activity consume map for the ct-3 crossing diff.
+
+        Reads without creating the row (unlike _huodong_row), so a
+        refused debit leaves no side effects behind.
+        """
+        try:
+            row = self.get_role_huodong(rid)
+        except Exception:
+            return {}
+        try:
+            paid = self._huodong_json((row or {}).get('pay_yb'))
+        except Exception:
+            return {}
+        return dict(paid) if isinstance(paid, dict) else {}
+
     def _zonghe_charge_total_all(self, rid):
         """Lifetime recharge total for ct-7 (getChargeTotal).
 
@@ -16534,6 +16691,8 @@ class Session:
             # in the same commit (only lingshi counts, never yxb).
             consume = self._zonghe_live_consume_ids(now_ms) \
                 if yb else []
+            paid_before = self._zonghe_consume_paid(rid) \
+                if consume else {}
             ok, exp_out = self.huodong_exchange_tx(
                 rid, yb, yxb, goods, grant_goods,
                 self._zonghe_grant_stacks(grant_goods),
@@ -16547,6 +16706,14 @@ class Session:
         if not ok:
             return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
                                        [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        if consume:
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(
+                        role, rid, 3, paid_before,
+                        self._zonghe_consume_paid(rid), now_ms))
+            except Exception:
+                pass
         out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
                                     [1, act.get('id'), None, state,
                                      new_max_val, max_limit, new_day_val,
@@ -16650,6 +16817,9 @@ class Session:
         try:
             # The npayYb debit feeds the live consume ledger in the
             # same commit (decrYb); a later abort reverts both.
+            buy_consume = self._zonghe_live_consume_ids(now_ms)
+            buy_paid_before = self._zonghe_consume_paid(rid) \
+                if buy_consume else {}
             ok = self.huodong_mall_buy_tx(
                 rid, total, main, gifts,
                 self._zonghe_grant_stacks([main] + gifts),
@@ -16658,7 +16828,7 @@ class Session:
                 {str(act.get('id')) + str(good['item_id']): count},
                 str(act.get('id')), str(good['item_id']), count,
                 good['max_sell'],
-                consume_acts=self._zonghe_live_consume_ids(now_ms))
+                consume_acts=buy_consume)
         except Exception as e:
             if not self._zonghe_abort(e):
                 raise
@@ -16669,6 +16839,14 @@ class Session:
         if not ok:
             return frame(amf3_encode([str(CMD_HUODONG_MALL_BUY),
                                        [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        if buy_consume:
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(
+                        role, rid, 3, buy_paid_before,
+                        self._zonghe_consume_paid(rid), now_ms))
+            except Exception:
+                pass
         out = [frame(amf3_encode(
             [str(CMD_HUODONG_MALL_BUY),
              [1, act.get('id'), good['item_id'], state, new_max_val,
@@ -16791,7 +16969,8 @@ class Session:
             total, rid = 0, None
         if rid is not None:
             try:
-                frames.extend(self.vip_upgrade_level(role, total))
+                frames.extend(self.vip_upgrade_level(
+                    role, total, now_ms=now_ms))
             except Exception:
                 pass
         return frames
@@ -16997,6 +17176,12 @@ class Session:
             cfg = self.config.zuoqi_rank_config(self.ZUOQI_MIN_RANK)
         except Exception:
             return None
+        try:
+            self._huodong_pushes.extend(
+                self._zonghe_notify_frames(role, rid, 10, rank, 3,
+                                           now_ms))
+        except Exception:
+            pass
         level = self._zuoqi_level(self._task_role_level(role), cfg) \
             if cfg is not None else 0
         return frame(amf3_encode([str(CMD_ZUOQI_CLAIM), [1, 3, level]]))
@@ -17315,9 +17500,19 @@ class Session:
         if rank >= self.ZUOQI_MIN_RANK:
             return None
         now = int(time.time() * 1000)
+        try:
+            claim_old = int(row.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            claim_old = 0
         row.update(zuoqi_rank=self.ZUOQI_MIN_RANK,
                    zuoqi_cur_rank=self.ZUOQI_MIN_RANK, update_time=now)
         self._zuoqi_save(rid, row)
+        try:
+            self._huodong_pushes.extend(
+                self._zonghe_notify_frames(role, rid, 10, claim_old,
+                                           self.ZUOQI_MIN_RANK))
+        except Exception:
+            pass
         cfg = self.config.zuoqi_rank_config(self.ZUOQI_MIN_RANK)
         level = self._zuoqi_level(self._task_role_level(role), cfg) \
             if cfg is not None else 0
@@ -18392,6 +18587,10 @@ class Session:
             return None
         part, grid, auto = req
         rows = self._baoshi_rows(rid)
+        try:
+            jihuo_before = self._zonghe_baoshi_sum(rid)
+        except Exception:
+            jihuo_before = 0
         gate = self._baoshi_can_jihuo(role, rows, part, grid)
         if gate is not None:
             return frame(amf3_encode(
@@ -18445,6 +18644,17 @@ class Session:
             reply = [-1]
         if not self._baoshi_save(rid, rows):
             return None
+        if success:
+            # baoshiLevelUp's fan-in covers socketing too: a fresh
+            # stone raises the gem sum, possibly crossing a ct-22
+            # threshold behind the reply.
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(
+                        role, rid, 22, jihuo_before,
+                        self._zonghe_baoshi_sum(rid)))
+            except Exception:
+                pass
         return frame(amf3_encode([str(CMD_BAOSHI_JIHUO), reply]))
 
     def baoshi_upgrade(self, msg):
@@ -18467,6 +18677,10 @@ class Session:
             return None
         part, grid, auto = req
         rows = self._baoshi_rows(rid)
+        try:
+            upgrade_before = self._zonghe_baoshi_sum(rid)
+        except Exception:
+            upgrade_before = 0
         row = self._baoshi_find(rows, part, grid)
         if row is None:
             return frame(amf3_encode(
@@ -18531,6 +18745,16 @@ class Session:
         self._baoshi_add_exp(rid, rows, roll[1], row, upgraded, chained)
         if not self._baoshi_save(rid, rows):
             return None
+        if upgraded:
+            # baoshiLevelUp's fan-in: fed stones may level up (and
+            # chain), raising the gem sum across a ct-22 threshold.
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(
+                        role, rid, 22, upgrade_before,
+                        self._zonghe_baoshi_sum(rid)))
+            except Exception:
+                pass
         try:
             exp = int(row.get('exp') or 0)
             level = int(row.get('level') or 0)
@@ -18896,6 +19120,14 @@ class Session:
                        zuoqi_rank=rank + 1, zuoqi_cur_rank=rank + 1,
                        update_time=now)
             self._zuoqi_save(rid, row)
+            # zuoqiJinjie's fan-in: a fresh rank may newly cross a
+            # mount threshold, queuing 70520 behind the reply.
+            try:
+                self._huodong_pushes.extend(
+                    self._zonghe_notify_frames(role, rid, 10, rank,
+                                               rank + 1))
+            except Exception:
+                pass
             new_cfg = self.config.zuoqi_rank_config(rank + 1)
             new_level = self._zuoqi_level(
                 level, new_cfg) if new_cfg is not None else 0

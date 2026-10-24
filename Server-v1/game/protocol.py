@@ -4258,6 +4258,12 @@ class Session:
         role_id = self.create_role_cb(acct, server_id, name, job, sex, face)
         if role_id is None:
             return frame(amf3_encode(['10002', [0, 2002]]))
+        # P:ROLE_CREATE -> SkillRoleCreateEventHandler.createRoleStudySkill.
+        try:
+            self._skill_create_learn(role_id, job)
+        except Exception:
+            log.warning('conn %d: create-role skill seeding failed',
+                        self.conn_id)
         role = [str(role_id), name, str(job), sex, 1, None, face]
         return frame(amf3_encode(['10002', [1, role]]))
 
@@ -12469,7 +12475,7 @@ class Session:
         # One RoleLevelUpgradeEvent per gained level in Java, so each
         # intermediate level's learnskill tokens get their turn.
         for lv in range(old_level + 1, level + 1):
-            frames.extend(self._skill_level_learn(rid, lv))
+            frames.extend(self._skill_level_learn(rid, lv, role.get('job')))
         frames.extend(self._task_on_level(role, rid))
         if level != old_level:
             try:
@@ -12503,40 +12509,95 @@ class Session:
         except (TypeError, ValueError):
             return None
 
-    def _skill_level_learn(self, rid, level):
-        """roleLevelUpgradeSkill: learnskill tokens at the new level.
+    def _skill_auto_learn(self, rid, token, job, level, check_level=True):
+        """SkillServiceImpl.autoStudySkill for one level-1 skill token.
 
-        Each unknown category saves level 1 and pushes the 42004 study
-        notice, like the prop-study success shape (AddSkillEvent has no
-        ported subscribers and is skipped like every other publish).
+        Returns the JiNengBiao level-1 row when the token was just
+        learned, else None. Java's false paths: already owned, no config
+        row, levelneed above the role level, and a needjob that is neither
+        '0' nor the role job. Java's last branch compares the level-1
+        row's own level with the role level, which only ever skipped the
+        insert while still reporting success (notify-only); with roles at
+        level >= 1 it is unreachable, so it is not ported.
+        `check_level` off is createRoleStudySkill, which only gates job.
         """
-        if self.config is None:
-            return []
-        row = self.config.role_attribute_row(level)
-        tokens = str((row or {}).get('learnskill') or '')
+        if self.config is None or not token:
+            return None
         try:
             owned = {str(s.get('category'))
                      for s in (self.get_role_skills(rid) or [])}
         except Exception:
             owned = set()
+        if token in owned:
+            return None
+        info = self.config.skill_info(token, 1)
+        if info is None:
+            log.info('conn %d: skill %r has no JiNengBiao level-1 row',
+                     self.conn_id, token)
+            return None
+        try:
+            role_level = int(level or 0)
+        except (TypeError, ValueError):
+            role_level = 0
+        if check_level:
+            try:
+                need_level = int(info.get('levelneed') or 0)
+            except (TypeError, ValueError):
+                need_level = 0
+            if need_level > role_level:
+                return None
+        gate = str(info.get('needjob') or '')
+        if gate != '0' and gate != str(job or ''):
+            return None
+        try:
+            self.save_role_skill(rid, token, 1)
+        except Exception:
+            return None
+        return info
+
+    def _skill_level_learn(self, rid, level, job=None):
+        """roleLevelUpgradeSkill: learnskill tokens at the new level.
+
+        Java loads each token's level-1 SkillConfig and runs
+        autoStudySkill with needAutoLearn=false, so the needjob and
+        levelneed gates apply (isAutolearn is not consulted on this
+        caller). Each learned token pushes the 42004 study notice;
+        AddSkillEvent has no ported subscribers and is skipped like every
+        other publish.
+        """
+        if self.config is None:
+            return []
+        row = self.config.role_attribute_row(level)
+        tokens = str((row or {}).get('learnskill') or '')
         frames = []
         for token in tokens.split(';'):
             token = token.strip()
-            if not token or token in owned:
+            if not token:
                 continue
-            info = self.config.skill_info(token, 1)
+            info = self._skill_auto_learn(rid, token, job, level)
             if info is None:
-                log.info('conn %d: level %d skill %r has no row (skipped)',
-                         self.conn_id, level, token)
                 continue
-            try:
-                self.save_role_skill(rid, token, 1)
-            except Exception:
-                continue
-            owned.add(token)
             frames.append(frame(amf3_encode(
                 [str(CMD_STUDY_SKILL), [info.get('skilltype'), 1]])))
         return frames
+
+    def _skill_create_learn(self, rid, job):
+        """createRoleStudySkill: level-1 learnskill tokens at role create.
+
+        Java reads the level-1 ZhuJueShuXing learnSkill cell, resolves
+        each token's level-1 SkillInfo and inserts level 1 when the needjob
+        matches (only the job gate applies here). Silent: the handler
+        pushes no 42004, unlike the level-up path.
+        """
+        if self.config is None or rid is None:
+            return
+        row = self.config.role_attribute_row(1)
+        tokens = str((row or {}).get('learnskill') or '')
+        for token in tokens.split(';'):
+            token = token.strip()
+            if not token:
+                continue
+            self._skill_auto_learn(rid, token, job, 1, check_level=False)
 
     def _task_on_level(self, role, rid):
         """ShengJiEventHandler.handle: paid quest with a satisfied next.

@@ -12,9 +12,9 @@ Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct
 - inline: 5
 - inline-untested: 0
 - stub: 2
-- push-only: 26
+- push-only: 27
 - known-unhandled: 0
-- missing: 210
+- missing: 209
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -87,7 +87,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | qizhanbinqi | 3 | 0 | 0 | 0 | 1 | 4 |
 | command | 1 | 0 | 0 | 0 | 1 | 2 |
 | goodsbuyback | 3 | 0 | 0 | 0 | 1 | 4 |
-| skill | 2 | 0 | 0 | 0 | 1 | 3 |
 | giftcode | 0 | 0 | 1 | 0 | 1 | 2 |
 | io | 2 | 0 | 0 | 0 | 0 | 2 |
 | zhandouli | 1 | 0 | 0 | 0 | 0 | 1 |
@@ -95,6 +94,7 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | mall | 5 | 0 | 0 | 0 | 0 | 5 |
 | account | 2 | 1 | 0 | 0 | 0 | 3 |
 | booth | 18 | 0 | 0 | 1 | 0 | 19 |
+| skill | 2 | 0 | 0 | 1 | 0 | 3 |
 | task | 14 | 1 | 0 | 11 | 0 | 26 |
 | friend | 11 | 0 | 0 | 6 | 0 | 17 |
 | lvlibao | 2 | 0 | 0 | 0 | 0 | 2 |
@@ -164,7 +164,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - baoshi (1): 11101 (NOTICE_ALL)
 - command (1): 19010 (_19010)
 - goodsbuyback (1): 32005 (DELETE_BACK_GOODS_NOTIFY)
-- skill (1): 42004 (STUDY_SKILL)
 - jiangli (1): 58016 (J58016)
 - meiren (1): 82004 (MEIREN_82004)
 - touxian (1): 104004 (CMD_104004)

@@ -26,7 +26,8 @@ genuine-Java-no-op, not-an-inbound-command.
 | roleUpgrade | complete+tested | level row swap + max_hp/max_mp persist; 12000 full map (Java sends changed-attrs only: superset), 12004 unconditional (Java sends only on hp/mp change: superset), 12002, skill learns, quest unlock; current hp/mp unchanged (no refill in Java) |
 | outputAttributeChange | complete+tested | 12004/12000 shapes ported; 12005 `[shanbiVal]` self-only on change (dunshandian is flat across all 95 shipped rows, so it stays silent in practice, like Java's conditional); the SHANBI_RECOVERY schedule has no ported scheduler |
 | 12002 routing | complete+tested | surround-routed via the registry broadcast (own copy returned), like roleUpgrade's surround 12002; 12004 likewise surround, 12000/12005 self-only |
-| roleLevelUpgradeSkill | complete+tested | per-level learnskill tokens, unknown categories save level 1, 42004 `[skilltype, 1]`; owned categories skipped like autoStudySkill-false; AddSkillEvent has no ported subscribers |
+| roleLevelUpgradeSkill | complete+tested | per-level learnskill tokens through `_skill_auto_learn` (owned / no-row / levelneed / needjob gates, matching autoStudySkill with needAutoLearn=false); each learn pushes 42004 `[skilltype, 1]`; AddSkillEvent has no ported subscribers. Details in docs/skill-ledger.md |
+| createRoleStudySkill | complete+tested | `P:ROLE_CREATE` -> `_skill_create_learn`: level-1 learnskill tokens with the needjob gate only (no owned lookup, no levelneed, no 42004); a no-op with the shipped `mb;yx;bh;lx` data whose needjob cell is empty |
 | shengJiRecevieMainTask | complete+tested | `_task_on_level`: paid quest whose next recevie_level is met receives through the shared cascade (`_task_receive_next`, also used by dataCheck) |
 | upgradeLevel | deferred | GM-style direct-level path; no GM commands exist in the port |
 | decrExp/decrExpCheck | deferred | no ported caller spends role exp |

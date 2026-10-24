@@ -464,5 +464,107 @@ class SkillSliceTest(unittest.TestCase):
         self.assertEqual(got, ['99002', [0, 99002]])
 
 
+class SkillAutoLearnTest(unittest.TestCase):
+    """P:ROLE_CREATE / P:ROLE_LEVEL_UPGRADE -> SkillServiceImpl auto-learn.
+
+    Evidence: SkillRoleCreateEventHandler -> createRoleStudySkill (level-1
+    learnSkill tokens, needJob gate only, silent inserts) and
+    SkillRoleStudyEventHandler -> roleLevelUpgradeSkill (per new level,
+    autoStudySkill with needAutoLearn=false, so levelneed/job/config-level
+    gates apply and each learn pushes 42004). The reference JiNengBiao's
+    level-1 tokens (mb/yx/bh/lx) carry an empty needjob, which Java's
+    "needjob is neither '0' nor the job" check rejects, so this suite
+    writes a small fixture table to exercise the gates (test_marry.py
+    pattern for legacy-absent data).
+    """
+
+    def setUp(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        self.cfgdir = os.path.join(tmp, 'cfg')
+        write_bytes(self.cfgdir, 'sys_config/ZhuJueShuXingBiao.jat', encode([
+            Obj(level=1,
+                learnskill='sk_job;sk_any;sk_other;sk_late;sk_missing'),
+            Obj(level=5, learnskill='sk_job5;sk_other5;sk_late5'),
+        ]))
+        rows = [
+            Obj(skilltype='sk_job', level=1, needjob='C', levelneed=1),
+            Obj(skilltype='sk_any', level=1, needjob='0', levelneed=1),
+            Obj(skilltype='sk_other', level=1, needjob='A', levelneed=1),
+            Obj(skilltype='sk_late', level=1, needjob='0', levelneed=50),
+            Obj(skilltype='sk_job5', level=1, needjob='C', levelneed=5),
+            Obj(skilltype='sk_other5', level=1, needjob='B', levelneed=5),
+            Obj(skilltype='sk_late5', level=1, needjob='0', levelneed=50),
+        ]
+        write_bytes(self.cfgdir, 'sys_config/JiNengBiao.jat', encode(rows))
+        self.store = Store(os.path.join(tmp, 't.db'))
+        self.addCleanup(self.store.close)
+        self.store.create_account('hero', 'pw')
+        self.rid = self.store.create_character(
+            'hero', 'fu1304', 'Wukong', job='C', level=1)
+        self.cfg = GameConfig(self.cfgdir)
+        self.sess = self.session()
+
+    def session(self, **override):
+        roles = [dict(r) for r in self.store.list_roles('hero', 'fu1304')]
+        roles = [dict(roles[0], **override)] if roles else []
+        sess = Session(
+            conn_id=1, check_sign=lambda *a: False,
+            get_roles=lambda u, s: roles,
+            server_start_ms=0,
+            get_role_skills=self.store.get_role_skills,
+            save_role_skill=self.store.save_role_skill,
+            create_role=lambda acct, sid, name, job, sex, face:
+                self.store.create_character(
+                    acct, sid, name, job=job, sex=sex, face=face, level=1),
+            config=self.cfg)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        return sess
+
+    def owned(self):
+        return {s['category'] for s in self.store.get_role_skills(self.rid)}
+
+    def test_create_learn_gates_job_only(self):
+        # createRoleStudySkill checks needjob and nothing else: a matched
+        # job learns, '0' is open to all, and levelneed/config level are
+        # NOT consulted at creation (Java's insert2DB loop).
+        self.sess._skill_create_learn(self.rid, 'C')
+        self.assertEqual(self.owned(), {'sk_job', 'sk_any', 'sk_late'})
+
+    def test_create_learn_skips_other_jobs(self):
+        self.sess._skill_create_learn(self.rid, 'A')
+        self.assertEqual(self.owned(), {'sk_any', 'sk_other', 'sk_late'})
+
+    def test_create_role_wire_seeds_skills(self):
+        out = self.sess.create_role(
+            [10002, ['hero', '八戒', 'C', 0, '1', 0, 'fu1304', 'p']])
+        got = decode(out[4:])
+        self.assertEqual(got[0], '10002')
+        self.assertEqual(got[1][0], 1)
+        role_id = got[1][1][0]
+        self.assertEqual(
+            {s['category'] for s in self.store.get_role_skills(role_id)},
+            {'sk_job', 'sk_any', 'sk_late'})
+
+    def test_level_learn_applies_all_gates(self):
+        frames = self.sess._skill_level_learn(self.rid, 5, 'C')
+        # sk_job5 passes (job C, levelneed 5, config level 1); sk_other5 is
+        # another job; sk_late5 needs level 50.
+        self.assertEqual(self.owned(), {'sk_job5'})
+        self.assertEqual([decode(f[4:]) for f in frames],
+                         [['42004', ['sk_job5', 1]]])
+
+    def test_level_learn_skips_owned(self):
+        self.store.save_role_skill(self.rid, 'sk_job5', 1)
+        self.assertEqual(
+            self.sess._skill_level_learn(self.rid, 5, 'C'), [])
+        self.assertEqual(self.owned(), {'sk_job5'})
+
+    def test_level_learn_without_config_is_empty(self):
+        sess = self.session()
+        sess.config = None
+        self.assertEqual(sess._skill_level_learn(self.rid, 5, 'C'), [])
+
+
 if __name__ == '__main__':
     unittest.main()

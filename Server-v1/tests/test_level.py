@@ -156,10 +156,10 @@ class RoleGainExpTest(unittest.TestCase):
         self.assertEqual((total, level, gained), (0, 5, 4))
         notices = [f for f in got if f[0] == str(42004)]
         kinds = sorted(f[1][0] for f in notices)
-        self.assertEqual(
-            kinds,
-            ['jiuweihu1', 'niumowang1', 'sunwukong1',
-             'tieshangongzhu1'])
+        # Level 5 lists all four transformation skills, but autoStudySkill's
+        # needjob gate keeps only job C's niumowang1 (the others are B/A/D),
+        # exactly like Java for this role.
+        self.assertEqual(kinds, ['niumowang1'])
         owned = {s['category']
                  for s in self.store.get_role_skills(str(self.role_id))}
         self.assertTrue(set(kinds) <= owned)

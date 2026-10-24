@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#06121b">
+  <meta name="description" content="Monkey King Online is under construction. Sign in with your AGP Studios account and pre-register.">
+  <title>Monkey King Online — Under Construction</title>
+  <style>
+    :root{font-family:system-ui,sans-serif;color:#f2f6f7;background:#06121b;font-synthesis:none;text-rendering:optimizeLegibility}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 75% 15%,#173f47 0,transparent 42%),linear-gradient(145deg,#06121b,#0b1e2a)}
+    a{color:inherit;text-decoration:none}button,input{font:inherit}.header{position:sticky;top:0;z-index:2;border-bottom:1px solid #96c3d729;background:#06121beF;backdrop-filter:blur(14px)}
+    .nav{max-width:1120px;min-height:72px;margin:auto;padding:12px 24px;display:flex;align-items:center;gap:30px}.brand{font-size:14px;font-weight:800;letter-spacing:.1em;white-space:nowrap}.brand b{color:#f1c25b;font-size:20px}.links{display:flex;align-items:center;gap:24px;margin-left:auto;color:#b6c7cd;font-size:14px}.links a:hover,.links a:focus-visible{color:#f6d16b}.links a[hidden],.actions[hidden]{display:none}
+    .nav-action,.button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;padding:11px 17px;background:linear-gradient(#f6d16b,#d99f35);color:#1d1810;font-weight:750;cursor:pointer}.nav-action{white-space:nowrap}.nav-action[hidden],.account[hidden]{display:none}.button.secondary{border:1px solid #96c3d755;background:#0d2431;color:#f2f6f7}.button:disabled{opacity:.6;cursor:wait}
+    main{min-height:calc(100vh - 72px);display:grid;place-items:center;padding:56px 24px}.card{width:min(100%,670px);padding:clamp(30px,7vw,62px);border:1px solid #96c3d72e;border-radius:20px;background:#0b1e2acc;box-shadow:0 24px 80px #0005;text-align:center}.icon{font-size:54px;line-height:1}.eyebrow{margin-top:24px;color:#f1c25b;font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}h1{margin:12px 0;font-size:clamp(36px,8vw,64px);line-height:1.06;letter-spacing:-.04em}.card p{max-width:480px;margin:0 auto 18px;color:#b6c7cd;line-height:1.7}.actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:28px}.status{min-height:24px;margin-top:20px;color:#b6c7cd;font-size:14px}.status.error{color:#ff9c9c}.status.success{color:#76e6a7}
+    dialog{width:min(calc(100% - 32px),420px);padding:0;border:1px solid #96c3d755;border-radius:16px;background:#0b1e2a;color:#f2f6f7;box-shadow:0 24px 80px #0009}dialog::backdrop{background:#0009;backdrop-filter:blur(4px)}.auth{padding:26px;text-align:left}.auth-head{display:flex;justify-content:space-between;align-items:center}.auth h2{margin:14px 0 8px}.close{border:0;background:none;color:#b6c7cd;font-size:24px;cursor:pointer}.tabs{display:flex;gap:8px;margin:18px 0}.tabs button{flex:1;padding:10px;border:1px solid #96c3d733;border-radius:8px;background:#06121b;color:#b6c7cd;cursor:pointer}.tabs button[aria-selected=true]{border-color:#f1c25b;color:#f6d16b}.auth label{display:block;margin:12px 0 5px;color:#b6c7cd;font-size:13px}.auth input{width:100%;padding:12px;border:1px solid #96c3d744;border-radius:8px;background:#06121b;color:#f2f6f7}.auth .button{width:100%;margin-top:18px}.account{position:relative}.account summary{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;list-style:none;border:1px solid #96c3d744;border-radius:9px;padding:10px 14px;cursor:pointer}.account summary::-webkit-details-marker{display:none}.account-panel{position:absolute;right:0;top:calc(100% + 8px);width:230px;padding:16px;border:1px solid #96c3d744;border-radius:10px;background:#0b1e2a;box-shadow:0 15px 40px #0008}.account-panel p{overflow-wrap:anywhere;color:#b6c7cd;font-size:13px}.account-panel button{width:100%}
+    @media(max-width:650px){.nav{flex-wrap:wrap;gap:12px}.links{order:3;width:100%;justify-content:center;gap:18px;padding-bottom:4px}.nav-action{margin-left:auto}.account{margin-left:auto}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <header class="header">
+    <nav class="nav" aria-label="Main navigation">
+      <a class="brand" href="https://www.agpstudios.org/"><b>AGP</b> STUDIOS</a>
+      <div class="links"><a href="#top">Home</a><a href="#game">The Game</a><a id="nav-preregister" href="#preregister">Pre-register</a></div>
+      <button id="signin" class="nav-action" type="button">Sign in</button>
+      <details id="account" class="account" hidden>
+        <summary id="account-name">Account</summary>
+        <div class="account-panel"><strong id="welcome"></strong><p id="email"></p><button id="signout" class="button secondary" type="button">Sign out</button></div>
+      </details>
+    </nav>
+  </header>
+  <main id="top">
+    <section class="card" id="game" aria-labelledby="title">
+      <div class="icon" aria-hidden="true">🐒</div>
+      <div class="eyebrow">Monkey King Online</div>
+      <h1 id="title">Under Construction</h1>
+      <p>We’re preparing the world for its next adventure. Sign in with your AGP Studios account, or pre-register for updates while we get things ready.</p>
+      <div class="actions" id="preregister">
+        <a class="button" href="https://www.agpstudios.org/">Pre-register at AGP Studios</a>
+        <button id="signin-cta" class="button secondary" type="button">Sign in to your account</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <dialog id="auth-dialog" aria-labelledby="auth-title">
+    <form id="auth-form" class="auth">
+      <div class="auth-head"><span class="eyebrow" style="margin:0">AGP Studios account</span><button id="close" class="close" type="button" aria-label="Close">×</button></div>
+      <h2 id="auth-title">Welcome back</h2>
+      <div class="tabs" role="tablist" aria-label="Account action"><button type="button" id="login-tab" role="tab" aria-selected="true">Sign in</button><button type="button" id="register-tab" role="tab" aria-selected="false">Create account</button></div>
+      <label for="identifier">Username or email</label><input id="identifier" name="identifier" autocomplete="username" required>
+      <div id="email-field" hidden><label for="email-input">Email</label><input id="email-input" name="email" type="email" autocomplete="email"></div>
+      <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button id="submit" class="button" type="submit">Sign in</button>
+      <p id="auth-message" class="status" role="status" aria-live="polite"></p>
+    </form>
+  </dialog>
+  <script>
+    const API = 'https://www.agpstudios.org/api';
+    const dialog = document.querySelector('#auth-dialog');
+    const authForm = document.querySelector('#auth-form');
+    const status = document.querySelector('#status');
+    const authMessage = document.querySelector('#auth-message');
+    const signin = document.querySelector('#signin');
+    const account = document.querySelector('#account');
+    let mode = 'login';
+    let user = null;
+
+    function showUser(next) {
+      user = next;
+      signin.hidden = !!user;
+      account.hidden = !user;
+      document.querySelector('#nav-preregister').hidden = !!user;
+      document.querySelector('#preregister').hidden = !!user;
+      if (user) {
+        document.querySelector('#account-name').textContent = user.display_name || user.username;
+        document.querySelector('#welcome').textContent = `Signed in as ${user.username}`;
+        document.querySelector('#email').textContent = user.email;
+        status.textContent = 'Your AGP Studios account is connected. Game access will open here when available.';
+      } else {
+        status.textContent = '';
+      }
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(`${API}${path}`, { ...options, credentials: 'include', headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
+      const body = response.status === 204 ? {} : await response.json();
+      if (!response.ok) throw new Error(body.error?.message || body.error || `Request failed (${response.status})`);
+      return body;
+    }
+
+    function openAuth(nextMode = 'login') {
+      mode = nextMode;
+      document.querySelector('#auth-title').textContent = nextMode === 'login' ? 'Welcome back' : 'Create your account';
+      document.querySelector('#submit').textContent = nextMode === 'login' ? 'Sign in' : 'Create account';
+      document.querySelector('#password').autocomplete = nextMode === 'login' ? 'current-password' : 'new-password';
+      document.querySelector('#email-field').hidden = nextMode !== 'register';
+      document.querySelector('#email-input').required = nextMode === 'register';
+      document.querySelector('#login-tab').setAttribute('aria-selected', String(nextMode === 'login'));
+      document.querySelector('#register-tab').setAttribute('aria-selected', String(nextMode === 'register'));
+      authMessage.textContent = '';
+      if (!dialog.open) dialog.showModal();
+    }
+
+    signin.addEventListener('click', () => openAuth());
+    document.querySelector('#signin-cta').addEventListener('click', () => openAuth());
+    document.querySelector('#login-tab').addEventListener('click', () => openAuth('login'));
+    document.querySelector('#register-tab').addEventListener('click', () => openAuth('register'));
+    document.querySelector('#close').addEventListener('click', () => dialog.close());
+
+    authForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = document.querySelector('#submit');
+      submit.disabled = true;
+      authMessage.className = 'status';
+      authMessage.textContent = 'Please wait…';
+      const form = new FormData(authForm);
+      const payload = mode === 'login'
+        ? { identifier: form.get('identifier'), password: form.get('password') }
+        : { username: form.get('identifier'), email: form.get('email'), password: form.get('password'), display_name: form.get('identifier') };
+      try {
+        const result = await api(`/auth/${mode}`, { method: 'POST', body: JSON.stringify(payload) });
+        if (mode === 'register') {
+          openAuth('login');
+          authMessage.className = 'status success';
+          authMessage.textContent = 'Account created. Sign in to continue.';
+          return;
+        }
+        showUser(result.user);
+        dialog.close();
+        authForm.reset();
+      } catch (error) {
+        authMessage.className = 'status error';
+        authMessage.textContent = error instanceof Error ? error.message : 'Authentication unavailable.';
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    document.querySelector('#signout').addEventListener('click', async () => {
+      try {
+        await api('/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('ashat_csrf='))?.slice('ashat_csrf='.length) || '') } });
+        showUser(null);
+        account.open = false;
+      } catch (error) {
+        status.className = 'status error';
+        status.textContent = error instanceof Error ? error.message : 'Sign out failed.';
+      }
+    });
+
+    api('/auth/session').then((result) => showUser(result.authenticated ? result.user : null)).catch(() => {
+      status.className = 'status error';
+      status.textContent = 'Account service is temporarily unavailable.';
+    });
+  </script>
+</body>
+</html>

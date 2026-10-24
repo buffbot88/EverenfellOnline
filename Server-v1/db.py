@@ -627,6 +627,7 @@ CREATE TABLE IF NOT EXISTS role_huodong (
   max_count TEXT DEFAULT '',
   day_count TEXT DEFAULT '',
   mall_buy_count TEXT DEFAULT '',
+  pay_yb TEXT DEFAULT '',
   FOREIGN KEY(role_id) REFERENCES characters(id) ON DELETE CASCADE
 );
 -- Global per-activity mall sell counts (legacy HuodongInfo subset: the
@@ -851,7 +852,7 @@ class Store:
                         ' INTEGER DEFAULT 0')
             huodong_cols = {row['name'] for row in self.db.execute(
                 'PRAGMA table_info(role_huodong)')}
-            for column in ('day_count', 'mall_buy_count'):
+            for column in ('day_count', 'mall_buy_count', 'pay_yb'):
                 if column not in huodong_cols:
                     self.db.execute(
                         f'ALTER TABLE role_huodong ADD COLUMN {column} TEXT')
@@ -2175,14 +2176,14 @@ class Store:
         """A role's activity row, or None (RoleHuodong.daoLoad)."""
         with self.lock:
             row = self.db.execute(
-                'SELECT role_id, max_count, day_count, mall_buy_count'
-                ' FROM role_huodong WHERE role_id=?',
+                'SELECT role_id, max_count, day_count, mall_buy_count,'
+                ' pay_yb FROM role_huodong WHERE role_id=?',
                 (str(role_id),)).fetchone()
             return dict(row) if row else None
 
     def save_role_huodong(self, role_id, **fields):
         """Upsert a role's activity row (known columns only)."""
-        known = {'max_count', 'day_count', 'mall_buy_count'}
+        known = {'max_count', 'day_count', 'mall_buy_count', 'pay_yb'}
         if not fields or set(fields) - known:
             raise ValueError('fields must contain known role_huodong columns')
         names = ', '.join(fields)
@@ -2323,7 +2324,14 @@ class Store:
                 raise Store.HuodongAbort('bag_full')
 
     def _huodong_tx_state(self, role_id, debits, credits):
-        """Apply currency deltas; HuodongAbort when a debit is short."""
+        """Apply currency deltas from the fresh in-tx row.
+
+        HuodongAbort when a debit is short. Credits are increments
+        on top of the freshly read balance (the jar's incr
+        semantics), never absolute assignments, so concurrent
+        grants cannot clobber each other; debited columns ride as
+        further deltas on the debited base.
+        """
         row = self.db.execute(
             'SELECT lingshi, tongqian, bind_lingshi, zhenqi, exp, level,'
             ' max_hp, max_mp FROM characters WHERE CAST(id AS TEXT)=?'
@@ -2342,10 +2350,18 @@ class Store:
                 raise Store.HuodongAbort(col)
             fields[col] = have - int(cost or 0)
         for col, val in (credits or {}).items():
+            try:
+                delta = int(val or 0)
+            except (TypeError, ValueError):
+                delta = 0
             if col in fields:
-                fields[col] += int(val or 0)
+                fields[col] += delta
             else:
-                fields[col] = val
+                try:
+                    base = int(cur.get(col) or 0)
+                except (TypeError, ValueError):
+                    base = 0
+                fields[col] = base + delta
         if fields:
             self.db.execute(
                 'UPDATE characters SET ' +
@@ -2355,13 +2371,19 @@ class Store:
 
     def huodong_exchange_tx(self, role_id, yb_cost, yxb_cost,
                             decr_goods, grant_goods, stacks, capacity,
-                            grant_state, day_key, max_key):
+                            grant_state, day_key, max_key, exp_apply=None):
         """Atomic exchange-claim apply: debit, grant, counters.
 
         Single commit; any shortfall rolls everything back via
         HuodongAbort (the caller maps it to the jar's [0, 792001]).
-        grant_state maps character columns to absolute values, except
-        debited columns which ride as further deltas on top.
+        grant_state maps currency columns to increments applied to
+        the fresh in-tx balances. exp_apply is None or a pure
+        fn(level, exp) -> (fields, gained) run against the fresh
+        in-tx character row, so simultaneous exp-granting claims
+        serialize on value instead of clobbering each other with
+        stale precomputed fields. Returns (True, exp_out) with
+        exp_out None, or the exact post-commit {old_level, level,
+        exp, gained} the reply frames are built from.
         """
         with self.lock:
             try:
@@ -2372,6 +2394,38 @@ class Store:
                 if int(yxb_cost or 0):
                     debits['tongqian'] = int(yxb_cost)
                 self._huodong_tx_state(role_id, debits, grant_state or {})
+                exp_out = None
+                if exp_apply is not None:
+                    erow = self.db.execute(
+                        'SELECT level, exp FROM characters'
+                        ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                        (str(role_id), str(role_id))).fetchone()
+                    if erow is None:
+                        raise Store.HuodongAbort('no_role')
+                    try:
+                        old_level = int(dict(erow).get('level') or 0)
+                    except (TypeError, ValueError):
+                        old_level = 0
+                    try:
+                        old_exp = int(dict(erow).get('exp') or 0)
+                    except (TypeError, ValueError):
+                        old_exp = 0
+                    fields, gained = exp_apply(old_level, old_exp)
+                    if fields:
+                        self.db.execute(
+                            'UPDATE characters SET ' +
+                            ', '.join(f'{c}=?' for c in fields) +
+                            ' WHERE CAST(id AS TEXT)=? OR legacy_id=?',
+                            [*fields.values(), str(role_id),
+                             str(role_id)])
+                    exp_out = {
+                        'old_level': old_level,
+                        'level': fields.get('level', old_level)
+                        if isinstance(fields, dict) else old_level,
+                        'exp': fields.get('exp', old_exp)
+                        if isinstance(fields, dict) else old_exp,
+                        'gained': bool(gained),
+                    }
                 self._huodong_tx_grant(role_id, grant_goods or [],
                                        stacks or {}, capacity)
                 cur = self.db.execute(
@@ -2393,7 +2447,7 @@ class Store:
             except Exception:
                 self.db.rollback()
                 raise
-            return True
+            return True, exp_out
 
     def huodong_mall_buy_tx(self, role_id, yb_cost, grant_main,
                             grant_gifts, stacks, capacity, grant_state,

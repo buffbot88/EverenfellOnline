@@ -4579,6 +4579,48 @@ class GameConfig:
                 'unsale': unsale, 'lost': lost_str}
 
     @staticmethod
+    def _zonghe_choose_awards(awards):
+        """Choose-award map: id to {currencies, item_views}.
+
+        Port of the loader's per-key ChooseAwardsConfig loop: each awards
+        value that parses as a JSON object becomes one entry keyed by its
+        map key. fu0 rows carry only flat awards, so this stays empty
+        there; a garbage value is skipped like the jar's per-entry
+        catch, never failing the activity.
+        """
+        out = {}
+        for key, val in (awards or {}).items():
+            if isinstance(val, dict):
+                entry = val
+            elif isinstance(val, str):
+                try:
+                    entry = json.loads(val)
+                except ValueError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+            else:
+                continue
+            try:
+                items = [v for v in
+                         (GameConfig._zonghe_item_view(e)
+                          for e in entry.get('items') or [])
+                         if v is not None]
+            except Exception:
+                continue
+            out[str(key)] = {
+                'currencies': {
+                    'jb': config_int(entry.get('jb')),
+                    'lijin': config_int(entry.get('lijin')),
+                    'zhenqi': config_int(entry.get('zhenqi')),
+                    'shengwang': config_int(entry.get('shengwang')),
+                    'exp': config_int(entry.get('exp')),
+                },
+                'item_views': items,
+            }
+        return out
+
+    @staticmethod
     def _zonghe_activity(raw):
         """Normalized activity, or None when the entry is unusable."""
         if isinstance(raw, str):
@@ -4681,6 +4723,7 @@ class GameConfig:
                            if v is not None],
             'awards': dict(awards),
             'itemtj': str(data.get('itemtj') or ''),
+            'choose_awards': GameConfig._zonghe_choose_awards(awards),
             'parcels': items,
             'goods': goods,
             'currencies': {

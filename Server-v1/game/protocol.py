@@ -1046,6 +1046,8 @@ class Session:
                  delete_task_gonghui=None, get_role_huodong=None,
                  save_role_huodong=None, get_huodong_info=None,
                  huodong_exchange_tx=None, huodong_mall_buy_tx=None,
+                 charge_total_in_time=None, charge_total=None,
+                 qibing_level=None,
                  get_role_pozhen=None,
                  save_role_pozhen=None, get_guild_id=None,
                  save_guild_member=None, add_guild_gongxian=None,
@@ -1260,9 +1262,21 @@ class Session:
             (lambda *a, **k: False)
         self.get_huodong_info = get_huodong_info or (lambda r: None)
         self.huodong_exchange_tx = huodong_exchange_tx or \
-            (lambda *a, **k: False)
+            (lambda *a, **k: (False, None))
         self.huodong_mall_buy_tx = huodong_mall_buy_tx or \
             (lambda *a, **k: False)
+        # Windowed recharge total for ct-1 claims
+        # (getChargeTotalInTime). No recharge-record service exists
+        # here, so the default reads 0, exact for fresh roles; tests
+        # inject a covering total to exercise the grant path.
+        self.charge_total_in_time = charge_total_in_time or \
+            (lambda role_id, start_ms, end_ms: 0)
+        # Lifetime recharge total for ct-7 claims (getChargeTotal)
+        # and the qizhanbinqi level for ct-30 claims
+        # (getQizhanBinLevel): both services are unported, so the
+        # defaults read 0 and tests inject covering values.
+        self.charge_total = charge_total or (lambda role_id: 0)
+        self.qibing_level = qibing_level or (lambda role_id: 0)
         self.get_role_pozhen = get_role_pozhen or (lambda r: None)
         self.save_role_pozhen = save_role_pozhen or \
             (lambda *a, **k: False)
@@ -15571,20 +15585,45 @@ class Session:
             return 0
         return self._zonghe_acc_value(sold_map, str(goods_id))
 
-    def _zonghe_exp_fields(self, role, amount):
-        """Pure half of _role_gain_exp: fields to persist, and gained.
+    def _zonghe_grant_credits(self, currencies):
+        """huodongReward currency half: pure increments, no exp.
 
-        No save and no frames; the caller applies the fields inside
-        its atomic commit and emits the pushes afterwards.
+        jb rides tongqian (YXB incr), lijin rides bind_lingshi
+        (BIND_YB incr), zhenqi rides the zhenqi column; the store
+        applies them as deltas on the fresh in-tx balances. fu0
+        awards carry zero currencies, so this is
+        synthetic-fixture territory.
         """
+        credits = {}
+        for col, key in (('tongqian', 'jb'),
+                         ('bind_lingshi', 'lijin'),
+                         ('zhenqi', 'zhenqi')):
+            try:
+                val = int((currencies or {}).get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+            if val > 0:
+                credits[col] = val
+        return credits
+
+    @staticmethod
+    def _zonghe_exp_amount(currencies):
+        """Positive exp award amount, else 0."""
         try:
-            old_level = int((role or {}).get('level') or 0)
+            return max(0, int((currencies or {}).get('exp') or 0))
         except (TypeError, ValueError):
-            old_level = 0
-        try:
-            old_exp = int((role or {}).get('exp') or 0)
-        except (TypeError, ValueError):
-            old_exp = 0
+            return 0
+
+    def _zonghe_exp_apply(self, amount):
+        """Pure in-tx exp applier: fn(level, exp) -> (fields, gained).
+
+        The store runs it against the fresh in-tx character row
+        inside the atomic commit, so simultaneous exp-granting
+        claims serialize on value instead of persisting stale
+        precomputed fields. Shape matches _role_gain_exp's pure
+        half: the exp bar always persists; level/max_hp/max_mp ride
+        the attribute row only on a real level-up.
+        """
         try:
             amount = int(amount or 0)
         except (TypeError, ValueError):
@@ -15592,57 +15631,37 @@ class Session:
         if self.config is not None:
             need, cap = self.config.role_need_exp, \
                 self.config.role_max_level()
+            attr = self.config.role_attribute_row
         else:
-            need, cap = (lambda lv: None), 0
-        level, total, gained = combat_lib.apply_exp_gain(
-            old_level, old_exp, amount, need, cap)
-        fields = {'exp': total}
-        if gained:
-            row = self.config.role_attribute_row(level) \
-                if self.config is not None else None
-            if row is not None:
-                fields['level'] = level
-                try:
-                    fields['max_hp'] = int(row.get('hitpoints') or 0)
-                except (TypeError, ValueError):
-                    pass
-                try:
-                    fields['max_mp'] = int(row.get('mana') or 0)
-                except (TypeError, ValueError):
-                    pass
-        return fields, gained
+            need, cap, attr = (lambda lv: None), 0, (lambda lv: None)
 
-    def _zonghe_grant_state(self, role, currencies):
-        """huodongReward currency half: (credits, exp_fields, gained).
+        def apply(level, exp):
+            try:
+                old_level = int(level or 0)
+            except (TypeError, ValueError):
+                old_level = 0
+            try:
+                old_exp = int(exp or 0)
+            except (TypeError, ValueError):
+                old_exp = 0
+            done, total, gained = combat_lib.apply_exp_gain(
+                old_level, old_exp, amount, need, cap)
+            fields = {'exp': total}
+            if gained:
+                row = attr(done)
+                if row is not None:
+                    fields['level'] = done
+                    try:
+                        fields['max_hp'] = int(row.get('hitpoints') or 0)
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        fields['max_mp'] = int(row.get('mana') or 0)
+                    except (TypeError, ValueError):
+                        pass
+            return fields, gained
 
-        jb rides tongqian (YXB incr), lijin rides bind_lingshi
-        (BIND_YB incr), zhenqi rides the zhenqi column; exp goes
-        through the pure level-up computation. fu0 awards carry zero
-        currencies, so this is synthetic-fixture territory.
-        """
-        credits = {}
-        try:
-            if int(currencies.get('jb') or 0) > 0:
-                credits['tongqian'] = int(currencies.get('jb'))
-        except (TypeError, ValueError):
-            pass
-        try:
-            if int(currencies.get('lijin') or 0) > 0:
-                credits['bind_lingshi'] = int(currencies.get('lijin'))
-        except (TypeError, ValueError):
-            pass
-        try:
-            if int(currencies.get('zhenqi') or 0) > 0:
-                credits['zhenqi'] = int(currencies.get('zhenqi'))
-        except (TypeError, ValueError):
-            pass
-        try:
-            exp = int(currencies.get('exp') or 0)
-        except (TypeError, ValueError):
-            exp = 0
-        fields, gained = self._zonghe_exp_fields(role, exp) \
-            if exp > 0 else ({}, False)
-        return credits, fields, gained
+        return apply
 
     @staticmethod
     def _zonghe_abort(error):
@@ -15707,6 +15726,484 @@ class Session:
             combat_lib.exp_notice(total, level)))] + \
             self._role_level_frames(grown, rid, old_level)
 
+    def _zonghe_charge_total(self, rid, cat):
+        """Windowed recharge total for ct-1 claims (getChargeTotalInTime).
+
+        The jar scopes the sum to the category window
+        (cat.startTime/endTime); without a recharge-record service
+        the injected callable reads 0, exact for fresh roles.
+        """
+        try:
+            total = self.charge_total_in_time(
+                rid, cat.get('start_ms') or 0, cat.get('end_ms') or 0)
+        except Exception:
+            return 0
+        return max(0, self._zonghe_int(total))
+
+    @staticmethod
+    def _zonghe_recharge_award(act, choose):
+        """Award for a ct-1 claim: (currencies, parcels) or None.
+
+        An empty chooseId rides the flat award like the jar's 2-arg
+        huodongReward; otherwise the choose_awards map entry (the
+        3-arg arm), None when the id is absent ([0, 792005]). fu0
+        rows carry no choose entries, so any non-empty chooseId
+        there reads 792005.
+        """
+        if choose is None or str(choose) == '':
+            currencies = act.get('currencies') or {}
+            parcels = [(v['goods_id'], v['count'], v['bind'])
+                       for v in act.get('item_views') or []]
+            return currencies, parcels
+        table = act.get('choose_awards') or {}
+        entry = table.get(str(choose))
+        if not isinstance(entry, dict):
+            return None
+        parcels = [(v['goods_id'], v['count'], v['bind'])
+                   for v in entry.get('item_views') or []]
+        return entry.get('currencies') or {}, parcels
+
+    def _zonghe_claim_frames(self, role, rid, exp_out):
+        """Post-commit level-up pushes from the tx's exp result.
+
+        The 12001 notice rides this claim's exact post-commit
+        (total, level); the extended fan-out reads a freshly
+        re-fetched role so concurrent claims cannot leak stale
+        vitals into each other's pushes. [] without a level-up.
+        """
+        if exp_out is None or not exp_out.get('gained'):
+            return []
+        try:
+            fresh = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+            grown = dict(fresh[0]) if fresh else dict(role or {})
+        except Exception:
+            grown = dict(role or {})
+        return self._zonghe_level_frames(
+            grown, rid, exp_out.get('old_level'),
+            exp_out.get('exp'), exp_out.get('level'))
+
+    def _zonghe_claim_apply(self, role, rid, act_id, currencies,
+                            parcels):
+        """Atomic grant for a 70551 claim: (ok, level_frames).
+
+        huodongReward's grant half through the batch-7 atomic
+        commit: currency increments and the exp gain apply inside
+        the commit against fresh balances, items ride the bag
+        grant, both counters bump inside the commit. A store abort
+        (bag overflow, missing role) reads not-ok and the caller
+        answers the jar's failure code.
+        """
+        credits = self._zonghe_grant_credits(currencies)
+        amount = self._zonghe_exp_amount(currencies)
+        exp_apply = self._zonghe_exp_apply(amount) \
+            if amount > 0 else None
+        grant_goods = [{'goods_id': gid, 'count': count, 'bind': bind}
+                       for gid, count, bind in parcels or []]
+        try:
+            ok, exp_out = self.huodong_exchange_tx(
+                rid, 0, 0, [], grant_goods,
+                self._zonghe_grant_stacks(grant_goods),
+                self._zonghe_grant_capacity(rid), credits,
+                act_id, act_id, exp_apply=exp_apply)
+        except Exception as e:
+            if not self._zonghe_abort(e):
+                raise
+            ok, exp_out = False, None
+        extra = self._zonghe_claim_frames(role, rid, exp_out) \
+            if ok else []
+        return ok, extra
+
+    def _zonghe_recharge_claim(self, req, now_ms):
+        """Command 70551 ct-1 branch: getRechangeReward.
+
+        PER_RECHARGE (10; the jar also routes YB_CONSUME/92 here,
+        no fu0 row uses it) and ACCUMULATE_RECHARGE (11) share the
+        threshold con*(claimed+1) against the windowed charge total;
+        other functiontypes stay silent like the jar's null. Short
+        totals answer [0, 792001] before the chooseId lookup (jar
+        order). Success grants the flat or chosen award, bumps both
+        counters by one and replies [1, activityId, chooseId, state,
+        maxVal, maxLimit, dayVal, dayLimit, choujiang] with the
+        post-claim next-threshold state; the choujiang cell reads
+        None (empty HuodongChoujiang table, the jar's null arm) and
+        fu0 carries no zubao ids so no roll runs.
+        """
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(1, req[1])
+        if act is None:
+            return None
+        ft = self._zonghe_int(act.get('functiontype'))
+        if ft != 10 and ft != 92 and ft != 11:
+            return None
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       gate]))
+        try:
+            con = int(str(act.get('con1') or 0))
+        except (TypeError, ValueError):
+            con = 0
+        total = self._zonghe_charge_total(rid, cat)
+        if con * (max_val + 1) > total:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        choose = req[2] if len(req) > 2 else None
+        award = self._zonghe_recharge_award(act, choose)
+        if award is None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_NO_CONFIG]]))
+        currencies, parcels = award
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        ok, extra = self._zonghe_claim_apply(
+            role, rid, act.get('id'), currencies, parcels)
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        new_max_val = max_val + 1
+        new_day_val = day_val + 1
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        state = 1 if (new_max_val < max_limit and
+                      new_day_val < day_limit and
+                      total >= con * (new_max_val + 1)) else 2
+        out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                    [1, act.get('id'), choose, state,
+                                     new_max_val, max_limit, new_day_val,
+                                     day_limit, None]]))]
+        return out[0] if not extra else out + extra
+
+    def _zonghe_zuoqi_rank(self, rid):
+        """Mount rank for ct-10 claims (getZuoQiRank), 0 when absent."""
+        try:
+            mount = self.get_role_zuoqi(rid) or {}
+            return int(mount.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_baoshi_sum(self, rid):
+        """Socketed-gem level sum for ct-22 (getRoleBaosShilevelSum)."""
+        try:
+            rows = self.get_role_baoshi(rid) or []
+        except Exception:
+            return 0
+        total = 0
+        for r in rows:
+            try:
+                total += int((r or {}).get('level') or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    def _zonghe_qibing_level(self, rid):
+        """Qizhanbinqi level for ct-30 (getQizhanBinLevel).
+
+        The qibing progression service is unported, so the
+        injected callable reads 0 and tests inject a covering
+        level to exercise the grant path.
+        """
+        try:
+            return max(0, int(self.qibing_level(rid) or 0))
+        except Exception:
+            return 0
+
+    def _zonghe_chibang_level(self, rid):
+        """Wing level for ct-31 claims (getGuangYiLevel), 0 when absent."""
+        try:
+            row = self.get_role_guangyi(rid) or {}
+            return int(row.get('level') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_vip_level(self, rid):
+        """VIP level for ct-32 claims (getRoleVipLevel), 0 when absent."""
+        try:
+            row = self.get_role_vip(rid) or {}
+            return int(row.get('vip_level') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_threshold_claim(self, ctype, req, now_ms, metric):
+        """Shared ct-10/22/30/31/32 arm: metric vs con int.
+
+        Ports getZuoqiReward/getBaoshiLevelReward/getQibingReward/
+        getChiBangReward/getVipLevelReward, which share one shape:
+        the gate, then [0, 792001] when metric < con, then the
+        counters +1, the flat 2-arg grant, and the 8-array [1,
+        activityId, null, state, maxVal, maxLimit, dayVal, dayLimit]
+        with the limits-only state and no choujiang cell. fu0
+        carries no zubao ids so no roll runs.
+        """
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(ctype, req[1])
+        if act is None:
+            return None
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       gate]))
+        try:
+            con = int(str(act.get('con1') or 0))
+        except (TypeError, ValueError):
+            con = 0
+        try:
+            value = int(metric(rid) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        parcels = [(v['goods_id'], v['count'], v['bind'])
+                   for v in act.get('item_views') or []]
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        if value < con:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        ok, extra = self._zonghe_claim_apply(
+            role, rid, act.get('id'), act.get('currencies') or {},
+            parcels)
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        new_max_val = max_val + 1
+        new_day_val = day_val + 1
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        state = 1 if (new_max_val < max_limit and
+                      new_day_val < day_limit) else 2
+        out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                    [1, act.get('id'), None, state,
+                                     new_max_val, max_limit, new_day_val,
+                                     day_limit]]))]
+        return out[0] if not extra else out + extra
+
+    def _zonghe_zuoqi_claim(self, req, now_ms):
+        """Command 70551 ct-10 branch: getZuoqiReward."""
+        return self._zonghe_threshold_claim(
+            10, req, now_ms, self._zonghe_zuoqi_rank)
+
+    def _zonghe_baoshi_claim(self, req, now_ms):
+        """Command 70551 ct-22 branch: getBaoshiLevelReward."""
+        return self._zonghe_threshold_claim(
+            22, req, now_ms, self._zonghe_baoshi_sum)
+
+    def _zonghe_qibing_claim(self, req, now_ms):
+        """Command 70551 ct-30 branch: getQibingReward."""
+        return self._zonghe_threshold_claim(
+            30, req, now_ms, self._zonghe_qibing_level)
+
+    def _zonghe_chibang_claim(self, req, now_ms):
+        """Command 70551 ct-31 branch: getChiBangReward."""
+        return self._zonghe_threshold_claim(
+            31, req, now_ms, self._zonghe_chibang_level)
+
+    def _zonghe_vip_claim(self, req, now_ms):
+        """Command 70551 ct-32 branch: getVipLevelReward."""
+        return self._zonghe_threshold_claim(
+            32, req, now_ms, self._zonghe_vip_level)
+
+    def _zonghe_pay_yb(self, row, act_id):
+        """Per-activity consume accumulator for ct-3 claims.
+
+        The jar's RoleHuodong.payYb map is fed by its
+        consume-tracking path, which is unported, so the map reads
+        empty (gate-accurate 792001) until a test seeds it through
+        save_role_huodong like any other activity fixture.
+        """
+        try:
+            return self._zonghe_int(
+                self._huodong_json(
+                    (row or {}).get('pay_yb')).get(str(act_id)))
+        except (TypeError, ValueError):
+            return 0
+
+    def _zonghe_charge_total_all(self, rid):
+        """Lifetime recharge total for ct-7 (getChargeTotal).
+
+        The recharge-record service is unported, so the injected
+        callable reads 0 (exact for fresh roles) and tests inject
+        a covering total to exercise the grant path.
+        """
+        try:
+            return max(0, self._zonghe_int(self.charge_total(rid)))
+        except Exception:
+            return 0
+
+    def _zonghe_consume_claim(self, req, now_ms):
+        """Command 70551 ct-3 branch: getYbConsumeReward.
+
+        The threshold is con*(claimed+1) against the per-activity
+        payYb accumulator, answering [0, 792001] when short (same
+        formula as ct-1, jar order: threshold before the chooseId
+        lookup). Success grants the flat or chosen award, bumps
+        both counters by one and replies the 9-array [1,
+        activityId, chooseId, state, maxVal, maxLimit, dayVal,
+        dayLimit, choujiang] with the post-claim next-threshold
+        state; the choujiang cell reads None (empty table, the
+        jar's null arm). fu0 holds no ct-3 rows, so live-shaped
+        coverage rides a labeled synthetic fixture.
+        """
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(3, req[1])
+        if act is None:
+            return None
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       gate]))
+        try:
+            con = int(str(act.get('con1') or 0))
+        except (TypeError, ValueError):
+            con = 0
+        paid = self._zonghe_pay_yb(row, act.get('id'))
+        if con * (max_val + 1) > paid:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        choose = req[2] if len(req) > 2 else None
+        award = self._zonghe_recharge_award(act, choose)
+        if award is None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_NO_CONFIG]]))
+        currencies, parcels = award
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        ok, extra = self._zonghe_claim_apply(
+            role, rid, act.get('id'), currencies, parcels)
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        new_max_val = max_val + 1
+        new_day_val = day_val + 1
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        state = 1 if (new_max_val < max_limit and
+                      new_day_val < day_limit and
+                      paid >= con * (new_max_val + 1)) else 2
+        out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                    [1, act.get('id'), choose, state,
+                                     new_max_val, max_limit, new_day_val,
+                                     day_limit, None]]))]
+        return out[0] if not extra else out + extra
+
+    def _zonghe_forever_claim(self, req, now_ms):
+        """Command 70551 ct-7 branch: getForeverRechargeReward.
+
+        The threshold is con against the lifetime charge total,
+        answering [0, 792001] when short. Success grants the flat
+        award only (the jar takes no chooseId here), bumps both
+        counters by one and replies the 8-array [1, activityId,
+        state, maxVal, maxLimit, dayVal, dayLimit, choujiang] with
+        state 1 only while the limits stay open and the total still
+        covers con; the choujiang cell reads None. fu0 holds no
+        ct-7 rows, so live-shaped coverage rides a labeled
+        synthetic fixture.
+        """
+        roles = self.get_roles(self.authed_user or '',
+                               self.server_id or '')
+        role = roles[0] if roles else None
+        if role is None:
+            return None
+        cat, act = self._zonghe_find_activity(7, req[1])
+        if act is None:
+            return None
+        try:
+            rid = _wire_id(role)
+            row = self._huodong_row(rid)
+        except Exception:
+            return None
+        counters = self._huodong_json(
+            (row or {}).get('day_count'))
+        counters_max = self._huodong_json(
+            (row or {}).get('max_count'))
+        day_val = self._zonghe_acc_value(counters, act.get('id'))
+        max_val = self._zonghe_acc_value(counters_max, act.get('id'))
+        gate = self._zonghe_claim_gate(cat, act, role, day_val,
+                                       max_val, now_ms)
+        if gate is not None:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       gate]))
+        try:
+            con = int(str(act.get('con1') or 0))
+        except (TypeError, ValueError):
+            con = 0
+        total = self._zonghe_charge_total_all(rid)
+        if con > total:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        currencies = act.get('currencies') or {}
+        parcels = [(v['goods_id'], v['count'], v['bind'])
+                   for v in act.get('item_views') or []]
+        if not self._vip_fits_list(rid, parcels):
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, BAG_ERR_SLOT_LESS]]))
+        ok, extra = self._zonghe_claim_apply(
+            role, rid, act.get('id'), currencies, parcels)
+        if not ok:
+            return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                       [0, HUODONG_ERR_FIRST_UNCHARGED]]))
+        new_max_val = max_val + 1
+        new_day_val = day_val + 1
+        day_limit = self._zonghe_int(act.get('day_count'))
+        max_limit = self._zonghe_int(act.get('max_count'))
+        state = 1 if (new_max_val < max_limit and
+                      new_day_val < day_limit and
+                      total >= con) else 2
+        out = [frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
+                                    [1, act.get('id'), state,
+                                     new_max_val, max_limit, new_day_val,
+                                     day_limit, None]]))]
+        return out[0] if not extra else out + extra
+
     def huodong_exchange_claim(self, msg=None, now_ms=None):
         """Command 70551: exchange claim for ct-9.
 
@@ -15718,8 +16215,10 @@ class Session:
         dayVal, dayLimit] with post-claim counters (state 1 only
         when the reduced purse/bag still covers the cost and both
         limits stay open). Missing category/activity stays silent
-        like the jar's null; sibling clienttypes ride their own
-        service branches (not covered here).
+        like the jar's null; ct-1/ct-3/ct-7/ct-10/ct-22/ct-30/ct-31/
+        ct-32 ride their own branch helpers, ct-34 (XIAOFEI) and
+        every other clienttype stay silent like the jar's
+        fall-through null.
         """
         if now_ms is None:
             now_ms = int(time.time() * 1000)
@@ -15730,7 +16229,27 @@ class Session:
             ctype = int(req[0])
         except (TypeError, ValueError):
             return None
-        if ctype != 9 or self.config is None:
+        if self.config is None:
+            return None
+        if ctype == 34:
+            return None
+        if ctype == 1:
+            return self._zonghe_recharge_claim(req, now_ms)
+        if ctype == 3:
+            return self._zonghe_consume_claim(req, now_ms)
+        if ctype == 7:
+            return self._zonghe_forever_claim(req, now_ms)
+        if ctype == 10:
+            return self._zonghe_zuoqi_claim(req, now_ms)
+        if ctype == 22:
+            return self._zonghe_baoshi_claim(req, now_ms)
+        if ctype == 30:
+            return self._zonghe_qibing_claim(req, now_ms)
+        if ctype == 31:
+            return self._zonghe_chibang_claim(req, now_ms)
+        if ctype == 32:
+            return self._zonghe_vip_claim(req, now_ms)
+        if ctype != 9:
             return None
         roles = self.get_roles(self.authed_user or '',
                                self.server_id or '')
@@ -15795,27 +16314,25 @@ class Session:
                       new_day_val < day_limit) else 2
         grant_goods = [{'goods_id': gid, 'count': count, 'bind': bind}
                        for gid, count, bind in parcels]
-        credits, exp_fields, gained = self._zonghe_grant_state(
-            role, act.get('currencies') or {})
-        grant_state = dict(credits)
-        grant_state.update(exp_fields)
-        try:
-            old_level = int((role or {}).get('level') or 0)
-        except (TypeError, ValueError):
-            old_level = 0
+        credits = self._zonghe_grant_credits(
+            act.get('currencies') or {})
+        amount = self._zonghe_exp_amount(act.get('currencies') or {})
+        exp_apply = self._zonghe_exp_apply(amount) \
+            if amount > 0 else None
         try:
             # Counters increment inside the commit (not as prebuilt
             # JSON): concurrent claims serialize on the store lock
-            # with no lost update, matching the jar's setValue.
-            ok = self.huodong_exchange_tx(
+            # with no lost update, matching the jar's setValue. The
+            # exp gain computes there too, against the fresh row.
+            ok, exp_out = self.huodong_exchange_tx(
                 rid, yb, yxb, goods, grant_goods,
                 self._zonghe_grant_stacks(grant_goods),
-                self._zonghe_grant_capacity(rid), grant_state,
-                act.get('id'), act.get('id'))
+                self._zonghe_grant_capacity(rid), credits,
+                act.get('id'), act.get('id'), exp_apply=exp_apply)
         except Exception as e:
             if not self._zonghe_abort(e):
                 raise
-            ok = False
+            ok, exp_out = False, None
         if not ok:
             return frame(amf3_encode([str(CMD_HUODONG_EXCHANGE_CLAIM),
                                        [0, HUODONG_ERR_FIRST_UNCHARGED]]))
@@ -15823,11 +16340,7 @@ class Session:
                                     [1, act.get('id'), None, state,
                                      new_max_val, max_limit, new_day_val,
                                      day_limit]]))]
-        if gained:
-            out.extend(self._zonghe_level_frames(
-                role, rid, old_level,
-                exp_fields.get('exp'),
-                exp_fields.get('level', old_level)))
+        out.extend(self._zonghe_claim_frames(role, rid, exp_out))
         return out[0] if len(out) == 1 else out
 
     def huodong_mall_buy(self, msg=None, now_ms=None):

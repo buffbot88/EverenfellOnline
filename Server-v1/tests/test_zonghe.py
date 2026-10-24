@@ -105,6 +105,25 @@ def frames(out):
     return [decode(bytes(f)[4:]) for f in out]
 
 
+class _SynthTable:
+    """Wrap a GameConfig appending one synthetic zonghe category."""
+    def __init__(self, real, clienttype, cat):
+        self._real = real
+        self._ct = clienttype
+        self._cat = cat
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def zonghe(self, server_id='fu0', kaifu_ms=0):
+        table = copy.deepcopy(self._real.zonghe(
+            server_id=server_id, kaifu_ms=kaifu_ms))
+        table.setdefault(self._ct, {'categories': [],
+                                   'by_activity': {}})
+        table[self._ct]['categories'].append(copy.deepcopy(self._cat))
+        return table
+
+
 @unittest.skipUnless(HAVE_REAL and HAVE_SNAPSHOT,
                      'legacy config tree or zonghe snapshot missing')
 class ZongheLoaderTest(unittest.TestCase):
@@ -688,12 +707,29 @@ class ZongheTransactionTest(unittest.TestCase):
         self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
         self.role = dict(self.store.list_roles('hero', 'fu1304')[0])
 
-    def make_sess(self, kaifu_ms, config=None):
+    def make_sess(self, kaifu_ms, config=None, charge=None,
+                  lifetime=None, qibing=None):
+        extra = {}
+        if charge is not None:
+            extra['charge_total_in_time'] = lambda r, s, e: charge
+        if lifetime is not None:
+            extra['charge_total'] = lambda r: lifetime
+        if qibing is not None:
+            extra['qibing_level'] = lambda r: qibing
         return Session(
             conn_id=1, check_sign=lambda *a: False,
             get_roles=lambda u, s: [dict(r) for r in
                                     self.store.list_roles(u, s)],
             server_start_ms=kaifu_ms,
+            get_role_zuoqi=self.store.get_role_zuoqi,
+            save_role_zuoqi=self.store.save_role_zuoqi,
+            get_role_baoshi=self.store.get_role_baoshi,
+            save_role_baoshi=self.store.save_role_baoshi,
+            get_role_guangyi=self.store.get_role_guangyi,
+            save_role_guangyi=self.store.save_role_guangyi,
+            get_role_vip=self.store.get_role_vip,
+            save_role_vip=self.store.save_role_vip,
+            **extra,
             save_role_state=self.store.update_character_state,
             get_role_huodong=self.store.get_role_huodong,
             save_role_huodong=self.store.save_role_huodong,
@@ -727,6 +763,15 @@ class ZongheTransactionTest(unittest.TestCase):
         for s in self.store.get_role_bag_slots(self.rid, 1, 150):
             have[s['goods_id']] = have.get(s['goods_id'], 0) + s['count']
         return have
+
+    def claim_all(self, data, now_ms):
+        out = self.sess.huodong_exchange_claim([70551, data],
+                                               now_ms=now_ms)
+        if out is None:
+            return None
+        if isinstance(out, list):
+            return [decode(bytes(f)[4:]) for f in out]
+        return decode(bytes(out)[4:])
 
     def counters(self):
         row = self.store.get_role_huodong(self.rid) or {}
@@ -960,6 +1005,565 @@ class ZongheTransactionTest(unittest.TestCase):
         self.assertEqual(self.bag(), {'expfold_003': 5})
         role = dict(self.store.list_roles('hero', 'fu1304')[0])
         self.assertEqual(role['lingshi'], 100000 - 5 * 20)
+
+    # -- 70551 recharge claim (ct-1: getRechangeReward) ------------------
+    PER_ACT = '201400001-zuixinleiji104-2'
+    ACC_ACT = '201400001-zuixinleiji101-2'
+    ZQ_ACT = '201400001-zxzuoqi105-2'
+    XIAOFEI_ACT = '201402252-xxfph003-3'
+
+    def test_recharge_per_short_total_is_792001(self):
+        # ft-10 row, con 2000: a fresh role's windowed total reads 0.
+        body = self.claim([1, self.PER_ACT, ''], self.EX_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+        row = self.store.get_role_huodong(self.rid) or {}
+        self.assertEqual(json.loads(row.get('day_count') or '{}'), {})
+
+    def test_recharge_acc_short_total_is_792001(self):
+        # ft-11 row, con 200: same gate, no side effects.
+        body = self.claim([1, self.ACC_ACT, ''], self.EX_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_recharge_success_persists_and_repeats(self):
+        self.sess = self.make_sess(PROD_KAIFU, charge=5000)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        body = self.claim([1, self.ACC_ACT, ''], self.EX_NOW)
+        # Limits are 1/1, so the post-claim display reads state 2;
+        # the choujiang cell reads null (empty table, jar's null arm).
+        self.assertEqual(
+            body,
+            ['70551', [1, self.ACC_ACT, '', 2, 1, 1, 1, 1, None]])
+        self.assertEqual(self.bag(), {
+            'chip_nvwa': 2, 'jinjiedan001': 2, 'zhenqipill_003': 1,
+            'tongqian003': 1, 'expfold_002': 1})
+        self.assertEqual(
+            self.counters()['day_count'], {self.ACC_ACT: 1})
+        self.assertEqual(
+            self.counters()['max_count'], {self.ACC_ACT: 1})
+        self.assertEqual(self.claim([1, self.ACC_ACT, ''], self.EX_NOW),
+                         ['70551', [0, 792006]])
+
+    def test_recharge_unknown_choose_is_792005(self):
+        # fu0 rows carry no choose entries: any non-empty chooseId
+        # misses the map, with no counters or grants written.
+        self.sess = self.make_sess(PROD_KAIFU, charge=5000)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        body = self.claim([1, self.ACC_ACT, 'nope'], self.EX_NOW)
+        self.assertEqual(body, ['70551', [0, 792005]])
+        self.assertEqual(self.bag(), {})
+        row = self.store.get_role_huodong(self.rid) or {}
+        self.assertEqual(json.loads(row.get('day_count') or '{}'), {})
+
+    def test_recharge_choose_grant_state_one_and_level_frames(self):
+        # Synthetic ct-1 row with one choose entry: a covering total
+        # grants the chosen award (not the flat one), the 5/5 limits
+        # and con*(1+1) <= total keep state 1, and the exp arm pushes
+        # the 12001 level-up frames behind the 9-array reply.
+        need = int(self.cfg.role_need_exp(56))
+        fixture = {
+            'id': 'synth-1-1', 'start_ms': self.EX_NOW - 1000,
+            'end_ms': self.EX_NOW + 3600000, 'pic': '',
+            'activities': [{
+                'id': 'synth-r-1', 'order': 1, 'need_level': 1,
+                'need_pay_yb': 0, 'day_count': 5, 'max_count': 5,
+                'con1': '100', 'functiontype': 11,
+                'currencies': {'jb': 0, 'lijin': 0, 'zhenqi': 0,
+                               'shengwang': 0, 'exp': 0},
+                'item_views': [{
+                    'goods_id': 'duihuan2', 'count': 1, 'bind': 1,
+                    'hours': 0.0, 'effect': None, 'unsale': 0,
+                    'lost': None}],
+                'choose_awards': {'c9': {
+                    'currencies': {'jb': 50, 'lijin': 0, 'zhenqi': 0,
+                                   'shengwang': 0, 'exp': need},
+                    'item_views': [{
+                        'goods_id': 'kangxing2', 'count': 2, 'bind': 1,
+                        'hours': 0.0, 'effect': None, 'unsale': 0,
+                        'lost': None}]}},
+            }],
+        }
+
+        class _Synth:
+            def __init__(self, real, cat):
+                self._real = real
+                self._cat = cat
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+            def zonghe(self, server_id='fu0', kaifu_ms=0):
+                table = copy.deepcopy(self._real.zonghe(
+                    server_id=server_id, kaifu_ms=kaifu_ms))
+                table.setdefault(1, {'categories': [],
+                                     'by_activity': {}})
+                table[1]['categories'].append(copy.deepcopy(self._cat))
+                return table
+
+        sess = self.make_sess(PROD_KAIFU,
+                              config=_Synth(self.cfg, fixture),
+                              charge=5000)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [1, 'synth-r-1', 'c9']], now_ms=self.EX_NOW)
+        got = [decode(bytes(f)[4:]) for f in out]
+        self.assertEqual(got[0], ['70551', [1, 'synth-r-1', 'c9', 1,
+                                            1, 5, 1, 5, None]])
+        self.assertEqual(got[1][0], '12001')
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        self.assertEqual(role['tongqian'], 50)
+        self.assertEqual(role['level'], 57)
+        self.assertEqual(self.bag(), {'kangxing2': 2})
+
+    # -- 70551 in-tx EXP / credit deltas ---------------------------------
+    EXP_NEED_56 = 13531560
+    EXP_CHAIN = [(57, 0), (57, 13531560), (58, 12417528),
+                 (59, 10175232), (60, 6790440)]
+
+    def exp_fixture(self, exp=None, jb=50, lijin=0, zhenqi=0,
+                    act_id='synth-exp-5'):
+        return {
+            'id': 'synth-1x-1', 'start_ms': self.EX_NOW - 1000,
+            'end_ms': self.EX_NOW + 3600000, 'pic': '',
+            'activities': [{
+                'id': act_id, 'order': 1, 'need_level': 1,
+                'need_pay_yb': 0, 'day_count': 5, 'max_count': 5,
+                'con1': '100', 'functiontype': 11,
+                'currencies': {'jb': jb, 'lijin': lijin,
+                               'zhenqi': zhenqi, 'shengwang': 0,
+                               'exp': exp},
+                'item_views': [{
+                    'goods_id': 'kangxing2', 'count': 2, 'bind': 1,
+                    'hours': 0.0, 'effect': None, 'unsale': 0,
+                    'lost': None}],
+                'choose_awards': {},
+            }],
+        }
+
+    def exp_sess(self, fixture, charge=5000):
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(self.cfg, 1, fixture), charge=charge)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        return sess
+
+    def test_exchange_exp_concurrent_claims_serialize_on_value(self):
+        # Five simultaneous exp-granting claims must serialize on
+        # value: each tx computes from its fresh in-tx row, so the
+        # five replies land on five distinct chain states, the
+        # credits add up, and nothing is clobbered. Pre-fix code
+        # computed all five from the same stale snapshot (identical
+        # frames, last-writer-wins persistence).
+        need = int(self.cfg.role_need_exp(56))
+        self.assertEqual(need, self.EXP_NEED_56)
+        fixture = self.exp_fixture(exp=need)
+        results, lock = [], threading.Lock()
+
+        def one():
+            sess = self.exp_sess(fixture)
+            try:
+                out = sess.huodong_exchange_claim(
+                    [70551, [1, 'synth-exp-5', '']], now_ms=self.EX_NOW)
+                blobs = out if isinstance(out, list) else [out]
+                body = [decode(bytes(f)[4:]) for f in blobs]
+            except Exception as e:  # pragma: no cover - deadlock tripwire
+                body = e
+            with lock:
+                results.append(body)
+
+        threads = [threading.Thread(target=one) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len(results), 5)
+        noticed = []
+        singles = 0
+        for body in results:
+            self.assertEqual(body[0][0], '70551')
+            self.assertEqual(body[0][1][0], 1)
+            self.assertEqual(body[0][1][3], 1)
+            if len(body) == 1:
+                singles += 1
+            else:
+                self.assertEqual(body[1][0], '12001')
+                noticed.append((int(body[1][1][1]),
+                                int(body[1][1][0])))
+        # Exactly the non-leveling claim pushes no frames; the four
+        # level-ups carry the exact chain states.
+        self.assertEqual(singles, 1)
+        self.assertEqual(
+            sorted(noticed),
+            sorted(self.EXP_CHAIN[i] for i in (0, 2, 3, 4)))
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        self.assertEqual((role['level'], role['exp']), (60, 6790440))
+        self.assertEqual(role['tongqian'], 250)
+        self.assertEqual(self.bag(), {'kangxing2': 10})
+
+    def test_exchange_exp_sequential_claims_accumulate_exactly(self):
+        need = int(self.cfg.role_need_exp(56))
+        sess = self.exp_sess(self.exp_fixture(exp=need))
+        first = [decode(bytes(f)[4:])
+                 for f in sess.huodong_exchange_claim(
+                     [70551, [1, 'synth-exp-5', '']], now_ms=self.EX_NOW)]
+        self.assertEqual(first[0], ['70551', [1, 'synth-exp-5', '', 1,
+                                              1, 5, 1, 5, None]])
+        self.assertEqual(first[1], ['12001', [0.0, 57]])
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        attr57 = self.cfg.role_attribute_row(57)
+        self.assertEqual(
+            (role['level'], role['exp'], role['max_hp'], role['max_mp']),
+            (57, 0, int(attr57['hitpoints']), int(attr57['mana'])))
+        # No level-up on the second gain: a bare reply, no pushes,
+        # and the bar banks the full amount.
+        second = sess.huodong_exchange_claim(
+            [70551, [1, 'synth-exp-5', '']], now_ms=self.EX_NOW)
+        self.assertEqual(decode(bytes(second)[4:]),
+                         ['70551', [1, 'synth-exp-5', '', 1,
+                                   2, 5, 2, 5, None]])
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        self.assertEqual(
+            (role['level'], role['exp'], role['max_hp']),
+            (57, need, int(attr57['hitpoints'])))
+
+    def test_exchange_exp_failure_rolls_back_values(self):
+        # Straight at the store: an exp-granting tx whose bag grant
+        # overflows must roll the persisted level/exp/credits back
+        # with the counters and stock, not bank them and fail.
+        need = int(self.cfg.role_need_exp(56))
+        before = dict(self.store.list_roles('hero', 'fu1304')[0])
+        self.store.save_role_bag_state(self.rid, bag_capacity=1,
+                                       storage_capacity=144)
+        apply = self.sess._zonghe_exp_apply(need)
+        with self.assertRaises(Exception) as ctx:
+            self.store.huodong_exchange_tx(
+                self.rid, 0, 0, [],
+                [{'goods_id': 'kangxing2', 'count': 1, 'bind': 1},
+                 {'goods_id': 'duihuan2', 'count': 15, 'bind': 1}],
+                {'kangxing2': 99, 'duihuan2': 999}, 1,
+                {'tongqian': 50}, 'synth-x', 'synth-x',
+                exp_apply=apply)
+        self.assertEqual(type(ctx.exception).__name__, 'HuodongAbort')
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        for col in ('level', 'exp', 'tongqian', 'max_hp', 'max_mp'):
+            self.assertEqual(role[col], before[col], col)
+        row = self.store.get_role_huodong(self.rid) or {}
+        self.assertEqual(json.loads(row.get('day_count') or '{}'), {})
+        self.assertEqual(json.loads(row.get('max_count') or '{}'), {})
+        self.assertEqual(self.bag(), {})
+
+    def test_exchange_currency_grants_add_not_assign(self):
+        # The jar's incr semantics: grants add to nonzero balances.
+        self.store.update_character_state(
+            self.rid, tongqian=1000, bind_lingshi=2000, zhenqi=3000)
+        sess = self.exp_sess(self.exp_fixture(
+            exp=0, jb=50, lijin=60, zhenqi=70, act_id='synth-cur-1'))
+        body = decode(bytes(sess.huodong_exchange_claim(
+            [70551, [1, 'synth-cur-1', '']],
+            now_ms=self.EX_NOW))[4:])
+        self.assertEqual(body[1][0], 1)
+        role = dict(self.store.list_roles('hero', 'fu1304')[0])
+        self.assertEqual(
+            (role['tongqian'], role['bind_lingshi'], role['zhenqi']),
+            (1050, 2060, 3070))
+
+    # -- 70551 rank claims (ct-22/30/31/32) -------------------------------
+    BS_ACT = '20140226-1bsa001-3'
+    BS_NOW = 1393344001000 + 3600000
+    QB_ACT = '20140226-6qc002-3'
+    QB_NOW = 1393344001000 + 3600000
+    GY_ACT = '20140227-gygy003-3'
+    GY_NOW = 1393430401000 + 3600000
+    VIP_KAIFU = 1394000000000
+    VIP_NOW = 1394000000000 + 2 * 86400000 + 3600000
+    VIP_ACT = '201400003-zxvip104-5'
+
+    def test_baoshi_short_sum_is_792001(self):
+        # Genuine row, con 30 against no socketed gems.
+        body = self.claim([22, self.BS_ACT], self.BS_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_baoshi_success_persists(self):
+        self.store.save_role_baoshi(self.rid, [
+            {'id': 'g1', 'part': 1, 'grid': 1, 'level': 10},
+            {'id': 'g2', 'part': 2, 'grid': 1, 'level': 10},
+            {'id': 'g3', 'part': 3, 'grid': 1, 'level': 10}])
+        body = self.claim([22, self.BS_ACT], self.BS_NOW)
+        # Limits are 1/1: post-claim state 2, no choujiang cell.
+        self.assertEqual(body, ['70551', [1, self.BS_ACT, None, 2,
+                                          1, 1, 1, 1]])
+        self.assertEqual(self.bag(),
+                         {'bscl': 200, 'baoshilixiang1': 1})
+        self.assertEqual(
+            self.counters()['day_count'], {self.BS_ACT: 1})
+        self.assertEqual(self.claim([22, self.BS_ACT], self.BS_NOW),
+                         ['70551', [0, 792006]])
+
+    def test_baoshi_bag_full_is_430212(self):
+        self.store.save_role_baoshi(self.rid, [
+            {'id': 'g1', 'part': 1, 'grid': 1, 'level': 30}])
+        self.stock(('duihuan2', 15, 1))
+        self.store.save_role_bag_state(self.rid, bag_capacity=1,
+                                       storage_capacity=144)
+        body = self.claim([22, self.BS_ACT], self.BS_NOW)
+        self.assertEqual(body, ['70551', [0, 430212]])
+        self.assertEqual(self.bag(), {'duihuan2': 15})
+
+    def test_qibing_short_is_792001(self):
+        # The qibing service is unported: the metric reads 0.
+        body = self.claim([30, self.QB_ACT], self.QB_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_qibing_success_persists_and_restart(self):
+        self.sess = self.make_sess(PROD_KAIFU, qibing=3)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        body = self.claim([30, self.QB_ACT], self.QB_NOW)
+        self.assertEqual(body, ['70551', [1, self.QB_ACT, None, 2,
+                                          1, 1, 1, 1]])
+        self.assertEqual(self.bag(),
+                         {'qibing001': 160, 'qibinglixiang1': 1})
+        self.assertEqual(
+            self.counters()['day_count'], {self.QB_ACT: 1})
+        self.store.close()
+        self.store = Store(self.db_path)
+        self.addCleanup(self.store.close)
+        self.sess = self.make_sess(PROD_KAIFU, qibing=3)
+        self.sess.authed_user, self.sess.server_id = 'hero', 'fu1304'
+        self.assertEqual(self.claim([30, self.QB_ACT], self.QB_NOW),
+                         ['70551', [0, 792006]])
+        self.assertEqual(self.bag(),
+                         {'qibing001': 160, 'qibinglixiang1': 1})
+
+    def test_chibang_short_is_792001(self):
+        # No wing row: the level reads 0 against con 3.
+        body = self.claim([31, self.GY_ACT], self.GY_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_chibang_success_persists(self):
+        self.store.save_role_guangyi(self.rid, level=3)
+        body = self.claim([31, self.GY_ACT], self.GY_NOW)
+        self.assertEqual(body, ['70551', [1, self.GY_ACT, None, 2,
+                                          1, 1, 1, 1]])
+        self.assertEqual(self.bag(),
+                         {'guangyi001': 250, 'guangyilixiang1': 1})
+        self.assertEqual(
+            self.counters()['max_count'], {self.GY_ACT: 1})
+        self.assertEqual(self.claim([31, self.GY_ACT], self.GY_NOW),
+                         ['70551', [0, 792006]])
+
+    def test_vip_short_is_792001(self):
+        # No vip row: the level reads 0 against con 4.
+        sess = self.make_sess(self.VIP_KAIFU)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [32, self.VIP_ACT]], now_ms=self.VIP_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [0, 792001]])
+
+    def test_vip_success_persists(self):
+        self.store.save_role_vip(self.rid, vip_level=4)
+        sess = self.make_sess(self.VIP_KAIFU)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [32, self.VIP_ACT]], now_ms=self.VIP_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [1, self.VIP_ACT, None, 2,
+                                   1, 1, 1, 1]])
+        self.assertEqual(self.bag(),
+                         {'qianghuashi': 30, 'jinjieshi': 15})
+        self.assertEqual(
+            self.counters()['day_count'], {self.VIP_ACT: 1})
+
+    def test_wire_rank_gates(self):
+        # Encrypted-wire: live-shaped ct-22/30/31/32 rows read
+        # expired against the wall clock, proving dispatch reaches
+        # all four new rank branches through the real cipher path.
+        self.sess.feed(bytes.fromhex('00000009060f494e49544b4559'))
+        payloads = [([22, self.BS_ACT], [0, 792003]),
+                    ([30, self.QB_ACT], [0, 792003]),
+                    ([31, self.GY_ACT], [0, 792003]),
+                    ([32, self.VIP_ACT], [0, 792003])]
+        for data, want in payloads:
+            req = self.sess.cipher.encode(encode([70551, data]))
+            out = self.sess.feed(struct.pack('>I', len(req)) + req)
+            self.assertEqual([decode(bytes(f)[4:]) for f in out],
+                             [['70551', want]])
+
+    # -- 70551 consume/forever claims (ct-3/ct-7, synthetic) -------------
+    # fu0 holds zero ct-3 and zero ct-7 rows, so both branches ride
+    # labeled synthetic fixtures in the shipped schema; the
+    # thresholds, replies and gates are bytecode-verbatim.
+    def synth_family(self, ctype, act, con, functiontype,
+                     day=1, maximum=1, currencies=None):
+        return {
+            'id': 'synth-%d-1' % ctype,
+            'start_ms': self.EX_NOW - 1000,
+            'end_ms': self.EX_NOW + 3600000, 'pic': '',
+            'activities': [{
+                'id': act, 'order': 1, 'need_level': 1,
+                'need_pay_yb': 0, 'day_count': day,
+                'max_count': maximum, 'con1': con,
+                'functiontype': functiontype,
+                'currencies': currencies or
+                {'jb': 0, 'lijin': 0, 'zhenqi': 0,
+                 'shengwang': 0, 'exp': 0},
+                'item_views': [{
+                    'goods_id': 'kangxing2', 'count': 1, 'bind': 1,
+                    'hours': 0.0, 'effect': None, 'unsale': 0,
+                    'lost': None}],
+                'choose_awards': {},
+            }],
+        }
+
+    def test_consume_short_pay_is_792001(self):
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(
+                self.cfg, 3,
+                self.synth_family(3, 'synth-c-1', '200', 92)))
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [3, 'synth-c-1', '']], now_ms=self.EX_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_consume_success_persists(self):
+        self.store.save_role_huodong(
+            self.rid, pay_yb=json.dumps({'synth-c-1': 200}))
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(
+                self.cfg, 3,
+                self.synth_family(3, 'synth-c-1', '200', 92)))
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [3, 'synth-c-1', '']], now_ms=self.EX_NOW)
+        # Limits are 1/1: post-claim state 2, choujiang null.
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [1, 'synth-c-1', '', 2, 1, 1,
+                                   1, 1, None]])
+        self.assertEqual(self.bag(), {'kangxing2': 1})
+        self.assertEqual(
+            self.counters()['day_count'], {'synth-c-1': 1})
+        out = sess.huodong_exchange_claim(
+            [70551, [3, 'synth-c-1', '']], now_ms=self.EX_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [0, 792006]])
+
+    def test_consume_unknown_choose_is_792005(self):
+        self.store.save_role_huodong(
+            self.rid, pay_yb=json.dumps({'synth-c-1': 200}))
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(
+                self.cfg, 3,
+                self.synth_family(3, 'synth-c-1', '200', 92)))
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [3, 'synth-c-1', 'nope']], now_ms=self.EX_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [0, 792005]])
+        self.assertEqual(self.bag(), {})
+
+    def test_forever_short_total_is_792001(self):
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(
+                self.cfg, 7,
+                self.synth_family(7, 'synth-f-1', '500', 14)))
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [7, 'synth-f-1', '']], now_ms=self.EX_NOW)
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+
+    def test_forever_success_persists_state_one(self):
+        sess = self.make_sess(
+            PROD_KAIFU,
+            config=_SynthTable(
+                self.cfg, 7,
+                self.synth_family(7, 'synth-f-1', '500', 14,
+                                  day=5, maximum=5)),
+            lifetime=1000)
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        out = sess.huodong_exchange_claim(
+            [70551, [7, 'synth-f-1', '']], now_ms=self.EX_NOW)
+        # The 8-array carries no chooseId slot; the 5/5 limits and
+        # 1000 >= 500 keep state 1, choujiang null.
+        self.assertEqual(decode(bytes(out)[4:]),
+                         ['70551', [1, 'synth-f-1', 1, 1, 5, 1,
+                                   5, None]])
+        self.assertEqual(self.bag(), {'kangxing2': 1})
+        self.assertEqual(
+            self.counters()['max_count'], {'synth-f-1': 1})
+
+    # -- 70551 zuoqi claim (ct-10: getZuoqiReward) -----------------------
+    def test_zuoqi_short_rank_is_792001(self):
+        # con 5 against a fresh rank-0 mount.
+        body = self.claim([10, self.ZQ_ACT], self.EX_NOW)
+        self.assertEqual(body, ['70551', [0, 792001]])
+        self.assertEqual(self.bag(), {})
+        row = self.store.get_role_huodong(self.rid) or {}
+        self.assertEqual(json.loads(row.get('day_count') or '{}'), {})
+
+    def test_zuoqi_success_persists(self):
+        self.store.save_role_zuoqi(self.rid, zuoqi_rank=5,
+                                   zuoqi_cur_rank=5)
+        body = self.claim([10, self.ZQ_ACT], self.EX_NOW)
+        # Limits are 1/1: post-claim state 2, no choujiang cell.
+        self.assertEqual(body, ['70551', [1, self.ZQ_ACT, None, 2,
+                                          1, 1, 1, 1]])
+        self.assertEqual(self.bag(), {'jinjiedan001': 300})
+        self.assertEqual(
+            self.counters()['day_count'], {self.ZQ_ACT: 1})
+        self.assertEqual(
+            self.counters()['max_count'], {self.ZQ_ACT: 1})
+        self.assertEqual(self.claim([10, self.ZQ_ACT], self.EX_NOW),
+                         ['70551', [0, 792006]])
+
+    def test_zuoqi_bag_full_is_430212(self):
+        self.store.save_role_zuoqi(self.rid, zuoqi_rank=8,
+                                   zuoqi_cur_rank=8)
+        self.stock(('duihuan2', 15, 1))
+        self.store.save_role_bag_state(self.rid, bag_capacity=1,
+                                       storage_capacity=144)
+        body = self.claim([10, self.ZQ_ACT], self.EX_NOW)
+        self.assertEqual(body, ['70551', [0, 430212]])
+        self.assertEqual(self.bag(), {'duihuan2': 15})
+
+    # -- 70551 silent arms ------------------------------------------------
+    def test_xiaofei_claim_is_silent(self):
+        # ct-34 has no claim arm: the jar falls through and returns
+        # null, so nothing is framed even for a real activity id.
+        self.assertIsNone(self.claim([34, self.XIAOFEI_ACT],
+                                     self.EX_NOW))
+
+    def test_unknown_clienttype_claim_is_silent(self):
+        self.assertIsNone(self.claim([99, self.ACC_ACT, ''],
+                                     self.EX_NOW))
+
+    def test_recharge_unknown_activity_is_silent(self):
+        self.assertIsNone(self.claim([1, 'no-such-act', ''],
+                                     self.EX_NOW))
+
+    def test_wire_recharge_and_zuoqi_gates(self):
+        # Encrypted-wire: live ct-1/ct-10 rows at PROD_KAIFU+1h read
+        # expired against the wall clock, proving dispatch reaches
+        # both new branches through the real cipher path.
+        self.sess.feed(bytes.fromhex('00000009060f494e49544b4559'))
+        payloads = [([1, self.ACC_ACT, ''], [0, 792003]),
+                    ([10, self.ZQ_ACT], [0, 792003])]
+        for data, want in payloads:
+            req = self.sess.cipher.encode(encode([70551, data]))
+            out = self.sess.feed(struct.pack('>I', len(req)) + req)
+            self.assertEqual([decode(bytes(f)[4:]) for f in out],
+                             [['70551', want]])
 
     # -- 70550 mall buy -------------------------------------------------
     def test_mall_buy_success_persists_and_refreshes(self):

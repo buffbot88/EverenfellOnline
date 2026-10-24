@@ -109,14 +109,91 @@ restart/reconnect persistence, concurrency consistency, expiry,
 the [2]->[0, 792005] regression, and encrypted-wire dispatch.
 Census: 70550/70551 implemented (huodong 10/0/0/1/27).
 
+Follow-up fix (in-tx EXP computation): the gain computes inside
+the atomic commit from the fresh in-tx row (pure applier closure),
+currency credits apply as in-tx increments (the jar's incr
+semantics), the tx returns the exact post-commit (old_level,
+level, exp, gained) for the 12001/extended frames, and the
+extended fan-out reads a freshly re-fetched role. Five racing
+exp claims land on five distinct chain states with summed
+credits; a forced mid-apply abort rolls level/exp/credits/
+counters/stock back together.
 Documented gaps (no invention): no shipped row exercises the
 exp level-up fan-out beyond the covered path (fu0 awards carry
-zero exp; the synthetic row pins one level-up); the exp absolute
-fields compute from a pre-commit read, so two racing exp-granting
-claims serialize on value while counters/debits/bag stay exact
-(Java's remote calls race worse); zubao rolls stay [] (no
+zero exp; synthetic rows pin it); zubao rolls stay [] (no
 nonzero zubaoid in ct-9/5/1); count < 1 on 70550 answers
 [0, 792001] rather than replicating a negative-debit quirk.
+
+## Batch 8: 70551 ct-1/ct-10 generic claims (durable)
+
+`huodong_exchange_claim` now also serves getHuodongReward's
+RECHARGE (ct-1) and ZUOQI (ct-10) branches: the shared gate
+answers the jar's `[0, code]` (expired 792003, hidden 792001,
+day 792006, max 792007, full bag 430212, bag checked before the
+threshold like checkGetHuodongReward). ct-1 routes PER_RECHARGE
+(10; YB_CONSUME/92 shares the arm, no fu0 row uses it) and
+ACCUMULATE_RECHARGE (11) through the one threshold formula
+`con * (claimed + 1) > windowed total` answering `[0, 792001]`;
+other functiontypes stay silent like the jar's null. The windowed
+total is an injected `charge_total_in_time` callable (default 0,
+exact for fresh roles; no recharge-record service exists) and the
+claim echoes the raw chooseId: empty rides the flat award, a
+known id rides its choose_awards entry, an unknown id answers
+`[0, 792005]` (fu0 rows carry no choose entries, so the loader
+parses them but finds none). ct-10 checks the mount rank
+(get_role_zuoqi) against con, `[0, 792001]` when short. Both
+grant through the batch-7 atomic commit (counters bump in-tx,
+abort maps to `[0, 792001]`) and reply the jar's arrays: the
+9-array `[1, actId, chooseId, state, maxVal, maxLimit, dayVal,
+dayLimit, choujiang]` for ct-1 with the post-claim next-threshold
+state (`total >= con * (claimed_post + 1)`), the 8-array without
+choujiang for ct-10 with the limits-only state. The choujiang
+cell reads None (empty table, the jar's null arm); ct-34 XIAOFEI
+and every other clienttype stay silent like the jar's
+fall-through null. Tests (11 new, all on real fu0 rows except
+one labeled synthetic choose row): PER/ACC short totals, a
+covering-total success with persistence and repeat rejection,
+the unknown-choose 792005 edge with no side effects, a choose
+grant pinning state 1 plus the exp level-up frames, rank short
+and success persistence plus the bag-full gate, the ct-34 /
+unknown-ctype / unknown-activity silent arms, and encrypted-wire
+gate dispatch for both branches. Census unchanged (same 70551
+handler: huodong 10/0/0/1/27).
+
+## Batch 9: 70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims
+
+`huodong_exchange_claim` serves six more getHuodongReward branches.
+ct-22/30/31/32 share one threshold arm with ct-10 (metric < con
+answers `[0, 792001]`, then the 8-array `[1, actId, null, state,
+maxVal, maxLimit, dayVal, dayLimit]` with the limits-only state):
+baoshi gem-level sum (real `role_baoshi` rows), qibing level
+(service unported: injected callable reading 0), wing level
+(real `role_guangyi.level`), vip level (real `role_vip`).
+ct-3 checks `con * (claimed + 1)` against the per-activity payYb
+map (new `role_huodong.pay_yb` JSON column, migrated like
+`mall_buy_count`; the consume-tracking producer is unported, so
+it reads empty until seeded) and replies the 9-array with
+chooseId and choujiang like ct-1. ct-7 checks con against the
+lifetime charge total (injected, default 0) and replies the
+8-array `[1, actId, state, maxVal, maxLimit, dayVal, dayLimit,
+choujiang]` with state 1 only while the limits stay open and
+the total still covers con. All six reuse the batch-7/8 atomic
+commit (counters bump in-tx, abort maps to the jar code) and
+the in-tx EXP/credit grant. Tests (15 new): genuine-row short
+and success for ct-22 (sum 30), ct-30 (injected 3, plus
+restart/reconnect persistence), ct-31 (wing 3), ct-32 (vip 4 in
+a kaifu-relative window), bag-full, day-limit repeat,
+encrypted-wire expiry gates for all four rank families, and
+labeled synthetic fixtures for ct-3 (seeded payYb success,
+short, unknown-choose 792005) and ct-7 (short, lifetime
+success with state 1) — fu0 holds zero rows for both.
+Census unchanged (same 70551 handler: huodong 10/0/0/1/27).
+
+Known limits carried over: zubao rolls stay unrun (no nonzero
+zubaoid in fu0).
+The real next dependency is a charge/consume-total pipeline
+(recharge-record service + consume event hookup) so ct-1 claims
+can succeed on live data instead of the 0-total gate shape.
 
 ## Java quirks reproduced (pinned by tests)
 
@@ -271,19 +348,33 @@ the day/max floors force 2). Loader gains `award_name`/
 golden, the level gate, the `[2]`/`[0, 792005]` edges, and the
 wire dispatch. Gaps: charge totals read 0 (no recharge-record
 service; batch 2 latches `charged` instead); `getChoujiang` reads
-[] (no table ships); the 70000 fjid-'' asymmetry stays as-is.
+[] (no table ships); the 70000 fjid-'' asymmetry stays as-is.## Genuine remaining gaps
 
-## Genuine remaining gaps
+Packet handlers vs durable lifecycles: 70000/70001/70500/70501/
+70506/70507 are display-only packet handlers (wired shapes,
+no persistence); 70550 (mall buy) and 70551 (claims for ct
+1/3/7/9/10/22/30/31/32) are durable lifecycles with atomic
+`role_huodong` persistence (day/max/mall-buy/pay-yb counters,
+global sell counts) and the in-tx EXP/credit grant.
+
+Next batch: 70580/70508 rank rows. Both need their rank-row
+output shapes recovered from `RoleHuodongOutputWrapper` bytecode
+plus the rank data sources they read (paihang-backed rank feeds
+for the 70580 family; the per-family rank metric for 70508),
+neither of which is ported yet — no invented data.
 
 - Zonghe service port for 70502/70505/70508/70509/
   70530/70552-70554/70580/70520 (wire shapes unrecovered
   except routing: all verbatim `send2One` except null-guarded 70530)
   and the families absent from `fu0`
-  (ct 3/4/6/7/8/11-17/19/20/23/35). Loader + first-recharge core +
-  70000/70001 (batch 2) + 70500 panel (batch 3) + 70501 display
-  (batch 4) + 70506 display (batch 5) + 70507 display (batch 6) +
-  70550/70551 durable buy/claim lifecycle (batch 7) are in.
-  No seeded stand-in.
+  (ct 4/6/8/11-17/19/20/23/35; ct-3/ct-7 claims are in but
+  their 70502/70505 displays stay blocked on config). Loader +
+  first-recharge core + 70000/70001 (batch 2) + 70500 panel
+  (batch 3) + 70501 display (batch 4) + 70506 display (batch 5)
+  + 70507 display (batch 6) + 70550/70551 durable buy/claim
+  lifecycle (batch 7) + 70551 ct-1/ct-10 claims (batch 8) +
+  70551 ct-3/ct-7/ct-22/ct-30/ct-31/ct-32 claims (batch 9) are
+  in. No seeded stand-in.
 - Rank-1 (94002-94005) additionally needs the paihang ranking source
   (handleLevelRankData/handleZuoqiRankData/handleZhanliRankData/
   handleKillBossRankData + quartz settlement); paihang itself is unported.

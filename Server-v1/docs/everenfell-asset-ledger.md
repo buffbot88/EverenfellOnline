@@ -178,3 +178,36 @@ captured by this investigation.
 Next step that unblocks this: provide a signed flashvars/session capture
 from the original client run (or a verified loader trace) so that the
 projector can be launched once, without the backend running at runtime.
+
+## Runtime loader boundary for gameui (verified 2026-10-25)
+
+Setup, with no legacy PHP:
+
+- Python `server.py` on 127.0.0.1:8080 (repo code, temp DB), account
+  `evfdev` created via the register route.
+- `tools/projector-client.py --api-base http://127.0.0.1:8080
+  --movie-base http://127.0.0.1:8080/res` builds the signed movie URL.
+- `flashplayer363.exe` launched once with that URL.
+- `web.py` now serves `/res/` read-only from `MKO_Client/Assets/res`.
+
+Observed loader request chain (server access log, all 200):
+
+1. `/res/Main.swf?...&sign=...`
+2. `/res/PlatformLoader.swf?v=1.0.173`
+3. `/res/assets/tg.swf?v=1.0.173`
+4. `/res/data/tw_config.xml`
+5. `/res/config/tw_branchs/chn.dat?v=1.0`
+6. `/res/assets/tw/lib.swf?v=1.0`
+7. `/res/assets/tw/gameui.swf?v=1.0`  <- target boundary reached
+8. `/res/assets/tw/createUI.swf?id=1.0.173`, baseFace.swf, name/maps/
+   config/emotion/goods/clan .dat, bs.txt, and `tw/r/s/panelOpen.mp3`
+
+Verified at the request boundary:
+
+- The served `assets/tw/gameui.swf` is byte-identical to the source file:
+  596,076 bytes, sha256 `ed359d258354450a6e7f6f7eea6d9e9d24520523c3f4bf6c3fc8c797f7081f68`.
+- The loader therefore receives the on-disk packed bytes unchanged. Any
+  decoding happens inside the loader after download, not in the transport.
+
+Not yet established: where the packed bytes are decoded into a SWF (the
+ByteArray / loadBytes step), and the HUD resource list.

@@ -33,5 +33,8 @@ export function createPhaserGame(parent: HTMLElement): Phaser.Game {
       UIScene,
     ],
   };
-  return new Phaser.Game(config);
+  const game = new Phaser.Game(config);
+  // Local verification hook: lets tests snapshot the rendered canvas.
+  (window as unknown as Record<string, unknown>).__evfGame = game;
+  return game;
 }

@@ -1,0 +1,52 @@
+{
+ "version": "1",
+ "rights": "legacy client art, development only until rights confirmed; see README.md",
+ "modules": {
+  "gameui": {
+   "manifest": "ui/gameui/manifest.json",
+   "canonical_sha256": "da6d57518e94021ada1afde2e00fdfe6689ac80ef9ad26bb9e53aeef63fae8d0",
+   "bitmaps": {
+    "bitmap_tags": 170,
+    "ok": 170,
+    "failed": 0
+   }
+  },
+  "hud-chat": {
+   "manifest": "ui/hud-chat/manifest.json",
+   "canonical_sha256": "61972ca56abde33153fe493f707d4d10ad9603fea90a19a2849b0f1721e75565",
+   "bitmaps": {
+    "bitmap_tags": 338,
+    "ok": 338,
+    "failed": 0
+   }
+  },
+  "create-ui": {
+   "manifest": "ui/create-ui/manifest.json",
+   "canonical_sha256": "1c3192dd9965ee04cd9123877313bc6c753854b1eb5cc32885a425e27c6e5699",
+   "bitmaps": {
+    "bitmap_tags": 24,
+    "ok": 24,
+    "failed": 0
+   }
+  },
+  "shared-controls": {
+   "manifest": "ui/shared-controls/manifest.json",
+   "canonical_sha256": "83c051d9be6eef3448ea02f533720f252a59de746b326d23d30993045eb371dc",
+   "bitmaps": {
+    "bitmap_tags": 196,
+    "ok": 196,
+    "failed": 0
+   }
+  }
+ },
+ "maps": {
+  "map0": {
+   "tiles": "maps/map0/",
+   "manifest": "../src/assets/map0.json",
+   "cols": 17,
+   "rows": 24,
+   "cell": 256,
+   "tile_count": 408
+  }
+ }
+}

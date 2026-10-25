@@ -17,7 +17,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000000.jpg",
+   "url": "maps/map0/000000.jpg",
    "sha256": "29b1b39fa239d7ded174e295f17449b898e2b1be90c0bdf7bc3542a97071ae29"
   },
   {
@@ -28,7 +28,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000001.jpg",
+   "url": "maps/map0/000001.jpg",
    "sha256": "4ba714d782a2c8360bd021ce9aee6b78ce7ba07e3839f79341280898bc1da919"
   },
   {
@@ -39,7 +39,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000002.jpg",
+   "url": "maps/map0/000002.jpg",
    "sha256": "b29be02a52e5f1c5703c43d8c67427dc5e49a705910e3b8f448cb975a62ac2a1"
   },
   {
@@ -50,7 +50,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000003.jpg",
+   "url": "maps/map0/000003.jpg",
    "sha256": "a6276959b6f99ebd0db56b0add187e159b732cc9a863d5aa982f31bf84f00794"
   },
   {
@@ -61,7 +61,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000004.jpg",
+   "url": "maps/map0/000004.jpg",
    "sha256": "f9a076c6eec1e0069cfe4ef87d901a610089d5ec51624eaa13baefb7050b623d"
   },
   {
@@ -72,7 +72,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000005.jpg",
+   "url": "maps/map0/000005.jpg",
    "sha256": "b43f412780917cb5f987c299d77e47064150b1d82c43066178fa349160839933"
   },
   {
@@ -83,7 +83,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000006.jpg",
+   "url": "maps/map0/000006.jpg",
    "sha256": "6586c50f92444c63fc2053c937c92b7259ca2b7e40ce38bbae72db24412afea7"
   },
   {
@@ -94,7 +94,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000007.jpg",
+   "url": "maps/map0/000007.jpg",
    "sha256": "ed80538ac91deaccb4d0a1aefa13c25f7cf6df1e64de9d7f01d3f724fcef2cbd"
   },
   {
@@ -105,7 +105,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000008.jpg",
+   "url": "maps/map0/000008.jpg",
    "sha256": "b0d443b892c05d2a2dcdd2e6c280fdd492be5a7ad7f6ba15283a93b4d0ad1741"
   },
   {
@@ -116,7 +116,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000009.jpg",
+   "url": "maps/map0/000009.jpg",
    "sha256": "9233634e4cbd20721474b978da5d6d10a0664dd893e8f94297168d172b24550f"
   },
   {
@@ -127,7 +127,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000010.jpg",
+   "url": "maps/map0/000010.jpg",
    "sha256": "88ef13d77bb51fa00f03340ec0435f53b752c3127aa79138bbc0e6f6f8460666"
   },
   {
@@ -138,7 +138,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000011.jpg",
+   "url": "maps/map0/000011.jpg",
    "sha256": "3557c959bbd34e33e1b6e7abfb05b5808218f1c80f20d3f9d8a4285fc93a0334"
   },
   {
@@ -149,7 +149,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000012.jpg",
+   "url": "maps/map0/000012.jpg",
    "sha256": "f2b3853821c0cedf30f52b0822ef62d63821c9b63fcd6a6c3461557becef6e05"
   },
   {
@@ -160,7 +160,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000013.jpg",
+   "url": "maps/map0/000013.jpg",
    "sha256": "5bad37cff99521d115401342ad611e415077e55dadbe38051a38cc9933ee0211"
   },
   {
@@ -171,7 +171,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000014.jpg",
+   "url": "maps/map0/000014.jpg",
    "sha256": "60c2564135c5ba815b8772bce2711b7e9b4d16a5cc9b6636b21e65882fe77278"
   },
   {
@@ -182,7 +182,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000015.jpg",
+   "url": "maps/map0/000015.jpg",
    "sha256": "a0417e8a9573e26705daf505ab21ee7fa6ca6d039b555b546095af10222f86bc"
   },
   {
@@ -193,7 +193,7 @@
    "y": 0,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/000016.jpg",
+   "url": "maps/map0/000016.jpg",
    "sha256": "19c1df1a12c78f6b02fb9679eb1731044d13a04d6b30cd031aeb310e808e2c3e"
   },
   {
@@ -204,7 +204,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001000.jpg",
+   "url": "maps/map0/001000.jpg",
    "sha256": "15230fcede4c87d19f729cdec32a59c1dea130b815a79982fd774c75d17e8d7e"
   },
   {
@@ -215,7 +215,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001001.jpg",
+   "url": "maps/map0/001001.jpg",
    "sha256": "971f33c809423ca24e4491fe48a0abc645ea169b23f5e6e6264f0392b640d97b"
   },
   {
@@ -226,7 +226,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001002.jpg",
+   "url": "maps/map0/001002.jpg",
    "sha256": "f22f92d817a3b72056c644e7d14935fb88d3dd6a6547de1b0fcd466ced9a65d7"
   },
   {
@@ -237,7 +237,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001003.jpg",
+   "url": "maps/map0/001003.jpg",
    "sha256": "6a04eb94521419944bea1d4fff96a0da02486080698f0f38df771452639f7b19"
   },
   {
@@ -248,7 +248,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001004.jpg",
+   "url": "maps/map0/001004.jpg",
    "sha256": "f13499399755aa7b7dd27c72c592559085ca13f847e67c9241c69023b675f5fd"
   },
   {
@@ -259,7 +259,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001005.jpg",
+   "url": "maps/map0/001005.jpg",
    "sha256": "ffe7733565704c588957dd340e555dda3312ce8ec98a332441d6e5830f2b2fa7"
   },
   {
@@ -270,7 +270,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001006.jpg",
+   "url": "maps/map0/001006.jpg",
    "sha256": "e6316e781df4df58de15e1fe59f0ee0505093342a0691ff25cb34587c8d24272"
   },
   {
@@ -281,7 +281,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001007.jpg",
+   "url": "maps/map0/001007.jpg",
    "sha256": "2bed9b0f0fc8fa20a2bc8ab796671c20a2612538c786a3926af2490a201108af"
   },
   {
@@ -292,7 +292,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001008.jpg",
+   "url": "maps/map0/001008.jpg",
    "sha256": "6ad7ada313ebe23c85de6a0e6a011f65e6e527e37bac97d1f6c9a2ff782ba835"
   },
   {
@@ -303,7 +303,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001009.jpg",
+   "url": "maps/map0/001009.jpg",
    "sha256": "b4aa787bd574245642ddc77186db29f9e3ea9525bcd3dab6366b4471d7cb1bd8"
   },
   {
@@ -314,7 +314,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001010.jpg",
+   "url": "maps/map0/001010.jpg",
    "sha256": "6215eb214342c793da8e85d2b10c25c5c333694018d385200d724231258f8719"
   },
   {
@@ -325,7 +325,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001011.jpg",
+   "url": "maps/map0/001011.jpg",
    "sha256": "5618cbfc142ac5bab75e2f4f21bd8e63fc08f1086e8c1ca397211acaf1244351"
   },
   {
@@ -336,7 +336,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001012.jpg",
+   "url": "maps/map0/001012.jpg",
    "sha256": "2190cbb5bbddb0574d5b554a616ba127700440d972112ef12e4f1c9a5f3765dc"
   },
   {
@@ -347,7 +347,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001013.jpg",
+   "url": "maps/map0/001013.jpg",
    "sha256": "ca08148266e92adcbfbaf93cd49e9f3df5731f585665e06f73caec1d83767585"
   },
   {
@@ -358,7 +358,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001014.jpg",
+   "url": "maps/map0/001014.jpg",
    "sha256": "ab10a8f2db019175a02b3d023aae38cf52cf22b9eb062f3d575b6c157c8926db"
   },
   {
@@ -369,7 +369,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001015.jpg",
+   "url": "maps/map0/001015.jpg",
    "sha256": "e12c8dcd585cc764de917bed7375782a6f373137682f5546a9e461868e318d2d"
   },
   {
@@ -380,7 +380,7 @@
    "y": 256,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/001016.jpg",
+   "url": "maps/map0/001016.jpg",
    "sha256": "0666e68d91957b8e0a7c5813cf88785ce0e4961f751618da393862748c5a6803"
   },
   {
@@ -391,7 +391,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002000.jpg",
+   "url": "maps/map0/002000.jpg",
    "sha256": "0c922bfab6c24553c7ab331103f13cc8b8c4dd675dba527afc2a81fcc0463871"
   },
   {
@@ -402,7 +402,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002001.jpg",
+   "url": "maps/map0/002001.jpg",
    "sha256": "852e88f6e55823de356825f58150e1341377ea5799194a1cee6e616e34453eb3"
   },
   {
@@ -413,7 +413,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002002.jpg",
+   "url": "maps/map0/002002.jpg",
    "sha256": "2f28802837ee28adce7c7057189aea603211f90ff670400ad9ae79ddf5738d2a"
   },
   {
@@ -424,7 +424,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002003.jpg",
+   "url": "maps/map0/002003.jpg",
    "sha256": "77e474809f00819d2d96ca8139789991753be0b4fb4c89268a291b8192f54173"
   },
   {
@@ -435,7 +435,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002004.jpg",
+   "url": "maps/map0/002004.jpg",
    "sha256": "2c772db2bbce679485546dbe4b6fe2ecc54b112b862a7701a3aba02b9dbf8be0"
   },
   {
@@ -446,7 +446,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002005.jpg",
+   "url": "maps/map0/002005.jpg",
    "sha256": "d86dda93b326c370a968793d2035b57a052afdc3f4db218ec4fe8cc32843e8b2"
   },
   {
@@ -457,7 +457,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002006.jpg",
+   "url": "maps/map0/002006.jpg",
    "sha256": "6bd85ac1ebf18d44606a54a63fa07852a2d5b32cd2e3acf7617fe3118464167e"
   },
   {
@@ -468,7 +468,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002007.jpg",
+   "url": "maps/map0/002007.jpg",
    "sha256": "85ce71c16893d660bab65a0cba6c52aa791d459608a4a523b766602b046cf0be"
   },
   {
@@ -479,7 +479,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002008.jpg",
+   "url": "maps/map0/002008.jpg",
    "sha256": "eb85a756fd448fad14cb2bfb10d143b761ccee678aad01a1c7d5856cd31b10dd"
   },
   {
@@ -490,7 +490,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002009.jpg",
+   "url": "maps/map0/002009.jpg",
    "sha256": "b0809d05b491c0a85d0429bfac9a679d834c615077ac978097461cf6f4ecd7be"
   },
   {
@@ -501,7 +501,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002010.jpg",
+   "url": "maps/map0/002010.jpg",
    "sha256": "5cd485b100f21fd0a749123d67923093be3638885afcb67bd7f505d63c036e1e"
   },
   {
@@ -512,7 +512,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002011.jpg",
+   "url": "maps/map0/002011.jpg",
    "sha256": "f4d7e651e80db247e5d2c164ceebe26fc4efea944791f99644fcc4d762424729"
   },
   {
@@ -523,7 +523,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002012.jpg",
+   "url": "maps/map0/002012.jpg",
    "sha256": "922f101ca2ed32d0d6b96442c068db812f0bab69e0f4f9d4d4595f210bf4fb10"
   },
   {
@@ -534,7 +534,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002013.jpg",
+   "url": "maps/map0/002013.jpg",
    "sha256": "813ac175b43fd1022be11a9ca731d723e53dda9c5fcb95c93bf429d721d8f401"
   },
   {
@@ -545,7 +545,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002014.jpg",
+   "url": "maps/map0/002014.jpg",
    "sha256": "4c11f4a8bac6e5f19bc8e014662e7c2f96e69c25939d994c2bfbc7bd8b233b66"
   },
   {
@@ -556,7 +556,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002015.jpg",
+   "url": "maps/map0/002015.jpg",
    "sha256": "b43b2a97310497795d45acd950b8e662e34b0ac18109907a92deef9d5bd4179a"
   },
   {
@@ -567,7 +567,7 @@
    "y": 512,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/002016.jpg",
+   "url": "maps/map0/002016.jpg",
    "sha256": "7bb54ea9df4f49079d24e118a97d07f132eddad1324fcd673795f1547816794d"
   },
   {
@@ -578,7 +578,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003000.jpg",
+   "url": "maps/map0/003000.jpg",
    "sha256": "0ad17e95432d62fb7bef2d7319f29a9299b7bbdb6c30c7ac65fe7c90f15ff7c7"
   },
   {
@@ -589,7 +589,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003001.jpg",
+   "url": "maps/map0/003001.jpg",
    "sha256": "8a3c97960cdc2f56867c49fcd62747662220498986706b8bf4be0b140377e378"
   },
   {
@@ -600,7 +600,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003002.jpg",
+   "url": "maps/map0/003002.jpg",
    "sha256": "ded34b952ac4262301abd6458053366376959ca067cef4f949e9a8def5468a4a"
   },
   {
@@ -611,7 +611,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003003.jpg",
+   "url": "maps/map0/003003.jpg",
    "sha256": "4a5f1479c565ae86140a8c6df2925a2d552b3f2ad914cc294515361fa9c0b3d5"
   },
   {
@@ -622,7 +622,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003004.jpg",
+   "url": "maps/map0/003004.jpg",
    "sha256": "82c37ecf58fffb126abaf430e4a527ed28089f228530e3d053b7107f01bbad3a"
   },
   {
@@ -633,7 +633,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003005.jpg",
+   "url": "maps/map0/003005.jpg",
    "sha256": "4ad6ee78709a4d46a195d7d5052a028c3647df2b9103c8549c8cdebd3b70e825"
   },
   {
@@ -644,7 +644,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003006.jpg",
+   "url": "maps/map0/003006.jpg",
    "sha256": "2b796b5e1e341170ce27389e2dce2e76bf74542c67c5645dc235fa87179e888e"
   },
   {
@@ -655,7 +655,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003007.jpg",
+   "url": "maps/map0/003007.jpg",
    "sha256": "45732fd27acc8e35ef9691635667a048798dc75f84ef04d7cafb834eccdc9c9a"
   },
   {
@@ -666,7 +666,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003008.jpg",
+   "url": "maps/map0/003008.jpg",
    "sha256": "8c569be99aadeb6edd56b472cb91890d251835a15a3dd368d641660fdaf11abc"
   },
   {
@@ -677,7 +677,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003009.jpg",
+   "url": "maps/map0/003009.jpg",
    "sha256": "d523ff0bf76b23aec62acb01f6ebcfa8ac3d61b4431debf81406a95a65955105"
   },
   {
@@ -688,7 +688,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003010.jpg",
+   "url": "maps/map0/003010.jpg",
    "sha256": "102e15024d872819439d4d20f5c8277929af546b95cd2551100270c71bc5d368"
   },
   {
@@ -699,7 +699,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003011.jpg",
+   "url": "maps/map0/003011.jpg",
    "sha256": "4bbf50314a8687ca8446a0c2316d873b9de6c16c5891faa62e1bef5d228b93fe"
   },
   {
@@ -710,7 +710,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003012.jpg",
+   "url": "maps/map0/003012.jpg",
    "sha256": "6cfbd18dce927cb120c1b52193246b47e757df5b2d60f68b0eda5a1973dc9ceb"
   },
   {
@@ -721,7 +721,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003013.jpg",
+   "url": "maps/map0/003013.jpg",
    "sha256": "124763b784549db7c36c09570f6d3084c2084df8e099315600e9af270a7b24f3"
   },
   {
@@ -732,7 +732,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003014.jpg",
+   "url": "maps/map0/003014.jpg",
    "sha256": "28e02b38f2810ba828e79d57ed71e688b0b28440459039198752cf4b502ba7b7"
   },
   {
@@ -743,7 +743,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003015.jpg",
+   "url": "maps/map0/003015.jpg",
    "sha256": "cc0c3e268a477b211d62b7ad7dfaf982f93d9ec87cf6b540c025146367f08c81"
   },
   {
@@ -754,7 +754,7 @@
    "y": 768,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/003016.jpg",
+   "url": "maps/map0/003016.jpg",
    "sha256": "026c959c455b1f1c868b43d24ad047143dde998e08bf5b5917a64f29b9948ef2"
   },
   {
@@ -765,7 +765,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004000.jpg",
+   "url": "maps/map0/004000.jpg",
    "sha256": "984043feb2f8572c410fb639a3de10865fef9c78b5c85b9915d9033c7a8e2c09"
   },
   {
@@ -776,7 +776,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004001.jpg",
+   "url": "maps/map0/004001.jpg",
    "sha256": "022d140cc293e9decf35837f61edd69749ad928b7a4a8f0b9e212a9859aec48c"
   },
   {
@@ -787,7 +787,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004002.jpg",
+   "url": "maps/map0/004002.jpg",
    "sha256": "136cc6266377b6b0079c1922bb1784eb4e092a9cc037d012cc8465dd77615073"
   },
   {
@@ -798,7 +798,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004003.jpg",
+   "url": "maps/map0/004003.jpg",
    "sha256": "11e9880c67f8fd009895e091de77c43cf152b5fa792e31ad19869ab8369336ce"
   },
   {
@@ -809,7 +809,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004004.jpg",
+   "url": "maps/map0/004004.jpg",
    "sha256": "8389797452da2c9d9f525edafb45b7ca6be649f3a69e659f46de886606e26b34"
   },
   {
@@ -820,7 +820,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004005.jpg",
+   "url": "maps/map0/004005.jpg",
    "sha256": "971b8afc0ce6b2fac45fe63eafc698f7939034623da0ca0c2123ac820682f635"
   },
   {
@@ -831,7 +831,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004006.jpg",
+   "url": "maps/map0/004006.jpg",
    "sha256": "2e81b559430ad34d7c803b421c96ac303d7494156a7100d8686595d4f96411ca"
   },
   {
@@ -842,7 +842,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004007.jpg",
+   "url": "maps/map0/004007.jpg",
    "sha256": "4cf25e89a3ed74f08e7b40475e0bd95efb0e6fb7e22d11483588f3f5e6536474"
   },
   {
@@ -853,7 +853,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004008.jpg",
+   "url": "maps/map0/004008.jpg",
    "sha256": "327eae82998ccab8dd50699673650e47002cc3dfdd91ec46829892a82be15837"
   },
   {
@@ -864,7 +864,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004009.jpg",
+   "url": "maps/map0/004009.jpg",
    "sha256": "c0e2b91d5d8072d53864cee15f9dda051af04485367a0bcc1bfb9f3eda29512b"
   },
   {
@@ -875,7 +875,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004010.jpg",
+   "url": "maps/map0/004010.jpg",
    "sha256": "7f7e0304340e37d7d3cc7f097b0c6fbd7069e871e727380efe81a5550f18483c"
   },
   {
@@ -886,7 +886,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004011.jpg",
+   "url": "maps/map0/004011.jpg",
    "sha256": "2d260d2ed104a4bbcb6659e51b2cd1305acf6a58e018bcad232aecea5f87ca86"
   },
   {
@@ -897,7 +897,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004012.jpg",
+   "url": "maps/map0/004012.jpg",
    "sha256": "e4e983bb8251f6ae632ebc140754928001e02e4885a21343b87bf72c39e883b8"
   },
   {
@@ -908,7 +908,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004013.jpg",
+   "url": "maps/map0/004013.jpg",
    "sha256": "07f5cc1f2448d6eaed0b5c96e9f9687cf31d2315b4245c12c627e380a20a001e"
   },
   {
@@ -919,7 +919,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004014.jpg",
+   "url": "maps/map0/004014.jpg",
    "sha256": "f0afe3210da1e3da306c9d8fafbf56946c337eaffe6dda632fb4303451bccdc2"
   },
   {
@@ -930,7 +930,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004015.jpg",
+   "url": "maps/map0/004015.jpg",
    "sha256": "5131b4d69cc3e0c60057b857af4a072ad0136e6cfaabc3d331607c0c53fa05e9"
   },
   {
@@ -941,7 +941,7 @@
    "y": 1024,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/004016.jpg",
+   "url": "maps/map0/004016.jpg",
    "sha256": "ba1fb24f9c55d3b6f163321dd8759a51dbfedcc0bada2f9292740a2567d812d7"
   },
   {
@@ -952,7 +952,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005000.jpg",
+   "url": "maps/map0/005000.jpg",
    "sha256": "5c2ceac798589fbaf30cafe525923aed2e66a59a1d43f12c3b409b48c662d21a"
   },
   {
@@ -963,7 +963,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005001.jpg",
+   "url": "maps/map0/005001.jpg",
    "sha256": "3783ab09e60a7f0107cfc355bed6f56c10d34039f1885b5a32ca2ebbac71fe88"
   },
   {
@@ -974,7 +974,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005002.jpg",
+   "url": "maps/map0/005002.jpg",
    "sha256": "f580b89eaca1907d91caaf26e8959b471bd9ad13f7889763debf82e085870f4d"
   },
   {
@@ -985,7 +985,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005003.jpg",
+   "url": "maps/map0/005003.jpg",
    "sha256": "3b9250d15c7f99fc4016b670499c25efaac8f3e550ac276f5310f05fce1f2e3e"
   },
   {
@@ -996,7 +996,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005004.jpg",
+   "url": "maps/map0/005004.jpg",
    "sha256": "0c602ef4a5c2addf4e299d64845acd759a36b7ceef19b6b1b41014255a181745"
   },
   {
@@ -1007,7 +1007,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005005.jpg",
+   "url": "maps/map0/005005.jpg",
    "sha256": "40ebffb4ed53a3f95201d1b04ef829f4cb40e655c311532e8cc6068025371431"
   },
   {
@@ -1018,7 +1018,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005006.jpg",
+   "url": "maps/map0/005006.jpg",
    "sha256": "456bf8278d417e283a72da5a720c8d41906943304557aa116e13e8733e2e0ade"
   },
   {
@@ -1029,7 +1029,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005007.jpg",
+   "url": "maps/map0/005007.jpg",
    "sha256": "8167afb8e77779c8675c9948f9b2dccf008e20df6923a8c576293cbeb541352e"
   },
   {
@@ -1040,7 +1040,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005008.jpg",
+   "url": "maps/map0/005008.jpg",
    "sha256": "19ab837af47ccb3acd395eaff47bacfbac89089b310fc9af048d6ac6295b85a4"
   },
   {
@@ -1051,7 +1051,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005009.jpg",
+   "url": "maps/map0/005009.jpg",
    "sha256": "c6485002fc482ca3d2e0ba301f26c634f37f15a82b16938098e9282fe32cdcbc"
   },
   {
@@ -1062,7 +1062,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005010.jpg",
+   "url": "maps/map0/005010.jpg",
    "sha256": "5c712d8b95768033570ee7a336405bb0f8d5fc202bf05fee364702f14f37ba2a"
   },
   {
@@ -1073,7 +1073,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005011.jpg",
+   "url": "maps/map0/005011.jpg",
    "sha256": "aa41c1436dc2c69a27470ab69120b1a55800b8eb08ef9afe2b3bc4607ce77025"
   },
   {
@@ -1084,7 +1084,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005012.jpg",
+   "url": "maps/map0/005012.jpg",
    "sha256": "35e6bf63379cf4d3e67e1b9c47aec2d6616cfb1e5bd5d510a300ff02cea14fc9"
   },
   {
@@ -1095,7 +1095,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005013.jpg",
+   "url": "maps/map0/005013.jpg",
    "sha256": "e37ba4d3259b4ed342571357efa3182d96150ece15a52b6628d3ee29026469d0"
   },
   {
@@ -1106,7 +1106,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005014.jpg",
+   "url": "maps/map0/005014.jpg",
    "sha256": "6a2f62a61d0d51c7acbc30133fcf6337058dc72b440129b4609bb8da698b3fe7"
   },
   {
@@ -1117,7 +1117,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005015.jpg",
+   "url": "maps/map0/005015.jpg",
    "sha256": "4f3285c65bf4096437d8cfc70f3f84b941f200bb7dd63c14c1d24edb6d315a42"
   },
   {
@@ -1128,7 +1128,7 @@
    "y": 1280,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/005016.jpg",
+   "url": "maps/map0/005016.jpg",
    "sha256": "b35d7792272aaa739dd625dfb42a30a3bdf90bd847ba5ac65a037afdc793fbf9"
   },
   {
@@ -1139,7 +1139,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006000.jpg",
+   "url": "maps/map0/006000.jpg",
    "sha256": "54e2608378843f4a32558282b229f63d738d20dcfcf7ab84d12d9bf0a9cc2696"
   },
   {
@@ -1150,7 +1150,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006001.jpg",
+   "url": "maps/map0/006001.jpg",
    "sha256": "0051f271262c021d76bda4a248e1f527f6567bf1da54e9f1a098e6bd08eca337"
   },
   {
@@ -1161,7 +1161,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006002.jpg",
+   "url": "maps/map0/006002.jpg",
    "sha256": "6a3809b4567361e64b2aa401a5f7688d6f664b619d0c41bbe7f09dbca8fe754c"
   },
   {
@@ -1172,7 +1172,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006003.jpg",
+   "url": "maps/map0/006003.jpg",
    "sha256": "0f9aec5866f3ebb89b80d9ee80f3e666048930eba4c285bba38cc2d217ef521f"
   },
   {
@@ -1183,7 +1183,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006004.jpg",
+   "url": "maps/map0/006004.jpg",
    "sha256": "3dc305adcd3091f78ee3bd23f6048b71c5040d73c0a5913d07a81ecdd3f01618"
   },
   {
@@ -1194,7 +1194,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006005.jpg",
+   "url": "maps/map0/006005.jpg",
    "sha256": "d6b2c5d8e5e2e2e899b012c8fc2bab633e88284b6bb76fb8ff2b9ed7540a838c"
   },
   {
@@ -1205,7 +1205,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006006.jpg",
+   "url": "maps/map0/006006.jpg",
    "sha256": "dd3fe78baeccc6e56d99946b2dfe19949e4107797246d535758a3a261a823474"
   },
   {
@@ -1216,7 +1216,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006007.jpg",
+   "url": "maps/map0/006007.jpg",
    "sha256": "c4ab14f4963a7a8217c4e6390370ba62eb3218f377474d101d43f40a5ad44b82"
   },
   {
@@ -1227,7 +1227,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006008.jpg",
+   "url": "maps/map0/006008.jpg",
    "sha256": "7aa3f73e63de1f0d70ee5ba0ab4f38ab16dbd2bbf3adbdff9cffbb41ba6bb3c4"
   },
   {
@@ -1238,7 +1238,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006009.jpg",
+   "url": "maps/map0/006009.jpg",
    "sha256": "ff0aba4396d45d1d9ed65c9fd597ede6bf373904ff803f4408b9015a0acb19a4"
   },
   {
@@ -1249,7 +1249,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006010.jpg",
+   "url": "maps/map0/006010.jpg",
    "sha256": "e89bd0eb998f4496f9aa011881332d693a63c47bd4a86d38e7bb6c319a577553"
   },
   {
@@ -1260,7 +1260,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006011.jpg",
+   "url": "maps/map0/006011.jpg",
    "sha256": "0947ac55c3dfe138e730e56be61da1970d568abfcef135f6f0d9e53c394d307e"
   },
   {
@@ -1271,7 +1271,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006012.jpg",
+   "url": "maps/map0/006012.jpg",
    "sha256": "66a1f46f4d5299eb5a024cce9177c94bfb9a7879454bf8c093a0953c9ca97d2e"
   },
   {
@@ -1282,7 +1282,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006013.jpg",
+   "url": "maps/map0/006013.jpg",
    "sha256": "5f8c44cb16afb3aad6b6e9a1c8458ca3a7f2af8633b645ea48f98f5f446fd6dd"
   },
   {
@@ -1293,7 +1293,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006014.jpg",
+   "url": "maps/map0/006014.jpg",
    "sha256": "578cbc5c2b3f5b29ec59dcb2a993a90f0df019921ee54a8037ab4ab056e5d949"
   },
   {
@@ -1304,7 +1304,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006015.jpg",
+   "url": "maps/map0/006015.jpg",
    "sha256": "8d3312ad59c4fd418560a1e7aff863727df63f109dabf4d8e954431cd8b0ef05"
   },
   {
@@ -1315,7 +1315,7 @@
    "y": 1536,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/006016.jpg",
+   "url": "maps/map0/006016.jpg",
    "sha256": "3c4a4991e249357c3cd8b68a0ea59b5e9b1156a8af19d1c1963401aa5df01c7b"
   },
   {
@@ -1326,7 +1326,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007000.jpg",
+   "url": "maps/map0/007000.jpg",
    "sha256": "34c8f93aa29a52ed7e0917b6d90f9a41d07eb7e6cac06f1f63a71014ef883a7d"
   },
   {
@@ -1337,7 +1337,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007001.jpg",
+   "url": "maps/map0/007001.jpg",
    "sha256": "4833ca54db7d687f573e749ab16a7eac5392850fa30c886f848a7b4eacd53ff7"
   },
   {
@@ -1348,7 +1348,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007002.jpg",
+   "url": "maps/map0/007002.jpg",
    "sha256": "75780de679ce8c5c49f309e85f6f89cba99b33ac05ae98ee2a4138442b7e7d72"
   },
   {
@@ -1359,7 +1359,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007003.jpg",
+   "url": "maps/map0/007003.jpg",
    "sha256": "fe08b448558035af9aeec3c88158f435d67a878404047a0d4db99bd4eb9bd8db"
   },
   {
@@ -1370,7 +1370,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007004.jpg",
+   "url": "maps/map0/007004.jpg",
    "sha256": "43cd299a2a515ab246d875ed2480d7ce42aa901a703100095671e5356183f894"
   },
   {
@@ -1381,7 +1381,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007005.jpg",
+   "url": "maps/map0/007005.jpg",
    "sha256": "d4997a48a5ffd24aeaee65818cb5103af9e4a81f80213536574b5e04dc546f80"
   },
   {
@@ -1392,7 +1392,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007006.jpg",
+   "url": "maps/map0/007006.jpg",
    "sha256": "e3db462dfcf9e96988cb931d73405ee33d26a799803b7efc255bff41df48cdcc"
   },
   {
@@ -1403,7 +1403,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007007.jpg",
+   "url": "maps/map0/007007.jpg",
    "sha256": "c205d7b34adc33d73bd0ad7d57249859656d2d5fdb1c18f5de53cf9a2e78d4ed"
   },
   {
@@ -1414,7 +1414,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007008.jpg",
+   "url": "maps/map0/007008.jpg",
    "sha256": "345a5dde01b8df347c856e4c4ce2090a383fe0611f8ee5960627f1fda0b25fe6"
   },
   {
@@ -1425,7 +1425,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007009.jpg",
+   "url": "maps/map0/007009.jpg",
    "sha256": "8d81db6f5661094b3c74a062ccf9019c58d42b53b1bd11149223c5441fb47c7f"
   },
   {
@@ -1436,7 +1436,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007010.jpg",
+   "url": "maps/map0/007010.jpg",
    "sha256": "f15444b39bf0b74203b5ea5cc8874e0adec95760fb94cae90a5ecd0005118be8"
   },
   {
@@ -1447,7 +1447,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007011.jpg",
+   "url": "maps/map0/007011.jpg",
    "sha256": "9ec07ebaf6d04adce7debedd41ebd16598082802902d8ede756731dea21f5042"
   },
   {
@@ -1458,7 +1458,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007012.jpg",
+   "url": "maps/map0/007012.jpg",
    "sha256": "e30df6bf74b87cf8fe53e3dc8be937594ffe1c9fb484cdc2b12a580a4f3eef61"
   },
   {
@@ -1469,7 +1469,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007013.jpg",
+   "url": "maps/map0/007013.jpg",
    "sha256": "93441f6983c255370a842812577612e519b71586365cbcc077648af37e4e1518"
   },
   {
@@ -1480,7 +1480,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007014.jpg",
+   "url": "maps/map0/007014.jpg",
    "sha256": "ba6b57c598035bd6702cf4f5b30f2e22873bacf25bda261ae8b47551acdd8c0a"
   },
   {
@@ -1491,7 +1491,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007015.jpg",
+   "url": "maps/map0/007015.jpg",
    "sha256": "c4955448c79d2846a0e70ae1c4f0a3e561357ac86fff633490ecf5e156d7e5f9"
   },
   {
@@ -1502,7 +1502,7 @@
    "y": 1792,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/007016.jpg",
+   "url": "maps/map0/007016.jpg",
    "sha256": "a4f817014999cbbdaad74e56db2c6455b6c0d90465843f128b67306d6ae73a38"
   },
   {
@@ -1513,7 +1513,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008000.jpg",
+   "url": "maps/map0/008000.jpg",
    "sha256": "8d5c0c820cdb044f215b0313fd3e129092d14283b253fba12b22a79d0664a8d5"
   },
   {
@@ -1524,7 +1524,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008001.jpg",
+   "url": "maps/map0/008001.jpg",
    "sha256": "52288c073f4562707ec509f037415da13d43bd35071e9ae718888bc0859619cb"
   },
   {
@@ -1535,7 +1535,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008002.jpg",
+   "url": "maps/map0/008002.jpg",
    "sha256": "9ed7d5d367bc999625763d4e42fae06f8e5f348cdeea1105fd80efd6edef0308"
   },
   {
@@ -1546,7 +1546,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008003.jpg",
+   "url": "maps/map0/008003.jpg",
    "sha256": "141fb22ab9a118eb9c747bd283917cf3d63e49082c174ba1f5b0bc631374ed77"
   },
   {
@@ -1557,7 +1557,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008004.jpg",
+   "url": "maps/map0/008004.jpg",
    "sha256": "dfe68e90023bf1073e606304cbc328cf098420829dd23739e40db41a9524f44d"
   },
   {
@@ -1568,7 +1568,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008005.jpg",
+   "url": "maps/map0/008005.jpg",
    "sha256": "fd96b2144a5ac7b99896a0333cb1fa1420dfbcc94232ca5ae1d23c4eb421a4af"
   },
   {
@@ -1579,7 +1579,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008006.jpg",
+   "url": "maps/map0/008006.jpg",
    "sha256": "f8c302911abe6ed5144c4f32a140a545155c977764b44e9a1e6c2b9748038f28"
   },
   {
@@ -1590,7 +1590,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008007.jpg",
+   "url": "maps/map0/008007.jpg",
    "sha256": "4dfc40ec5dd397fcc318fad19b96ea6b8c360d9e47aeb09a98fb560777498cc7"
   },
   {
@@ -1601,7 +1601,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008008.jpg",
+   "url": "maps/map0/008008.jpg",
    "sha256": "5d1af2c6b55625894081b6c576fc46dd1d87efd28e03983ead595534e2fe2da0"
   },
   {
@@ -1612,7 +1612,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008009.jpg",
+   "url": "maps/map0/008009.jpg",
    "sha256": "1beabdf92c9357a38a153fb00f0229defd91da4813f586987e75867303edd866"
   },
   {
@@ -1623,7 +1623,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008010.jpg",
+   "url": "maps/map0/008010.jpg",
    "sha256": "a9bd2cebe9dad1ba9f4daec864f252bf6e13ddf66626bc946cbbdd83c718f6ac"
   },
   {
@@ -1634,7 +1634,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008011.jpg",
+   "url": "maps/map0/008011.jpg",
    "sha256": "d8365b8af327faed282707c050d4c5d0bb2778897d78a7add8488419370d417b"
   },
   {
@@ -1645,7 +1645,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008012.jpg",
+   "url": "maps/map0/008012.jpg",
    "sha256": "2dd77e1d97203e66894462d30e37a06e6e89a3f288ef6b9801a3d6fc002a6fc8"
   },
   {
@@ -1656,7 +1656,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008013.jpg",
+   "url": "maps/map0/008013.jpg",
    "sha256": "674ab185ce86a300fe185603621de4c176d87c73f24dba38c6f95181f19b4596"
   },
   {
@@ -1667,7 +1667,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008014.jpg",
+   "url": "maps/map0/008014.jpg",
    "sha256": "a053b6bd28ab6ad9a6d67ac92ad56446bc3443191aff3d5adc3f41e5b41affc7"
   },
   {
@@ -1678,7 +1678,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008015.jpg",
+   "url": "maps/map0/008015.jpg",
    "sha256": "840a234a155049b1e143acc630421ae84e778edf2c344dd8774eabce12d5b919"
   },
   {
@@ -1689,7 +1689,7 @@
    "y": 2048,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/008016.jpg",
+   "url": "maps/map0/008016.jpg",
    "sha256": "5dc91ad927854e9f7e87c800efeb079ec7227a4ab33817a0f8fe29b3935c1686"
   },
   {
@@ -1700,7 +1700,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009000.jpg",
+   "url": "maps/map0/009000.jpg",
    "sha256": "06f68338036fdd3e714857ed24a4757a77cb0020d390beee70a2678ae86587df"
   },
   {
@@ -1711,7 +1711,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009001.jpg",
+   "url": "maps/map0/009001.jpg",
    "sha256": "8d8eaf7634d0d5199b426c56f3654bb32cbee743127008719158e5295b6f0655"
   },
   {
@@ -1722,7 +1722,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009002.jpg",
+   "url": "maps/map0/009002.jpg",
    "sha256": "6ccff7cecabe402805c6b8f8b1d5fae0462721ac97dac4991bd8d5c450f345a6"
   },
   {
@@ -1733,7 +1733,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009003.jpg",
+   "url": "maps/map0/009003.jpg",
    "sha256": "3b39b185c3601c00338cbc44ef0362e04733cd6d6b843df67e68cf12c54649f5"
   },
   {
@@ -1744,7 +1744,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009004.jpg",
+   "url": "maps/map0/009004.jpg",
    "sha256": "844e5dde816dd5f3bc897bc038c3f1ccdfc5ebc54a1016f8545a63400b42a26d"
   },
   {
@@ -1755,7 +1755,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009005.jpg",
+   "url": "maps/map0/009005.jpg",
    "sha256": "b241689eb7359944518193d7b1445cf69408023a6d1e8bce73b00d331c6f9041"
   },
   {
@@ -1766,7 +1766,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009006.jpg",
+   "url": "maps/map0/009006.jpg",
    "sha256": "89254cf169a925440b10c3a814f955a3da94107aca4383722e860d11fae0ed63"
   },
   {
@@ -1777,7 +1777,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009007.jpg",
+   "url": "maps/map0/009007.jpg",
    "sha256": "08c2f39b9de62918a4333f7f59e5e21de559a58082cd318d5239ec95176f0ced"
   },
   {
@@ -1788,7 +1788,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009008.jpg",
+   "url": "maps/map0/009008.jpg",
    "sha256": "1f644ee5d8477fc9e2156410d766c48db9258498075fcdf5a762aa12acf2e18b"
   },
   {
@@ -1799,7 +1799,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009009.jpg",
+   "url": "maps/map0/009009.jpg",
    "sha256": "c449eb33e5f34b9b63fb92600e0a4e93cb8c77bce05e8501ad782fb121c3d2eb"
   },
   {
@@ -1810,7 +1810,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009010.jpg",
+   "url": "maps/map0/009010.jpg",
    "sha256": "e19d993089709a3337c3f161c06a6e00bc6262a040566aa7da71c5572be077d7"
   },
   {
@@ -1821,7 +1821,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009011.jpg",
+   "url": "maps/map0/009011.jpg",
    "sha256": "19071c593a32dc9f53950bcd2dabd154629e7f4e4802adeb67bb538e0d337ff9"
   },
   {
@@ -1832,7 +1832,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009012.jpg",
+   "url": "maps/map0/009012.jpg",
    "sha256": "4ab7873a1593635b3b71623263303cd6afdf547f013703e081f24bf9c850af0f"
   },
   {
@@ -1843,7 +1843,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009013.jpg",
+   "url": "maps/map0/009013.jpg",
    "sha256": "a7cdd4d41a9bac7e4b4545199950b06279eaf375d9427371a5763f052d24c2cf"
   },
   {
@@ -1854,7 +1854,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009014.jpg",
+   "url": "maps/map0/009014.jpg",
    "sha256": "e841ce9641966255abcc51e3e3e5c35197d7567c50bf77592ff9334dd1ffbe0c"
   },
   {
@@ -1865,7 +1865,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009015.jpg",
+   "url": "maps/map0/009015.jpg",
    "sha256": "e804d02bf7358d69c1ac9484d166588e7538ccd9b7e003bb05619be8c1452661"
   },
   {
@@ -1876,7 +1876,7 @@
    "y": 2304,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/009016.jpg",
+   "url": "maps/map0/009016.jpg",
    "sha256": "336b7baabcc48e9d5b1f28c3d7dc6b96f1fa1c53f5dafef182a47c8243b0bff5"
   },
   {
@@ -1887,7 +1887,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010000.jpg",
+   "url": "maps/map0/010000.jpg",
    "sha256": "99b040163b6d02447b73933c83043439fe9a2dd8603df73db6143f51d9976536"
   },
   {
@@ -1898,7 +1898,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010001.jpg",
+   "url": "maps/map0/010001.jpg",
    "sha256": "d094aba2f74e638f6a6c8af7ee03f6f2894bc5cdca580282f08afb25b1d0c491"
   },
   {
@@ -1909,7 +1909,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010002.jpg",
+   "url": "maps/map0/010002.jpg",
    "sha256": "4f64f5cc8465e1a92556a7fd8d64162333cd7dc6630559aa1905091c4d08d4f1"
   },
   {
@@ -1920,7 +1920,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010003.jpg",
+   "url": "maps/map0/010003.jpg",
    "sha256": "b1c0de3ec23bb2c084c316130cc0a035ac1b000a7a155dabd3ddda5e939b2c37"
   },
   {
@@ -1931,7 +1931,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010004.jpg",
+   "url": "maps/map0/010004.jpg",
    "sha256": "aad17174b51025cf4298e19292ba4942ffff90fb0243d981fac3da12b61dea94"
   },
   {
@@ -1942,7 +1942,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010005.jpg",
+   "url": "maps/map0/010005.jpg",
    "sha256": "f9ed4b9c0dacad88b3b726dd5e582f6dfae60745edabd81ae1f88349cf2c6287"
   },
   {
@@ -1953,7 +1953,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010006.jpg",
+   "url": "maps/map0/010006.jpg",
    "sha256": "49b2ea54b7cae0a7035cd2e573ca0e376feac13eed2646cd46482e44d881db7c"
   },
   {
@@ -1964,7 +1964,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010007.jpg",
+   "url": "maps/map0/010007.jpg",
    "sha256": "b952aa5ed85f997e0edf7ec4e8de9bf0227bec37f35547b920cb457ab7765948"
   },
   {
@@ -1975,7 +1975,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010008.jpg",
+   "url": "maps/map0/010008.jpg",
    "sha256": "d111d5aa94e29106d5787495aa22aaa65645d72c1958f7bff1ca120b3fc844e3"
   },
   {
@@ -1986,7 +1986,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010009.jpg",
+   "url": "maps/map0/010009.jpg",
    "sha256": "d3cb7fc4bd9d5cdf574c55715452e0f084e2600756d31fd6a86f674e0d0014ac"
   },
   {
@@ -1997,7 +1997,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010010.jpg",
+   "url": "maps/map0/010010.jpg",
    "sha256": "96f42e15c303d3561f6c54b145364f66c188b7f277ed07e66c96a7f2361bcf4b"
   },
   {
@@ -2008,7 +2008,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010011.jpg",
+   "url": "maps/map0/010011.jpg",
    "sha256": "e7a4e6fa1834a905b80f906402e6dfbb2b3c5a09b14d1e7d795709d190553883"
   },
   {
@@ -2019,7 +2019,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010012.jpg",
+   "url": "maps/map0/010012.jpg",
    "sha256": "1551b15543ad3e0f66640bd1a410ac2ed41266491eee3b9c0da8753e435a4861"
   },
   {
@@ -2030,7 +2030,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010013.jpg",
+   "url": "maps/map0/010013.jpg",
    "sha256": "03b21ab64f2e99fa80d6f0dc2affeb50e32729d63f23eb7e4ed520b5161a2267"
   },
   {
@@ -2041,7 +2041,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010014.jpg",
+   "url": "maps/map0/010014.jpg",
    "sha256": "f59a658a6609882c6cfd16750733391741c1416a7ebc3719c221d0b6727c7dd3"
   },
   {
@@ -2052,7 +2052,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010015.jpg",
+   "url": "maps/map0/010015.jpg",
    "sha256": "51d2077da3084a6afe50b7fcda3ed5140ad0ed6c3a95194f8413d527410a1902"
   },
   {
@@ -2063,7 +2063,7 @@
    "y": 2560,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/010016.jpg",
+   "url": "maps/map0/010016.jpg",
    "sha256": "2ec4aa085fe82ded4361b40b28a515d2c3536b61b2064f9151de984c22e1b747"
   },
   {
@@ -2074,7 +2074,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011000.jpg",
+   "url": "maps/map0/011000.jpg",
    "sha256": "c6b785ad6017b3a8d90963ada63ea3b92097769b4dd293eeec0883bb0bbe5adb"
   },
   {
@@ -2085,7 +2085,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011001.jpg",
+   "url": "maps/map0/011001.jpg",
    "sha256": "174573a48caeba2524e8411c74f6dd1e52de8adf2110122de41efb4ab08c5f84"
   },
   {
@@ -2096,7 +2096,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011002.jpg",
+   "url": "maps/map0/011002.jpg",
    "sha256": "5bea4b9c8d17216083ad492f6055a7a9fd3c1e6e301c77e2741d561ca047de02"
   },
   {
@@ -2107,7 +2107,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011003.jpg",
+   "url": "maps/map0/011003.jpg",
    "sha256": "b35d548e76d71eac1cb498dc2c7908a7ca5bf815dc570dd42c99a8a434f336b5"
   },
   {
@@ -2118,7 +2118,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011004.jpg",
+   "url": "maps/map0/011004.jpg",
    "sha256": "536f929c030116c94e61320ab3e3bf004cd28585525255167cd551fd902a27c1"
   },
   {
@@ -2129,7 +2129,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011005.jpg",
+   "url": "maps/map0/011005.jpg",
    "sha256": "05b1db4967068dd77d9d5f6905d442156d17e4ec355405853acdc86b6a6a1ae9"
   },
   {
@@ -2140,7 +2140,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011006.jpg",
+   "url": "maps/map0/011006.jpg",
    "sha256": "80dafef9bd3844b68d7ae31961656e89ff14665a1ca69f64625337ff8bbca2a6"
   },
   {
@@ -2151,7 +2151,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011007.jpg",
+   "url": "maps/map0/011007.jpg",
    "sha256": "489c439710dfa754915c4228c7b85e85dd07e856134a7121c079a8659fd87e50"
   },
   {
@@ -2162,7 +2162,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011008.jpg",
+   "url": "maps/map0/011008.jpg",
    "sha256": "e978e85f496dec75184e02aaf1a1bbd85ec0bae4fde3dea899566b479e2cacd4"
   },
   {
@@ -2173,7 +2173,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011009.jpg",
+   "url": "maps/map0/011009.jpg",
    "sha256": "585c7beb7bf17b520bc6a7d566243002e942262819db681120ff3f830375366d"
   },
   {
@@ -2184,7 +2184,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011010.jpg",
+   "url": "maps/map0/011010.jpg",
    "sha256": "a5039cb0b7ccfb6aa1d3d6fa99e06ca92d4b6ec63a4a6f619ec9fd9bba62c4d6"
   },
   {
@@ -2195,7 +2195,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011011.jpg",
+   "url": "maps/map0/011011.jpg",
    "sha256": "7ea731ee0f70e19dd88c5d29fb58f947c3716bf55ed2df8d39e59278d69f27f1"
   },
   {
@@ -2206,7 +2206,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011012.jpg",
+   "url": "maps/map0/011012.jpg",
    "sha256": "e0064041b663a32e4f3db0f628bedc0eef9c5e45d8e12aee254a604d2889f4db"
   },
   {
@@ -2217,7 +2217,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011013.jpg",
+   "url": "maps/map0/011013.jpg",
    "sha256": "04f1540b95c832e603b73448706b097c156716f977e18f379947323fccedb32b"
   },
   {
@@ -2228,7 +2228,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011014.jpg",
+   "url": "maps/map0/011014.jpg",
    "sha256": "12be6352157a96a6b2cdfed6bbf81435a065b04a86492cce3a22c8f91d3ec3f5"
   },
   {
@@ -2239,7 +2239,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011015.jpg",
+   "url": "maps/map0/011015.jpg",
    "sha256": "80670cebfc6e6e735777f6b28861127706f0d9151019e4f8f6c7b9fb513b3cc5"
   },
   {
@@ -2250,7 +2250,7 @@
    "y": 2816,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/011016.jpg",
+   "url": "maps/map0/011016.jpg",
    "sha256": "b6ee89716c9c1b315509c68e2e538e1d56421de1cc3a74c012952474414e4327"
   },
   {
@@ -2261,7 +2261,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012000.jpg",
+   "url": "maps/map0/012000.jpg",
    "sha256": "395710edee7e74ae236d6f0b3226146489c117d963bf7e0ea2edf5c2adf612a1"
   },
   {
@@ -2272,7 +2272,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012001.jpg",
+   "url": "maps/map0/012001.jpg",
    "sha256": "655eb211a103578d0045da938cadd17d6fbaef4409f5ffe89767d0c0d2df0336"
   },
   {
@@ -2283,7 +2283,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012002.jpg",
+   "url": "maps/map0/012002.jpg",
    "sha256": "8010a01060639269bbe04797c67d2ce4689dcd0de26080199264cb9b293d2aaa"
   },
   {
@@ -2294,7 +2294,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012003.jpg",
+   "url": "maps/map0/012003.jpg",
    "sha256": "99357bf59dd5fb34d25274caed3588c555d4b1ec7699512cb113d44b892ee27a"
   },
   {
@@ -2305,7 +2305,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012004.jpg",
+   "url": "maps/map0/012004.jpg",
    "sha256": "e927addb0a872af4dd90c14b511a8ac45ac1305d44b27d30bf055b9683e1475d"
   },
   {
@@ -2316,7 +2316,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012005.jpg",
+   "url": "maps/map0/012005.jpg",
    "sha256": "18ee269bf13186ca67f32cab20bc99490a3bfb3fdcf95b9c6aa178988647c0ac"
   },
   {
@@ -2327,7 +2327,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012006.jpg",
+   "url": "maps/map0/012006.jpg",
    "sha256": "8291082419e8a63e51cb7d2665581e8be61f4c1a76905b2632b5c3b08bfab71e"
   },
   {
@@ -2338,7 +2338,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012007.jpg",
+   "url": "maps/map0/012007.jpg",
    "sha256": "f83b945a3c56010c745f6b72957a6d048b0aafb0704f936bf539e242d45d6040"
   },
   {
@@ -2349,7 +2349,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012008.jpg",
+   "url": "maps/map0/012008.jpg",
    "sha256": "2a2e3071acbb50b691d938a2f2767737c8973ce832e0ca3e99b2ff10eb7e2268"
   },
   {
@@ -2360,7 +2360,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012009.jpg",
+   "url": "maps/map0/012009.jpg",
    "sha256": "c5aef1621d4cedff03c2ca70309b6b18694c92100aaf6642bb179f6cda21ab40"
   },
   {
@@ -2371,7 +2371,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012010.jpg",
+   "url": "maps/map0/012010.jpg",
    "sha256": "732b1c0cbaceb49f0886de7ea57fcfee7f558592c4db4104e55e8e15b7cd45e0"
   },
   {
@@ -2382,7 +2382,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012011.jpg",
+   "url": "maps/map0/012011.jpg",
    "sha256": "c98349bdb28aae5efecf50924d6e42eda7529122085427894032aee713f42245"
   },
   {
@@ -2393,7 +2393,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012012.jpg",
+   "url": "maps/map0/012012.jpg",
    "sha256": "c869fe0731aa38a9f16a2f913b3548f9e47ea1796673fb57a12983594c531a95"
   },
   {
@@ -2404,7 +2404,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012013.jpg",
+   "url": "maps/map0/012013.jpg",
    "sha256": "8dcbd723cb5d6540f279cb736a7de2deb249f8b0d352dafea3af422851b5f6ee"
   },
   {
@@ -2415,7 +2415,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012014.jpg",
+   "url": "maps/map0/012014.jpg",
    "sha256": "c7d6ced88edf423784647f81c01fa970b2706a4c6a097a41242b7fdaba2e60a7"
   },
   {
@@ -2426,7 +2426,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012015.jpg",
+   "url": "maps/map0/012015.jpg",
    "sha256": "b267ab9bbbb50edcfdf94f3de7d7a75afdf1361ecba7277d470fa19b64d8b9c0"
   },
   {
@@ -2437,7 +2437,7 @@
    "y": 3072,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/012016.jpg",
+   "url": "maps/map0/012016.jpg",
    "sha256": "1eba4a632449f7eb15ebedf35b400fbbd629cb90b05c7340ed9e21aa1ee44f9d"
   },
   {
@@ -2448,7 +2448,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013000.jpg",
+   "url": "maps/map0/013000.jpg",
    "sha256": "219e1b9ff1d82efc4f8cd50b9eb3a32ca5e8cc0465a401f6389ea1fad1272d12"
   },
   {
@@ -2459,7 +2459,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013001.jpg",
+   "url": "maps/map0/013001.jpg",
    "sha256": "5965c7511a73636ef6bacfc1d7d8fcaaaa2d27e9b007b93bc842140a1d7869eb"
   },
   {
@@ -2470,7 +2470,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013002.jpg",
+   "url": "maps/map0/013002.jpg",
    "sha256": "2156b98e7b9c4eacd7c73f9e02cf852a228ae4a703cf894d38a5e8d3355295c9"
   },
   {
@@ -2481,7 +2481,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013003.jpg",
+   "url": "maps/map0/013003.jpg",
    "sha256": "893d5fb285f7dcbe047d511117fd7c031c048b30048c5188ba43b7637383bde7"
   },
   {
@@ -2492,7 +2492,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013004.jpg",
+   "url": "maps/map0/013004.jpg",
    "sha256": "ddba37a7613faf73a5e1a5dd265158f40449eeba5e50250038f973e17fc6a1c0"
   },
   {
@@ -2503,7 +2503,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013005.jpg",
+   "url": "maps/map0/013005.jpg",
    "sha256": "d60357ddd34ce7792c2ac7ff83390130b35e287e26700b56be108596509738e9"
   },
   {
@@ -2514,7 +2514,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013006.jpg",
+   "url": "maps/map0/013006.jpg",
    "sha256": "ef356886163a9f515b537baca18d87d2b3f72e675fddc45a72de9c43c78db850"
   },
   {
@@ -2525,7 +2525,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013007.jpg",
+   "url": "maps/map0/013007.jpg",
    "sha256": "8e35e1f25b8049cb146559194c9ffc53c999773f242cdcffea8d1d5ccd33ca25"
   },
   {
@@ -2536,7 +2536,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013008.jpg",
+   "url": "maps/map0/013008.jpg",
    "sha256": "878e310f5705e47bdbcd16f94f3d88bdcde35c2b68d78442f5d35a00753b5343"
   },
   {
@@ -2547,7 +2547,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013009.jpg",
+   "url": "maps/map0/013009.jpg",
    "sha256": "eb9cf091fd0b611bcedc4ed01660c61e6d4eb3c7fadd419442aefbb2654359ff"
   },
   {
@@ -2558,7 +2558,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013010.jpg",
+   "url": "maps/map0/013010.jpg",
    "sha256": "115eda8871ab5454133b75286c470bfea14ac6af568633a2f6d8b27c5d968877"
   },
   {
@@ -2569,7 +2569,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013011.jpg",
+   "url": "maps/map0/013011.jpg",
    "sha256": "ec9d0a260417d5dd802bda46e896aec1387fa2c901b63acee232c4eedb36b466"
   },
   {
@@ -2580,7 +2580,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013012.jpg",
+   "url": "maps/map0/013012.jpg",
    "sha256": "55142b2ecb95903e88b1a7b1d0c1091248083bf6435fae3b2f48a8c7cd8861bc"
   },
   {
@@ -2591,7 +2591,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013013.jpg",
+   "url": "maps/map0/013013.jpg",
    "sha256": "6fd9db8471ceeb4e5204a0b00ee22859990cff98a8e4c32c25f3507bfad317df"
   },
   {
@@ -2602,7 +2602,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013014.jpg",
+   "url": "maps/map0/013014.jpg",
    "sha256": "821af12227a92096333bf96442e7b2d44639664e50c04434e3568cf575b2d4e7"
   },
   {
@@ -2613,7 +2613,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013015.jpg",
+   "url": "maps/map0/013015.jpg",
    "sha256": "d6d4a9a26e2038300cd6b269c85abca62a4503c32e779231f53f079c1dde3e7d"
   },
   {
@@ -2624,7 +2624,7 @@
    "y": 3328,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/013016.jpg",
+   "url": "maps/map0/013016.jpg",
    "sha256": "1be18665902007b89b59f202a74a051665d018ef4caff9ad7327b5860cd0ea3a"
   },
   {
@@ -2635,7 +2635,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014000.jpg",
+   "url": "maps/map0/014000.jpg",
    "sha256": "2a4020f7da3c07a0791cddc0dd2295b9e8457ca303379764f0fa8a02fc30ac78"
   },
   {
@@ -2646,7 +2646,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014001.jpg",
+   "url": "maps/map0/014001.jpg",
    "sha256": "ff56943641d829ca73e0cb107fadef06cf498566ce81874faf320733267cf0fa"
   },
   {
@@ -2657,7 +2657,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014002.jpg",
+   "url": "maps/map0/014002.jpg",
    "sha256": "dc1a5eb44ee8e0a8567a69df0127c7b60bf86db7a3238ca52ab879e9226f053d"
   },
   {
@@ -2668,7 +2668,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014003.jpg",
+   "url": "maps/map0/014003.jpg",
    "sha256": "5ca0e6af4acb67cb596f9f5a97296f44398e664fa35443e0bd684d6936dab94f"
   },
   {
@@ -2679,7 +2679,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014004.jpg",
+   "url": "maps/map0/014004.jpg",
    "sha256": "e35a2b8e07375c7bf93478f6552b9e53477815d6d174a560c02852e0bca1f721"
   },
   {
@@ -2690,7 +2690,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014005.jpg",
+   "url": "maps/map0/014005.jpg",
    "sha256": "fe9c4c0a70586a34b492ef48660bc3d450c8c2a0ca131f4c916d7e565781da07"
   },
   {
@@ -2701,7 +2701,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014006.jpg",
+   "url": "maps/map0/014006.jpg",
    "sha256": "cd57b816fdfbcc8e050b972ff4597c4e0cc35f003881ed11d72c84ecece7f92b"
   },
   {
@@ -2712,7 +2712,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014007.jpg",
+   "url": "maps/map0/014007.jpg",
    "sha256": "91c58d5888cb542084dc629b9a08d5957a40bddf75cc45bba3ac58db601a6cb6"
   },
   {
@@ -2723,7 +2723,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014008.jpg",
+   "url": "maps/map0/014008.jpg",
    "sha256": "1ed35485c81fb605e40d82e6206b3bd5db43070ca5c4e3ab6627b57e4340f52d"
   },
   {
@@ -2734,7 +2734,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014009.jpg",
+   "url": "maps/map0/014009.jpg",
    "sha256": "d3b53203ce596091f44155fb08626d73ccf035a14554fa8050d1a0c076e38ba5"
   },
   {
@@ -2745,7 +2745,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014010.jpg",
+   "url": "maps/map0/014010.jpg",
    "sha256": "f4a22f0a994605dbdee88c6ededa9bed14863126f79b4a8478019e6265003e83"
   },
   {
@@ -2756,7 +2756,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014011.jpg",
+   "url": "maps/map0/014011.jpg",
    "sha256": "d8ad87f8e92c85929022ebe3a3149dfa9976ec3297eba8dc7298d4793eca711b"
   },
   {
@@ -2767,7 +2767,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014012.jpg",
+   "url": "maps/map0/014012.jpg",
    "sha256": "f3ed6b4a9af6db3715863d34a03dd55eb1755135a98d8f621ac1afec9e09e2af"
   },
   {
@@ -2778,7 +2778,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014013.jpg",
+   "url": "maps/map0/014013.jpg",
    "sha256": "575c7530a8da076205146d3300d444949fa4ff7e41e9eee3ae1864333429cf55"
   },
   {
@@ -2789,7 +2789,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014014.jpg",
+   "url": "maps/map0/014014.jpg",
    "sha256": "eb6319249b0e7d86cef5bf41f6585b5e29ecbdf40165117fce63dc69edb1399d"
   },
   {
@@ -2800,7 +2800,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014015.jpg",
+   "url": "maps/map0/014015.jpg",
    "sha256": "4b1bc2ad89eb556b0d8856630c4df201c38c274b266f7c452094bf3dd454ab36"
   },
   {
@@ -2811,7 +2811,7 @@
    "y": 3584,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/014016.jpg",
+   "url": "maps/map0/014016.jpg",
    "sha256": "a38fba8f17286bec1dcacd2dbd431870d92355d5496742a530aaba8768030ccc"
   },
   {
@@ -2822,7 +2822,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015000.jpg",
+   "url": "maps/map0/015000.jpg",
    "sha256": "ca29e26d48cd5dceff4cb6ff4d6b8d3edd29f4a3407e304865d685634c9417fd"
   },
   {
@@ -2833,7 +2833,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015001.jpg",
+   "url": "maps/map0/015001.jpg",
    "sha256": "4efad5b4c5ba3f34d1d70982918df767229cc8f293a09599dbd730e27e88cd7f"
   },
   {
@@ -2844,7 +2844,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015002.jpg",
+   "url": "maps/map0/015002.jpg",
    "sha256": "1712dae89ee486d47767bddbc9933e8b7dc269069b122536917101e2411b4a32"
   },
   {
@@ -2855,7 +2855,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015003.jpg",
+   "url": "maps/map0/015003.jpg",
    "sha256": "c1678343d6613b5fb7547da014f8b89dbc4729721ff789822d8e46814143822e"
   },
   {
@@ -2866,7 +2866,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015004.jpg",
+   "url": "maps/map0/015004.jpg",
    "sha256": "a7cdc97a0d5f854c10646b98a4a1efe4209d3f91c092609fd331153adbfab97b"
   },
   {
@@ -2877,7 +2877,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015005.jpg",
+   "url": "maps/map0/015005.jpg",
    "sha256": "7f1712d8a2931a29010e7312264bad85fbc80c7fe4d5ef45b6a23d5891794141"
   },
   {
@@ -2888,7 +2888,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015006.jpg",
+   "url": "maps/map0/015006.jpg",
    "sha256": "faf5ba26802118db0c1ebf9495581be5749fdafa8e8a6b2571bcdf2572b68005"
   },
   {
@@ -2899,7 +2899,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015007.jpg",
+   "url": "maps/map0/015007.jpg",
    "sha256": "1f6145114840d0d8675be5f19bf68eb932a1d8c8c10cf738e9ac27021d187737"
   },
   {
@@ -2910,7 +2910,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015008.jpg",
+   "url": "maps/map0/015008.jpg",
    "sha256": "c703a81fbad82266acf7df7dcf6e02ef89cdf3b46af32cb35fbf338501878c2a"
   },
   {
@@ -2921,7 +2921,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015009.jpg",
+   "url": "maps/map0/015009.jpg",
    "sha256": "0cd6d123c4257596468f543511d69244bb5a967f000a170ef2cd98e4b8bf0f13"
   },
   {
@@ -2932,7 +2932,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015010.jpg",
+   "url": "maps/map0/015010.jpg",
    "sha256": "c2195d0b5594c1acaa5de291ae024fd280f3e3402a19914bc56bd2a0b07296bb"
   },
   {
@@ -2943,7 +2943,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015011.jpg",
+   "url": "maps/map0/015011.jpg",
    "sha256": "34a4b1dd05aedf5a6e92340552dfae4733bb4de3032d5fed70af7953c565025c"
   },
   {
@@ -2954,7 +2954,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015012.jpg",
+   "url": "maps/map0/015012.jpg",
    "sha256": "ae6a60a99eba60acbb2956b2314471aea2695b5f2ecf18bb500d9388f21f2f99"
   },
   {
@@ -2965,7 +2965,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015013.jpg",
+   "url": "maps/map0/015013.jpg",
    "sha256": "8267b67fc7edb0d3d7c9591c06b7ca1dcd6cea7e9285488242e680e98d061c82"
   },
   {
@@ -2976,7 +2976,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015014.jpg",
+   "url": "maps/map0/015014.jpg",
    "sha256": "e91444b229de7b40a25b26cb44f4013318805737b47a2b36d98f3412115f062b"
   },
   {
@@ -2987,7 +2987,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015015.jpg",
+   "url": "maps/map0/015015.jpg",
    "sha256": "6de6911545d6aa179520abf02ff3264d614b6bf4028cd15ed35d0b137e1bc702"
   },
   {
@@ -2998,7 +2998,7 @@
    "y": 3840,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/015016.jpg",
+   "url": "maps/map0/015016.jpg",
    "sha256": "e4f6fe67b20d8765441dcc40e75cf3e41f68a56b06852de3161d98dd97ea6714"
   },
   {
@@ -3009,7 +3009,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016000.jpg",
+   "url": "maps/map0/016000.jpg",
    "sha256": "6ef483f027937006962aeb61964a03717551668307e8ec2894924c91fe4e7c92"
   },
   {
@@ -3020,7 +3020,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016001.jpg",
+   "url": "maps/map0/016001.jpg",
    "sha256": "cb3d4415ff5c13c74be9a6ab9ac772c431c2f16759ad03c31498fc36f68b8d0b"
   },
   {
@@ -3031,7 +3031,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016002.jpg",
+   "url": "maps/map0/016002.jpg",
    "sha256": "69290609f52b045bb23cc7542a6467a94676529d1cfaf735ff06d86f8a652eeb"
   },
   {
@@ -3042,7 +3042,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016003.jpg",
+   "url": "maps/map0/016003.jpg",
    "sha256": "84b118f0d027f9be8ec996267fee77f8f5ca354301cd2c24da45349eb71ecf0e"
   },
   {
@@ -3053,7 +3053,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016004.jpg",
+   "url": "maps/map0/016004.jpg",
    "sha256": "8f9343c7deca700a4bd91072c7d0e79d486dfa3f1ade17f7db92aa31269519fa"
   },
   {
@@ -3064,7 +3064,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016005.jpg",
+   "url": "maps/map0/016005.jpg",
    "sha256": "cc97016034d366af9caa8212908eb7b06c976c38d4809becca6fa1620a67b642"
   },
   {
@@ -3075,7 +3075,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016006.jpg",
+   "url": "maps/map0/016006.jpg",
    "sha256": "d46b823c0cee7935665a952fa18b506398037d4de905878c1999d5e08dbf9d7e"
   },
   {
@@ -3086,7 +3086,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016007.jpg",
+   "url": "maps/map0/016007.jpg",
    "sha256": "ba513aad01c377b1ab2acc5461543e0845eeba5d84c3ab8cd1ef21303873a427"
   },
   {
@@ -3097,7 +3097,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016008.jpg",
+   "url": "maps/map0/016008.jpg",
    "sha256": "18b110bfd18ed1c94fe1ce75b6b528035daaff034ecf5880d064b8dbbe7d86b9"
   },
   {
@@ -3108,7 +3108,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016009.jpg",
+   "url": "maps/map0/016009.jpg",
    "sha256": "0841ca623989fcd4bad7ea3a956c3a7225ba07fe6e3b06a406872bfbfb4fa323"
   },
   {
@@ -3119,7 +3119,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016010.jpg",
+   "url": "maps/map0/016010.jpg",
    "sha256": "8f9c0faeae616c13c2cfadf5133c645f7694aa5a8b8041c655c56eacaa9dfba8"
   },
   {
@@ -3130,7 +3130,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016011.jpg",
+   "url": "maps/map0/016011.jpg",
    "sha256": "948dadff3bcef13dbe70445d37da7f9bb56974c990849fc1f696f21317614a4b"
   },
   {
@@ -3141,7 +3141,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016012.jpg",
+   "url": "maps/map0/016012.jpg",
    "sha256": "98bab81aec4448f36d546195fe7560276062f382d260928b51160bc5695fd344"
   },
   {
@@ -3152,7 +3152,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016013.jpg",
+   "url": "maps/map0/016013.jpg",
    "sha256": "684e36a4df45615fcd71dbdd31e1f9908fa35e64fb13b131dd8c8e9e5d2d6a12"
   },
   {
@@ -3163,7 +3163,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016014.jpg",
+   "url": "maps/map0/016014.jpg",
    "sha256": "bb1f3faea56bb5b38d8e6a4c95e048a30499527d4bf6305c6e7cd937f0462056"
   },
   {
@@ -3174,7 +3174,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016015.jpg",
+   "url": "maps/map0/016015.jpg",
    "sha256": "8437f86c01ed58473119674346d0c199724d267b89c6591f5c4f287e03583fe4"
   },
   {
@@ -3185,7 +3185,7 @@
    "y": 4096,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/016016.jpg",
+   "url": "maps/map0/016016.jpg",
    "sha256": "afccaabd6ede87b188c8735b53b74e2a681298f0cda74bf5988924ac1df19d7f"
   },
   {
@@ -3196,7 +3196,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017000.jpg",
+   "url": "maps/map0/017000.jpg",
    "sha256": "82c3dd72bef76d623d8440aff449ea34409f9b7a8670597bc38bdf62508c4882"
   },
   {
@@ -3207,7 +3207,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017001.jpg",
+   "url": "maps/map0/017001.jpg",
    "sha256": "96761252c3e9891ee24e214173425d456d3f80b6b4b47a35d347c099ff6ba7c0"
   },
   {
@@ -3218,7 +3218,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017002.jpg",
+   "url": "maps/map0/017002.jpg",
    "sha256": "c723e724162f15e326f7bb0e886f822aa0a12c55bf168a2f4168c37e59284944"
   },
   {
@@ -3229,7 +3229,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017003.jpg",
+   "url": "maps/map0/017003.jpg",
    "sha256": "fb8d8e477d2c6e8442b0ae90e779c63f9a2cd499056c01e0552146ebac94fba9"
   },
   {
@@ -3240,7 +3240,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017004.jpg",
+   "url": "maps/map0/017004.jpg",
    "sha256": "76f3e97d4f137b7068f83c6cbe352cb21fc87a629c732108be61e84ea4acd776"
   },
   {
@@ -3251,7 +3251,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017005.jpg",
+   "url": "maps/map0/017005.jpg",
    "sha256": "aae4810f32899fef41581cec4a5a678ae6c654ff41ce656c1c9308ba72b6d042"
   },
   {
@@ -3262,7 +3262,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017006.jpg",
+   "url": "maps/map0/017006.jpg",
    "sha256": "3f78c9e2750c9b142e4b72397f971d6011ed9ceebb3df8fb9c557c069ff3734e"
   },
   {
@@ -3273,7 +3273,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017007.jpg",
+   "url": "maps/map0/017007.jpg",
    "sha256": "be35d7558b2196b750be0ce87dbb53fa41588fd302f7b224a556fbe272bcf283"
   },
   {
@@ -3284,7 +3284,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017008.jpg",
+   "url": "maps/map0/017008.jpg",
    "sha256": "d8320236b376a361513985386e6db71bfdaff7b292cdaaf9d0e7a79b2944d8b9"
   },
   {
@@ -3295,7 +3295,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017009.jpg",
+   "url": "maps/map0/017009.jpg",
    "sha256": "8d45c9808d9c1b51b202914d55ea4479327136fbfef454d6c2f2bc195ada3f34"
   },
   {
@@ -3306,7 +3306,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017010.jpg",
+   "url": "maps/map0/017010.jpg",
    "sha256": "7af2c25ff7941c1d7aeba90927ce38ed79112172f4d2cdbb2e14b681adaa82da"
   },
   {
@@ -3317,7 +3317,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017011.jpg",
+   "url": "maps/map0/017011.jpg",
    "sha256": "8e84446f40f21e9aecb088d4c0622c0e36792d7428e514f00c8c7312407196d7"
   },
   {
@@ -3328,7 +3328,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017012.jpg",
+   "url": "maps/map0/017012.jpg",
    "sha256": "2789225587f130b55bb28b00ee6d5768c5ec3b7185d036ae0a96b73c56ba6aa7"
   },
   {
@@ -3339,7 +3339,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017013.jpg",
+   "url": "maps/map0/017013.jpg",
    "sha256": "4b15889abf41c38966c476d066349af202244021ebd327ace62ed5231dab53e9"
   },
   {
@@ -3350,7 +3350,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017014.jpg",
+   "url": "maps/map0/017014.jpg",
    "sha256": "a41ba13bedb58a6dec26cacedd3aba45c164f8df218ab4ffae8989276780ce4c"
   },
   {
@@ -3361,7 +3361,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017015.jpg",
+   "url": "maps/map0/017015.jpg",
    "sha256": "898436ee9ff8b50a293122adff799a599fb9b27545645ac2e5bb74d8e8c46776"
   },
   {
@@ -3372,7 +3372,7 @@
    "y": 4352,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/017016.jpg",
+   "url": "maps/map0/017016.jpg",
    "sha256": "2f4612645b851c00f447b98f90ebccc3bd6b6eee3fa887ab1f4f777cc83bade2"
   },
   {
@@ -3383,7 +3383,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018000.jpg",
+   "url": "maps/map0/018000.jpg",
    "sha256": "a824c07573d40a1562dfb085b20c0a64548595579d89d979273813e57c7e2636"
   },
   {
@@ -3394,7 +3394,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018001.jpg",
+   "url": "maps/map0/018001.jpg",
    "sha256": "a1eeb842b2849fd1f325f80166c1eb4fe6278f21aefe836c77680a57c76da607"
   },
   {
@@ -3405,7 +3405,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018002.jpg",
+   "url": "maps/map0/018002.jpg",
    "sha256": "82b9da822b411e0aa08780ad049af4c68f09eb79ba2d9403e6a64dcc4554c766"
   },
   {
@@ -3416,7 +3416,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018003.jpg",
+   "url": "maps/map0/018003.jpg",
    "sha256": "b9502c0a4bee57a9311f1a3e1b62c3ee3b9531c2ede6cad1453a841852059e35"
   },
   {
@@ -3427,7 +3427,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018004.jpg",
+   "url": "maps/map0/018004.jpg",
    "sha256": "6b59e35a43d4dcef6a65ba356951961025c518f9e6fa908b33103b409bebc418"
   },
   {
@@ -3438,7 +3438,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018005.jpg",
+   "url": "maps/map0/018005.jpg",
    "sha256": "38e79e2520e9ca4a4fabe8e1ec90815cb4557518eb4fe5494b036877db238214"
   },
   {
@@ -3449,7 +3449,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018006.jpg",
+   "url": "maps/map0/018006.jpg",
    "sha256": "90de468382b2f5c0ea3e3a516feee623108eecdc8189743cefaae6625f82aad0"
   },
   {
@@ -3460,7 +3460,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018007.jpg",
+   "url": "maps/map0/018007.jpg",
    "sha256": "cfb2fdbfee09755106c09b5e956eaf39364edbe5b287fd204ca056a5910f7869"
   },
   {
@@ -3471,7 +3471,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018008.jpg",
+   "url": "maps/map0/018008.jpg",
    "sha256": "8d907a9077cb8323c7ecfeeccca3d6184ceae5e540791bc4d366ae51c11b8576"
   },
   {
@@ -3482,7 +3482,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018009.jpg",
+   "url": "maps/map0/018009.jpg",
    "sha256": "b6c5a62168baf7511f8a7c03428e6f7a2573484eff8be4566ac25abef3881b00"
   },
   {
@@ -3493,7 +3493,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018010.jpg",
+   "url": "maps/map0/018010.jpg",
    "sha256": "b3655a6cbcd991b80291890ae26904cef0c5e46c7d2e85e5173118ffedc8f6cc"
   },
   {
@@ -3504,7 +3504,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018011.jpg",
+   "url": "maps/map0/018011.jpg",
    "sha256": "e378ab0eb47a17e749f0cdc073d2ce799ce0f357ea17048ec85a25fef41e52be"
   },
   {
@@ -3515,7 +3515,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018012.jpg",
+   "url": "maps/map0/018012.jpg",
    "sha256": "6359c627c4f9c7b39304638b3b17f23f2c54bbcd3ceb5af9d9b54116f55b7387"
   },
   {
@@ -3526,7 +3526,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018013.jpg",
+   "url": "maps/map0/018013.jpg",
    "sha256": "cecc213042df5f973cebd92d38a479d2e5abd3cefc6c8ab25640ac229f241889"
   },
   {
@@ -3537,7 +3537,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018014.jpg",
+   "url": "maps/map0/018014.jpg",
    "sha256": "61ff08259c47ca30658e9d68ccaa68561fd7af33bd8bb85289a1cdd87c0cfe62"
   },
   {
@@ -3548,7 +3548,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018015.jpg",
+   "url": "maps/map0/018015.jpg",
    "sha256": "f8c81dbeaebb93f5f055c7925d0e29e4cc9acd4abff39a02647eaeec7fc5cc90"
   },
   {
@@ -3559,7 +3559,7 @@
    "y": 4608,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/018016.jpg",
+   "url": "maps/map0/018016.jpg",
    "sha256": "adfa69ec0670bb69d58317b08f6dd8dd4da8f10f1d1d1916187bc758791da141"
   },
   {
@@ -3570,7 +3570,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019000.jpg",
+   "url": "maps/map0/019000.jpg",
    "sha256": "f5184dc4945e2848622b0a96a69800365b812fe407f7c68c507d28574b88004c"
   },
   {
@@ -3581,7 +3581,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019001.jpg",
+   "url": "maps/map0/019001.jpg",
    "sha256": "0dd336999fd4516364b8dec1deab37c004aaf0f7bad53e406719c7c39ea7c728"
   },
   {
@@ -3592,7 +3592,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019002.jpg",
+   "url": "maps/map0/019002.jpg",
    "sha256": "23b1de9130b04e6be0058795b2db789beae06b2d4916aaa3b42e8ff610d6d1f7"
   },
   {
@@ -3603,7 +3603,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019003.jpg",
+   "url": "maps/map0/019003.jpg",
    "sha256": "cd0badf7dcc2c98e540b89a4b020d3855cadd8f331599fc3eb05e7e55f382b0a"
   },
   {
@@ -3614,7 +3614,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019004.jpg",
+   "url": "maps/map0/019004.jpg",
    "sha256": "12bf997014f091ef6cd9b623f1b8e39188122d0c1decdb83c944431809cd09a2"
   },
   {
@@ -3625,7 +3625,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019005.jpg",
+   "url": "maps/map0/019005.jpg",
    "sha256": "60f5e86dda7e3c21806e166855b174ce7ff9fb88361114800d768cdca6f786df"
   },
   {
@@ -3636,7 +3636,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019006.jpg",
+   "url": "maps/map0/019006.jpg",
    "sha256": "47bdd59191a26fdcd82e112f43c9bce23edaeed55798dd435c6cdebaee1b52d9"
   },
   {
@@ -3647,7 +3647,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019007.jpg",
+   "url": "maps/map0/019007.jpg",
    "sha256": "30456e7c73fdd674cd597b7b6b23820ee0ff70f86536677c58b5b7d5bbbf7fd0"
   },
   {
@@ -3658,7 +3658,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019008.jpg",
+   "url": "maps/map0/019008.jpg",
    "sha256": "51d272b5b0e6b1d02318ba1cecdbb8fade8f671e293f32de644e99a5e9a25569"
   },
   {
@@ -3669,7 +3669,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019009.jpg",
+   "url": "maps/map0/019009.jpg",
    "sha256": "b3fd32bb90a4a06d3af9276c7a0ec0e4b98813605d75b958e15a68767d80e173"
   },
   {
@@ -3680,7 +3680,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019010.jpg",
+   "url": "maps/map0/019010.jpg",
    "sha256": "1a3442379f827b11f92756b70d44032d401664492109690f5590fd22509043bd"
   },
   {
@@ -3691,7 +3691,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019011.jpg",
+   "url": "maps/map0/019011.jpg",
    "sha256": "b8692403326f84430c2b6570119e2177470f8e3b1c7728582839fa1ea80af161"
   },
   {
@@ -3702,7 +3702,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019012.jpg",
+   "url": "maps/map0/019012.jpg",
    "sha256": "dff092535c601b232ca361fddf6ab4c725ffae249df90d7a6350a6f66a41064f"
   },
   {
@@ -3713,7 +3713,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019013.jpg",
+   "url": "maps/map0/019013.jpg",
    "sha256": "18ac51d04dd69c6b896d776773805ecdd36069bb665cf39c35f8921d1432622d"
   },
   {
@@ -3724,7 +3724,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019014.jpg",
+   "url": "maps/map0/019014.jpg",
    "sha256": "db7356cdddff9c56032e11736097774480a687ac03f7180d7a4e2881762e52c9"
   },
   {
@@ -3735,7 +3735,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019015.jpg",
+   "url": "maps/map0/019015.jpg",
    "sha256": "980b5d50cf6a3954846cd9d167a20091b09fdddff12e5450cd1c4fddc371721e"
   },
   {
@@ -3746,7 +3746,7 @@
    "y": 4864,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/019016.jpg",
+   "url": "maps/map0/019016.jpg",
    "sha256": "0ea464117dce9a23dad159637421c383c3d9bafecefce2f93acb6c0e0f09e4d4"
   },
   {
@@ -3757,7 +3757,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020000.jpg",
+   "url": "maps/map0/020000.jpg",
    "sha256": "a05985bd49394ecefb85d42c78918f08413d59e3b4147bff1b1a0096f744f1e9"
   },
   {
@@ -3768,7 +3768,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020001.jpg",
+   "url": "maps/map0/020001.jpg",
    "sha256": "cba68de699acf304f455fdcc57ead61701278053842c2f122f9c710e2a105a8a"
   },
   {
@@ -3779,7 +3779,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020002.jpg",
+   "url": "maps/map0/020002.jpg",
    "sha256": "caae9eb04a7dd12763cc586f583e3b29a7f9fa7638a9c6a3e78dd818cc23eb20"
   },
   {
@@ -3790,7 +3790,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020003.jpg",
+   "url": "maps/map0/020003.jpg",
    "sha256": "036ab3403d45bdf0d12878c92ad0e9c0a1bc045178bf89dc39a9c1c62f6d0c4f"
   },
   {
@@ -3801,7 +3801,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020004.jpg",
+   "url": "maps/map0/020004.jpg",
    "sha256": "dc963668c5bf88edf9cfefe42f9427cb262437563854ab1a741e98011ea08086"
   },
   {
@@ -3812,7 +3812,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020005.jpg",
+   "url": "maps/map0/020005.jpg",
    "sha256": "1e5371f7e457405f1c73d22bd87bd0b6e57a9d55409aa121c3460a9609a9205c"
   },
   {
@@ -3823,7 +3823,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020006.jpg",
+   "url": "maps/map0/020006.jpg",
    "sha256": "f19d88bbd1cdc966a5635d91998522cf99a554d4b52491817e1ecef6e39c134f"
   },
   {
@@ -3834,7 +3834,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020007.jpg",
+   "url": "maps/map0/020007.jpg",
    "sha256": "3d44ab654dd1f546a826e1c689842a01e3abf88a5af818d1849b1f34f48e7858"
   },
   {
@@ -3845,7 +3845,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020008.jpg",
+   "url": "maps/map0/020008.jpg",
    "sha256": "93eb53ff4731c22d74c41c80a8645fbb1025345e8a03c39f7d928d334d0d8932"
   },
   {
@@ -3856,7 +3856,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020009.jpg",
+   "url": "maps/map0/020009.jpg",
    "sha256": "c0fc9b74ae2fefb8f171f40f4cdd2892b3725f7422518d5db7b3bfd559988f56"
   },
   {
@@ -3867,7 +3867,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020010.jpg",
+   "url": "maps/map0/020010.jpg",
    "sha256": "679118b632aeccacb2d8b1085f0b47974eeff274ad9f4b908489081a7b3ee56f"
   },
   {
@@ -3878,7 +3878,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020011.jpg",
+   "url": "maps/map0/020011.jpg",
    "sha256": "7d52526628c708e33cd2a7dcfffe8b1ffd348d708ab34d63831f8519e7c5000e"
   },
   {
@@ -3889,7 +3889,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020012.jpg",
+   "url": "maps/map0/020012.jpg",
    "sha256": "97bb0805e69cc155450de833da7fc9dcff66eec0740dc7217ea86d29bd69dd85"
   },
   {
@@ -3900,7 +3900,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020013.jpg",
+   "url": "maps/map0/020013.jpg",
    "sha256": "ecafeb6c6df895f995cb19c55d34c72ee6610d198c653b7459d3d510cb4b6e77"
   },
   {
@@ -3911,7 +3911,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020014.jpg",
+   "url": "maps/map0/020014.jpg",
    "sha256": "ba18b647c379a9696e7b8c1edf89240d6237bb5155b2bd4d0678fe230b16725e"
   },
   {
@@ -3922,7 +3922,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020015.jpg",
+   "url": "maps/map0/020015.jpg",
    "sha256": "75c26ae9eee8cddb5335f9a96d9b13442f019ef36156574a88fb59bd13bc7e27"
   },
   {
@@ -3933,7 +3933,7 @@
    "y": 5120,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/020016.jpg",
+   "url": "maps/map0/020016.jpg",
    "sha256": "4409083acaa5b6627e2ff22cfdddfbf52af693948603b61ad6c5f8689f643067"
   },
   {
@@ -3944,7 +3944,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021000.jpg",
+   "url": "maps/map0/021000.jpg",
    "sha256": "db9079aefcd860c6875586246b87e85584bd3c4ac9058667c672f76123b7ab45"
   },
   {
@@ -3955,7 +3955,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021001.jpg",
+   "url": "maps/map0/021001.jpg",
    "sha256": "c4758e1cf3cc1fe82e334454b80a96ad926e79b9e87d05bfbee1d5a2b2213e25"
   },
   {
@@ -3966,7 +3966,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021002.jpg",
+   "url": "maps/map0/021002.jpg",
    "sha256": "6b897d85836a9df145ced3bceeaa22897a5d66dc9ff65da4908029309833a8b0"
   },
   {
@@ -3977,7 +3977,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021003.jpg",
+   "url": "maps/map0/021003.jpg",
    "sha256": "2325a3bd5830c52881495de09df7d9450b9d8a9994266d0ca53ba6022836a965"
   },
   {
@@ -3988,7 +3988,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021004.jpg",
+   "url": "maps/map0/021004.jpg",
    "sha256": "e3c8deae6522b5080dee7ea1ff21cdb7b12c303e02ba0955c0f1c05927b97027"
   },
   {
@@ -3999,7 +3999,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021005.jpg",
+   "url": "maps/map0/021005.jpg",
    "sha256": "5be61912e738b9ef29051d68d06fe01c3bb478b782e46fce55112d857a2221c1"
   },
   {
@@ -4010,7 +4010,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021006.jpg",
+   "url": "maps/map0/021006.jpg",
    "sha256": "b914f8c5f74714766a4c5456ed8268ce41406764423930765c030c30be4092f5"
   },
   {
@@ -4021,7 +4021,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021007.jpg",
+   "url": "maps/map0/021007.jpg",
    "sha256": "1ee678b4511f2540bba62fc5dfbe47bbe85d047ded96f316f4a7f5d7e92fe1e9"
   },
   {
@@ -4032,7 +4032,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021008.jpg",
+   "url": "maps/map0/021008.jpg",
    "sha256": "e99c14e698d1756143e532b99bab9d41c7888f5ac67d95c103f54826095c6cbc"
   },
   {
@@ -4043,7 +4043,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021009.jpg",
+   "url": "maps/map0/021009.jpg",
    "sha256": "2784dacee0250e1d06da3a0861c82e8de8257d674f138f78fc6b38d411d74821"
   },
   {
@@ -4054,7 +4054,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021010.jpg",
+   "url": "maps/map0/021010.jpg",
    "sha256": "2a66939ea8ad8730763a0089b5a2b3d1c453d38c40beb0ea356afce024b82927"
   },
   {
@@ -4065,7 +4065,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021011.jpg",
+   "url": "maps/map0/021011.jpg",
    "sha256": "e9e81a1a009d420db52e7647e797a69e493056db7561108c846531fcd1b969c5"
   },
   {
@@ -4076,7 +4076,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021012.jpg",
+   "url": "maps/map0/021012.jpg",
    "sha256": "358cf3e75852da24886ed2e839ee6e8ca0c46b85a8c7d7b1224b19cf5589dd25"
   },
   {
@@ -4087,7 +4087,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021013.jpg",
+   "url": "maps/map0/021013.jpg",
    "sha256": "36720bf38fb342adda094ba2b59481c3b6529a9f43f60e8b9871a60ed7fa1242"
   },
   {
@@ -4098,7 +4098,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021014.jpg",
+   "url": "maps/map0/021014.jpg",
    "sha256": "1a5f54d2953b112b52ae5eeeffa3b0fb1a3debef9e05d5d13fb827680e9ab12b"
   },
   {
@@ -4109,7 +4109,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021015.jpg",
+   "url": "maps/map0/021015.jpg",
    "sha256": "ec86b052d6febe7e669a302d7f3085e2d359ccd3111cdfca5d54f8f84fe81987"
   },
   {
@@ -4120,7 +4120,7 @@
    "y": 5376,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/021016.jpg",
+   "url": "maps/map0/021016.jpg",
    "sha256": "771b146f7560b964600a28970ba2874880cd1aef4b80fb10c5392b3d8ab19e67"
   },
   {
@@ -4131,7 +4131,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022000.jpg",
+   "url": "maps/map0/022000.jpg",
    "sha256": "f6e259bc0986ecea41753b4fd31fbf933749c93ba1bc87622cbee58124f41327"
   },
   {
@@ -4142,7 +4142,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022001.jpg",
+   "url": "maps/map0/022001.jpg",
    "sha256": "e32623ed9e3b3466da1c72aa722fc28d07bd6dd0e7bd48b586f9b2658ed76cbd"
   },
   {
@@ -4153,7 +4153,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022002.jpg",
+   "url": "maps/map0/022002.jpg",
    "sha256": "39c6a78c2a5fe5a32498928fecde204d30980c0be740cafcfc3d24b47b1ab513"
   },
   {
@@ -4164,7 +4164,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022003.jpg",
+   "url": "maps/map0/022003.jpg",
    "sha256": "4bbd7a96c20fa76dc23250ed0ef4638c0ebe596e19ebe6761e4073db0abeca32"
   },
   {
@@ -4175,7 +4175,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022004.jpg",
+   "url": "maps/map0/022004.jpg",
    "sha256": "db8522ca95368b8dd8a727e86a426fe032d194c3f7c9a31b458314cf0e9c3e51"
   },
   {
@@ -4186,7 +4186,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022005.jpg",
+   "url": "maps/map0/022005.jpg",
    "sha256": "1bfdd3452ec0d540cb736f03f75708e5ac22c002ebc9c99daad061ac544e77ac"
   },
   {
@@ -4197,7 +4197,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022006.jpg",
+   "url": "maps/map0/022006.jpg",
    "sha256": "1eae059dd46fbeb0a55d59cd4315202ca7b43b15c3d66e5b56fff9cf04998a5a"
   },
   {
@@ -4208,7 +4208,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022007.jpg",
+   "url": "maps/map0/022007.jpg",
    "sha256": "8abeccad7bc2be967c216476776ff31045167438649d36523f4242811dbffecc"
   },
   {
@@ -4219,7 +4219,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022008.jpg",
+   "url": "maps/map0/022008.jpg",
    "sha256": "0f52865f353a3461062f18e25dd572ace5244d6a37992741b2641800ab41f1b6"
   },
   {
@@ -4230,7 +4230,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022009.jpg",
+   "url": "maps/map0/022009.jpg",
    "sha256": "ab1d25ae8b8fd999524fe146c90ec1307d9c73aa2f6f0779d4d4e30acd1f6cbe"
   },
   {
@@ -4241,7 +4241,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022010.jpg",
+   "url": "maps/map0/022010.jpg",
    "sha256": "895dd6278349e7de6f812a4d6bc1bf12711d3eff7903bdcc9bc5a5af169b508c"
   },
   {
@@ -4252,7 +4252,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022011.jpg",
+   "url": "maps/map0/022011.jpg",
    "sha256": "e1753b3c1a115e29691d096dc58cadcdb9cc45ffb6981f86d8ad456eeebfa78d"
   },
   {
@@ -4263,7 +4263,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022012.jpg",
+   "url": "maps/map0/022012.jpg",
    "sha256": "b32c8bc88f1b58b1875309cf1e1c0cbe133407f63cc6f4f1d1f0e0d7af9a798f"
   },
   {
@@ -4274,7 +4274,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022013.jpg",
+   "url": "maps/map0/022013.jpg",
    "sha256": "de4d1ca75312d9651f77901a9a325c45fd75aae5666956f439466e9901bf66d4"
   },
   {
@@ -4285,7 +4285,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022014.jpg",
+   "url": "maps/map0/022014.jpg",
    "sha256": "5982dc093d1cad1eea2fd8eaf46d8842b222711ec895a8635a06cd6983a88e28"
   },
   {
@@ -4296,7 +4296,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022015.jpg",
+   "url": "maps/map0/022015.jpg",
    "sha256": "cbd0925527e68a621b3bc99842e78ee6a7946782c4f25855f20af32149b89857"
   },
   {
@@ -4307,7 +4307,7 @@
    "y": 5632,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/022016.jpg",
+   "url": "maps/map0/022016.jpg",
    "sha256": "6a4e40007905a93ef215a9af002d802696c66f617fffcdd951723b52b57e9331"
   },
   {
@@ -4318,7 +4318,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023000.jpg",
+   "url": "maps/map0/023000.jpg",
    "sha256": "a96566902265ad046d258eee2870756fb3891d4a69e202b57470873fc2f2da02"
   },
   {
@@ -4329,7 +4329,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023001.jpg",
+   "url": "maps/map0/023001.jpg",
    "sha256": "08ec209fb6f28e284bb0f6e4609d0fcf04d86a93f79aceea78613208c1d5d324"
   },
   {
@@ -4340,7 +4340,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023002.jpg",
+   "url": "maps/map0/023002.jpg",
    "sha256": "c7d281da499b68085844c1a5c03b3fb3e964c1782fbc0da67160db7676f061f7"
   },
   {
@@ -4351,7 +4351,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023003.jpg",
+   "url": "maps/map0/023003.jpg",
    "sha256": "7830cb89d9ec92897b012c9a3b19c91b1975fbd2afebf94699978eb5d6447cc8"
   },
   {
@@ -4362,7 +4362,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023004.jpg",
+   "url": "maps/map0/023004.jpg",
    "sha256": "2352ec9117623b6598d574095cf43c88f64785857051cb09c2598107b0972d35"
   },
   {
@@ -4373,7 +4373,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023005.jpg",
+   "url": "maps/map0/023005.jpg",
    "sha256": "6a7f28d45992ad49ae584b221db5c1149b1ece509784a17c9398508a355e8cbb"
   },
   {
@@ -4384,7 +4384,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023006.jpg",
+   "url": "maps/map0/023006.jpg",
    "sha256": "162a65b9d81d68a7df2853fbafedc12ed5e98a1a08aec6163f7f9580e42a4e82"
   },
   {
@@ -4395,7 +4395,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023007.jpg",
+   "url": "maps/map0/023007.jpg",
    "sha256": "2651681c85b18901e78c99397048768460863a80fd6230cb510b5cc746cd46f8"
   },
   {
@@ -4406,7 +4406,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023008.jpg",
+   "url": "maps/map0/023008.jpg",
    "sha256": "76e18d054fc8298fa7c3f8e51d3a6e855a08f14c62b803cbf21939d6620afa41"
   },
   {
@@ -4417,7 +4417,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023009.jpg",
+   "url": "maps/map0/023009.jpg",
    "sha256": "397b095434bcbc309109a27bbcb9b1bb55da4f4062d9481c164e59f6f9e48b74"
   },
   {
@@ -4428,7 +4428,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023010.jpg",
+   "url": "maps/map0/023010.jpg",
    "sha256": "35ece32a80526e7b975e115dd5b1a3cb6d86366aa96e36c71fe1b32bf95cfa23"
   },
   {
@@ -4439,7 +4439,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023011.jpg",
+   "url": "maps/map0/023011.jpg",
    "sha256": "cc5839061935926c5ba6c845875307f53b12bdedeb8f3c9733ada7fee3391f5a"
   },
   {
@@ -4450,7 +4450,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023012.jpg",
+   "url": "maps/map0/023012.jpg",
    "sha256": "ff5e97da6c0e399e8e4b7d6cb47d1c7234abfbcf18a22bdd6c8fddd2c7433919"
   },
   {
@@ -4461,7 +4461,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023013.jpg",
+   "url": "maps/map0/023013.jpg",
    "sha256": "19bc94a1bd0f4650710468be5c555a74b186e93591e7c9d8754f445e4ccb9255"
   },
   {
@@ -4472,7 +4472,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023014.jpg",
+   "url": "maps/map0/023014.jpg",
    "sha256": "1e808d38db3535f290c5ee0171921149479c0868d21e4f790ff958bdc9a8bb16"
   },
   {
@@ -4483,7 +4483,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023015.jpg",
+   "url": "maps/map0/023015.jpg",
    "sha256": "2e0713ed7ee59b84dd4f0dee3bd5b428cd772c45daccdb91707e8a99e8f90b8b"
   },
   {
@@ -4494,7 +4494,7 @@
    "y": 5888,
    "width": 256,
    "height": 256,
-   "url": "/dev-assets/map0/023016.jpg",
+   "url": "maps/map0/023016.jpg",
    "sha256": "a1bc3b052f463ecc95225ed4aa5c7f945435f001b2fd48ce51bbfd6451dcbeb1"
   }
  ]

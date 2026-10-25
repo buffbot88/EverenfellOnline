@@ -1331,6 +1331,15 @@ class PathGrid:
         v = self.value(x, y)
         return v is not None and (v & WALKABLE_MASK) != 0
 
+    def safe(self, x, y):
+        """PathNode.isSafe: bit 5 of the cell ((value >> 5) & 1).
+
+        A safe node is the PvP shelter SkillTargetFilterFactory.stageProtect
+        checks: a target standing on one cannot be hit at all.
+        """
+        v = self.value(x, y)
+        return v is not None and ((v >> 5) & 1) != 0
+
 
 def load_path_grid(path):
     """Parse one path.mm file into a PathGrid; raises ValueError on a truncated header or non-positive width."""
@@ -1404,6 +1413,7 @@ class GameConfig:
         self._vip_huodong = None
         self._online_gift = None
         self._zonghe = None
+        self._pk = None
         self._kaige = None
         self._task_main = None
         self._task_sub = None
@@ -1571,6 +1581,76 @@ class GameConfig:
             self._path_grids[key] = load_path_grid(path) if os.path.isfile(path) else None
         return self._path_grids[key]
 
+    def safe_node(self, map_id, x, y):
+        """PathNodeCopy.isSafe at a tile; False without a map grid."""
+        grid = self.path_grid(map_id)
+        if grid is None:
+            return False
+        try:
+            return grid.safe(int(x), int(y))
+        except (TypeError, ValueError):
+            return False
+
+    def pk_table(self):
+        """pkbiao.jat rows keyed by pk value (PkConfigExportServiceImpl).
+
+        Each row carries the PkConfig fields the port uses: buff ids from
+        addatt/adddef, activestate/guardattack/diaoqian flags, addpk and the
+        safe/unsafe decay spans in milliseconds (safespan/unsafespan x 60000).
+        """
+        if self._pk is None:
+            path = os.path.join(self.config_dir, 'sys_config', 'pkbiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else []
+            except ValueError as e:
+                log.error('bad pk table: %s', e)
+                rows = []
+            table = {}
+            for r in rows:
+                if not isinstance(r, dict) or r.get('pkvalue') is None:
+                    continue
+                try:
+                    pk = int(r['pkvalue'])
+                except (TypeError, ValueError):
+                    continue
+                buffs = [str(c) for c in (r.get('addatt'), r.get('adddef'))
+                         if c]
+                table[pk] = {
+                    'pk': pk,
+                    'buffs': buffs,
+                    'active_state': str(r.get('activestate') or '').lower()
+                    in ('1', 'true'),
+                    'be_attacked': str(r.get('guardattack') or '').lower()
+                    in ('1', 'true'),
+                    'drop_yxb': str(r.get('diaoqian') or '').lower()
+                    in ('1', 'true'),
+                    'add_pk': config_int(r.get('addpk')),
+                    'safe_ms': config_int(r.get('safespan')) * 60000,
+                    'unsafe_ms': config_int(r.get('unsafespan')) * 60000,
+                }
+            if not table:
+                log.warning('no pkbiao table at %s; PK rules unknown', path)
+            self._pk = table
+        return self._pk
+
+    def pk_config(self, pk_value):
+        """PkConfig row for a pk value, clamped into the configured range.
+
+        loadPkConfig clamps negatives to 0 and values above the last row to
+        that row; ours also falls back to the lowest row when the table has
+        no exact value, so a config gap cannot abort a death handler.
+        """
+        table = self.pk_table()
+        if not table:
+            return None
+        try:
+            pk = max(int(pk_value or 0), 0)
+        except (TypeError, ValueError):
+            pk = 0
+        if pk in table:
+            return table[pk]
+        return table[min(table, key=lambda k: abs(k - pk))]
+
     @property
     def zhujue_attributes_path(self):
         return os.path.join(self.config_dir, 'sys_config', 'ZhuJueShuXingBiao.jat')
@@ -1639,6 +1719,17 @@ class GameConfig:
         if row is None or row.get('lasttime') in (None, ''):
             return None
         return int(row['lasttime'])
+
+    def buff_protected(self, effect_id):
+        """BuffConfig.isProtected: the XiaoGuoBiao baohu flag.
+
+        A protected buff (birthprotect) makes its owner unattackable by
+        roles and is stripped when the owner starts a fight.
+        """
+        row = self.buff_effect(effect_id)
+        if row is None:
+            return False
+        return str(row.get('baohu') or '').lower() in ('1', 'true')
 
     def skill_cd_id(self, category):
         """JiNengBiao cd1 for a skill category ('normal003' -> 't070'), or None."""

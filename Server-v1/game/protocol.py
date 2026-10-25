@@ -53,6 +53,7 @@ from .ground_items import can_pick_up as _ground_can_pick_up
 from .team import now_ms as team_now_ms
 from . import combat as combat_lib
 from . import pet as pet_lib
+from . import pvp as pvp_lib
 from . import xianjie as xianjie_lib
 from . import eventbus as eventbus_lib
 from . import scheduler as scheduler_lib
@@ -1140,6 +1141,18 @@ CMD_FIGHT_STATE = 40501
 CMD_SKILL_CD = 42005
 CMD_BUFF_VALUE = 42102
 CMD_DEAD = 43000
+CMD_NEWER_REVIVE = 43002
+CMD_GOODS_REVIVE = 43003
+CMD_BATTLE_MODE = 40600
+CMD_PK_STATE = 45000
+CMD_PK_VALUE = 45001
+# StageErrorCode values answered by the 43003 revive path.
+REVIVE_ERR_NO_GOODS = 1012
+REVIVE_ERR_CANNT_ROSE = 87060
+# Stage timer periods (RoleHatredManager.FIGHT_STATE_CHECK_PERIOD,
+# RoleEventManager.hanlePkIncr and FightServiceImpl.pkValCheck).
+PK_CHECK_SECONDS = 60
+GRAY_CHECK_SECONDS = 60
 CMD_AOI_LEAVE = 24002
 # Observed on the wire but with no captured reply or confirmed semantics yet;
 # logged so a live run shows the real post-entry command sequence.
@@ -1729,6 +1742,14 @@ class Session:
         self._monster_hp = self._world.hp
         self._pet_state = {}
         self._dead = self._world.dead
+        # PvP live state (RolePkManager + birth protection). Java keeps it on
+        # the stage role element, so every connection sees the same value;
+        # binding to the registry's shared PvpWorld does the same here.
+        self._pvp = (stage_registry.pvp if stage_registry is not None
+                     else pvp_lib.PvpWorld())
+        # BattleMode lives on the role element and resets to PEACE on every
+        # stage entry (RoleFactory), so it is connection-local like Java's.
+        self._battle_modes = {}
         # Mount death ledger (ZuoQiBussinessData deadTime/useTime): owner
         # wire id -> [deadMs, useMs]. Death stamps [now, 0] (ZuoQiPet
         # syncDeadZuoQiAttribute); revive zeroes it. A dict miss with a
@@ -1919,6 +1940,12 @@ class Session:
             return self.inner_fly(msg)
         if cmd_num == CMD_TOWN_REVIVE:
             return self.town_revive(msg)
+        if cmd_num == CMD_NEWER_REVIVE:
+            return self.newer_revive(msg)
+        if cmd_num == CMD_GOODS_REVIVE:
+            return self.goods_revive(msg)
+        if cmd_num == CMD_BATTLE_MODE:
+            return self.change_battle_mode(msg)
         if cmd_num == CMD_SKILL_MOVE:
             return self.skill_move(msg)
         if cmd_num == CMD_SKILL_FIRE:
@@ -4798,6 +4825,479 @@ class Session:
             self._chenghao_change(rid, 'DAZUO_TIME', minutes)
         return None
 
+    # -- PvP: battle mode, PK value, roles' death and revive -------------
+    def _pvp_self_role(self):
+        """First role of the authed account, or None."""
+        role, _rid = self._task_role()
+        return role
+
+    def _pvp_state(self, role):
+        """PkState for a role, seeded once from its persisted pk_info."""
+        if role is None:
+            return None
+        return self._pvp.state(_wire_id(role), role.get('pk_info'),
+                               self._world_now_ms())
+
+    def _pvp_save(self, role, state):
+        """Persist encodePkInfo into role_stage.pk_info (one transaction)."""
+        if role is None or state is None:
+            return False
+        try:
+            return self.save_role_stage(
+                role.get('id'), pk_info=state.encode(self._world_now_ms()))
+        except Exception:
+            log.warning('conn %d: pk_info save failed', self.conn_id,
+                        exc_info=True)
+            return False
+
+    def _pvp_role(self, role_id):
+        """Role row of a PvP participant: own store first, then the registry."""
+        if role_id is None:
+            return None
+        fid = str(role_id)
+        role = _find_role(
+            self.get_roles(self.authed_user or '', self.server_id or ''), fid)
+        if role is not None:
+            return role
+        return self._registry_role(fid)
+
+    def _pvp_guild_id(self, rid):
+        try:
+            gid = self.get_guild_id(str(rid))
+        except Exception:
+            return None
+        return gid if gid else None
+
+    def _pvp_guild_name(self, rid):
+        """Guild name for the 43000/DeadInfo fields; '' when guildless."""
+        gid = self._pvp_guild_id(rid)
+        if gid is None:
+            return ''
+        try:
+            guild = self.get_guild(str(gid)) or {}
+        except Exception:
+            return ''
+        return str(guild.get('name') or '')
+
+    def battle_mode_of(self, rid):
+        """Current BattleMode of a role (PEACE after every stage entry)."""
+        return self._battle_modes.get(str(rid), pvp_lib.BATTLE_PEACE)
+
+    def change_battle_mode(self, msg):
+        """Command 40600 C> int: FightServiceImpl.changeBattleMode.
+
+        Java only sets IFighter.battleMode and answers nothing; unknown role
+        or non-int payload is ignored. The mode resets to PEACE on the next
+        stage entry (RoleFactory sets it there), so it is not persisted.
+        """
+        arg = self.safe(msg, 1, None)
+        if isinstance(arg, list):
+            arg = self.safe(arg, 0, None)
+        if arg is None:
+            return None
+        role = self._pvp_self_role()
+        if role is None:
+            return None
+        self._battle_modes[_wire_id(role)] = pvp_lib.battle_mode(arg)
+        return None
+
+    def _pvp_protection_frames(self, role):
+        """Register the entry birth buff as PvP protection (no wire frames).
+
+        RoleBattleModeRelation reads the protected flag off the live buff, so
+        the shared world carries the same window (lasttime ms) for every
+        connection that has to decide whether this role may be hit.
+        """
+        if role is None:
+            return
+        rid = _wire_id(role)
+        now = self._world_now_ms()
+        until = 0
+        for _iid, buff_id, lasttime, _t0 in self._buff_live:
+            if self.config is None or not self.config.buff_protected(buff_id):
+                continue
+            try:
+                left = int(lasttime or 0)
+            except (TypeError, ValueError):
+                left = 0
+            if left > 0:
+                until = max(until, now + left)
+        if until:
+            self._pvp.protect(rid, until)
+        else:
+            self._pvp.clear_protection(rid)
+
+    def _pvp_strip_protection(self, rid):
+        """Drop the attacker's own protected buffs on starting a role fight."""
+        now = self._world_now_ms()
+        if not self._pvp.protected(rid, now):
+            return []
+        self._pvp.clear_protection(rid)
+        removes = []
+        keep = []
+        for entry in self._buff_live:
+            buff_id = entry[1]
+            if self.config is not None and self.config.buff_protected(buff_id):
+                removes.append(entry[0])
+            else:
+                keep.append(entry)
+        if not removes:
+            return []
+        self._buff_live = keep
+        return [frame(amf3_encode(
+            combat_lib.buff_flush_frame(rid, None, removes)))]
+
+    def _pvp_target_safe(self, target):
+        """SkillTargetFilterFactory.stageProtect: target on a safe path node."""
+        if self.config is None:
+            return False
+        pos = self._fighter_pos(target)
+        if pos is None:
+            return False
+        return self.config.safe_node(target['role'].get('map_id'),
+                                     pos[0], pos[1])
+
+    def _pvp_fire_check(self, actor, target):
+        """(allowed, frames) for a role swing at another role.
+
+        Mirrors confirmTargets -> SkillTargetFilterFactory: the attacker's
+        protected buff is stripped first, then RoleBattleModeRelation.isEnemy
+        decides. Ineligible targets are dropped before any harm is rolled.
+        """
+        attacker_role = actor.get('role')
+        target_role = target.get('role')
+        if attacker_role is None or target_role is None:
+            return True, []
+        rid = _wire_id(attacker_role)
+        tid = _wire_id(target_role)
+        mode = self.battle_mode_of(rid)
+        target_level = target_role.get('level')
+        frames = []
+        if pvp_lib.strips_protection(attacker_id=rid, attacker_mode=mode,
+                                     target_id=tid,
+                                     target_level=target_level):
+            frames.extend(self._pvp_strip_protection(rid))
+        attacker_state = self._pvp_state(attacker_role)
+        target_state = self._pvp_state(target_role)
+        now = self._world_now_ms()
+        allowed = pvp_lib.is_enemy(
+            attacker_id=rid, attacker_mode=mode,
+            attacker_team=self._team_id_of(attacker_role),
+            attacker_guild=self._pvp_guild_id(rid),
+            target_id=tid, target_level=target_level,
+            target_team=self._team_id_of(target_role),
+            target_guild=self._pvp_guild_id(tid),
+            target_pk=(target_state.value if target_state else 0),
+            target_gray=bool(target_state and target_state.is_gray(now)),
+            target_protected=self._pvp.protected(tid, now))
+        if not allowed:
+            log.info('conn %d: 42002 role target %r rejected (mode %d)',
+                     self.conn_id, tid, mode)
+            return False, frames
+        frames.extend(self._pvp_gray_on_attack(attacker_role, target_role))
+        return True, frames
+
+    def _pvp_broadcast(self, role_id, command, payload):
+        """send2Many to the role's surround (own copies returned)."""
+        return self._dazuo_broadcast(role_id, command, payload)
+
+    def _pvp_gray_key(self, rid):
+        return 'pk_gray:%s' % rid
+
+    def _pvp_check_key(self, rid):
+        return 'pk_decr:%s' % rid
+
+    def _pvp_gray_on_attack(self, attacker_role, target_role):
+        """enterFightState2 -> isNeedGray -> enterGrayState + 45000 [id, 1].
+
+        Gray starts when both rows are in an active PK state (pkbiao
+        activestate) and lasts the RolePkManager 60 s stamp; the frame goes
+        to the attacker's surround, the same audience as sendPkStateChange.
+        """
+        if attacker_role is None or target_role is None:
+            return []
+        rid = _wire_id(attacker_role)
+        state = self._pvp_state(attacker_role)
+        if state is None:
+            return []
+        now = self._world_now_ms()
+        if state.is_gray(now):
+            return []
+        target_state = self._pvp_state(target_role)
+        if not pvp_lib.need_gray(state.value,
+                                 target_state.value if target_state else 0,
+                                 self.config):
+            return []
+        state.enter_gray(now)
+        self._pvp_save(attacker_role, state)
+        self.schedule_stage(
+            self._pvp_gray_key(rid), 'S:FIGHT_PK_CHECK',
+            lambda: self._pvp_gray_tick(rid),
+            delay=GRAY_CHECK_SECONDS, unit='SECONDS')
+        return self._pvp_broadcast(rid, CMD_PK_STATE, [rid, 1])
+
+    def _pvp_gray_tick(self, rid):
+        """S:FIGHT_PK_CHECK: drop an expired gray name and broadcast 45000 [id, 0]."""
+        role = self._pvp_role(rid)
+        state = self._pvp_state(role)
+        if role is None or state is None or not state.gray_start:
+            return None
+        now = self._world_now_ms()
+        if state.is_gray(now):
+            self.schedule_stage(
+                self._pvp_gray_key(rid), 'S:FIGHT_PK_CHECK',
+                lambda: self._pvp_gray_tick(rid),
+                delay=GRAY_CHECK_SECONDS, unit='SECONDS')
+            return None
+        state.leave_gray()
+        self._pvp_save(role, state)
+        out = self._pvp_broadcast(rid, CMD_PK_STATE, [rid, 0])
+        return tuple(out) if out else None
+
+    def _pvp_arm_check(self, rid):
+        """Schedule the PKCHECK minute tick (one timer per role)."""
+        self.schedule_stage(
+            self._pvp_check_key(rid), 'S:PKCHECK',
+            lambda: self._pvp_check_tick(rid),
+            delay=PK_CHECK_SECONDS, unit='SECONDS')
+
+    def _pvp_check_tick(self, rid):
+        """FightServiceImpl.pkValCheck: decay one PK point after the span.
+
+        The span is safespan (60 min) on a safe path node and unsafespan
+        (30 min) elsewhere; each decay resets the recovery clock and sends
+        45001 [roleId, pk] to the surround. The tick re-arms while pk > 0.
+        """
+        role = self._pvp_role(rid)
+        state = self._pvp_state(role)
+        if role is None or state is None or state.value <= 0:
+            return None
+        row = pvp_lib.pk_config_row(self.config, state.value)
+        now = self._world_now_ms()
+        safe = (self.config.safe_node(role.get('map_id'), role.get('map_x'),
+                                      role.get('map_y'))
+                if self.config is not None else False)
+        span = 0
+        if row is not None:
+            span = row.get('safe_ms' if safe else 'unsafe_ms') or 0
+        frames = []
+        if span > 0 and state.elapsed_ms(now) >= span:
+            state.decr(1)
+            state.reset_recovery(now)
+            self._pvp_save(role, state)
+            frames.extend(self._pvp_broadcast(
+                rid, CMD_PK_VALUE, [rid, state.value]))
+        if state.value > 0:
+            self._pvp_arm_check(rid)
+        return tuple(frames) if frames else None
+
+    def _pvp_role_death(self, actor, dead_fighter):
+        """RoleEventManager.fireDeadEvent: kill log plus the PK increment.
+
+        Emits no 43000 (the caller already queued it). A role/pet killer
+        writes the deferred PvP 91006 line on the dead role's log (the
+        91007 monster line stays on the killer's own log at monster
+        death) and earns the victim row's addpk unless it is gray,
+        SHANE or PKFREE. Monster kills write no log here.
+        """
+        dead_role = dead_fighter.get('role') or {}
+        rid = _wire_id(dead_role)
+        if not rid:
+            return []
+        killer_role = None
+        if actor.get('kind') == 'role':
+            killer_role = actor.get('role')
+        elif actor.get('kind') == 'pet' and actor.get('owner'):
+            killer_role = self._pvp_role(actor.get('owner'))
+        frames = []
+        if killer_role is not None:
+            krid = _wire_id(killer_role)
+            map_id = dead_role.get('map_id') or ''
+            self._xianjie_log_append(
+                rid, self._xianjie_log_line(
+                    '91006', map_id,
+                    '{user|%s,%s}' % (krid, killer_role.get('name') or '')))
+        # DeadState.clearBuffsByDead: the dying role's buffs are dropped.
+        if rid in self._own_role_ids():
+            self._buff_live = []
+        if killer_role is None:
+            return frames
+        krid = _wire_id(killer_role)
+        if krid == rid:
+            return frames
+        killer_state = self._pvp_state(killer_role)
+        dead_state = self._pvp_state(dead_role)
+        if killer_state is None or dead_state is None:
+            return frames
+        now = self._world_now_ms()
+        gain = pvp_lib.pk_gain(
+            dead_state.value, killer_state.value,
+            self.battle_mode_of(krid), killer_state.is_gray(now),
+            self.config, killer_pk_free=False)
+        if gain <= 0:
+            return frames
+        killer_state.incr(gain)
+        self._pvp_save(killer_role, killer_state)
+        frames.extend(self._pvp_broadcast(
+            krid, CMD_PK_VALUE, [krid, killer_state.value]))
+        if killer_state.value > 0:
+            self._pvp_arm_check(krid)
+        return frames
+
+    def _pvp_on_disconnect(self):
+        """Logout save: fold the recovery clock into role_stage.pk_info.
+
+        Java encodes pk_info on the stage save that runs at logout, so the
+        elapsed decay time survives the session; the local element is then
+        gone, which forget() mirrors.
+        """
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return
+        for role in roles:
+            if role is None:
+                continue
+            rid = _wire_id(role)
+            state = self._pvp.live(rid)
+            if state is None:
+                continue
+            self._pvp_save(role, state)
+            self._pvp.forget(rid)
+
+    def _own_role_ids(self):
+        """Wire ids of the roles this connection owns."""
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '')
+        except Exception:
+            return set()
+        return {_wire_id(r) for r in roles if r is not None}
+
+    def _red_name_drop(self, role):
+        """FightServiceImpl.redNameDropYxb: red names drop tongqian.
+
+        pk >= 7 rows carry diaoqian; PkUtil.calDropYxb gives min(pk-3, 20)
+        stacks of 5,000 tongqian, capped at the purse, dropped at the role's
+        tile as unprotected 150 s money items (formatDrop's duration).
+        """
+        state = self._pvp_state(role)
+        if role is None or state is None or self.config is None:
+            return []
+        row = pvp_lib.pk_config_row(self.config, state.value)
+        if row is None or not row.get('drop_yxb'):
+            return []
+        rid = _wire_id(role)
+        if self._pvp.protected(rid, self._world_now_ms()):
+            return []
+        amount = pvp_lib.drop_amount(state.value) * pvp_lib.MONEY_STACK
+        if amount <= 0:
+            return []
+        try:
+            have = int(role.get('tongqian') or 0)
+        except (TypeError, ValueError):
+            have = 0
+        amount = min(amount, max(have, 0))
+        if amount <= 0:
+            return []
+        if not self._bag_money_decr(role.get('id'), 'YXB', amount):
+            return []
+        dropped = dict(role, tongqian=have - amount)
+        frames = self._place_money(dropped, pvp_lib.money_chunks(amount))
+        frames.append(self.money_info(dropped))
+        return frames
+
+    def _place_money(self, role, chunks, duration=150):
+        """Spawn unprotected money ground items at the role's tile.
+
+        Each ItemModel is 'money' with its count, the drop is ownerless
+        (formatDrop's null owner), and every item enters its 3x3 AOI as a
+        23004 record; own copies are returned so the caller can append them.
+        """
+        store = self._world.ground_items
+        if store is None or self.config is None or not chunks:
+            return []
+        map_id = role.get('map_id')
+        pos = self._fighter_pos({'kind': 'role', 'role': role})
+        if map_id is None or pos is None:
+            return []
+        now_ms = self._world_now_ms()
+        own = []
+        for count in chunks:
+            occupied = {(i.x, i.y) for i in store.on_map(map_id)}
+            point = self.config.surround_valid_point_for_goods(
+                map_id, int(pos[0]), int(pos[1]), occupied)
+            if point is None:
+                continue
+            item = store.add(pvp_lib.MONEY_GOODS_ID, int(count), map_id,
+                             int(point[0]), int(point[1]), now_ms,
+                             owner_id=None, owner_team_id=None,
+                             duration_seconds=duration, bind=0)
+            own.extend(self._point_broadcast(
+                map_id, (item.x, item.y), '23004',
+                [self.goods_msg_data(item)]))
+        return own
+
+    def newer_revive(self, msg):
+        """Command 43002: FightServiceImpl.newerRevive (revive where you fell).
+
+        Level 30+ first gets the 43002 [0] notice, then every level removes
+        the DEAD state, resets HP/MP (12004 only when it changed) and
+        broadcasts 43002 [roleId] to the surround without moving the role.
+        """
+        role = self._pvp_self_role()
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        out = []
+        try:
+            level = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            level = 0
+        if level >= pvp_lib.MIN_PVP_LEVEL:
+            out.append(frame(amf3_encode([str(CMD_NEWER_REVIVE), [0]])))
+        was_dead = rid in self._dead
+        self._dead.discard(rid)
+        if was_dead:
+            max_hp = int(role.get('max_hp') or 0)
+            max_mp = int(role.get('max_mp') or 0)
+            self.save_role_state(rid, hp=max_hp, mp=max_mp)
+            out.append(frame(amf3_encode(combat_lib.hp_changed_frame(
+                rid, max_hp, max_hp, max_mp, max_mp))))
+        out.extend(self._dazuo_broadcast(rid, CMD_NEWER_REVIVE, rid))
+        return tuple(out) if out else None
+
+    def goods_revive(self, msg):
+        """Command 43003: FightServiceImpl.goodsRevive (rose revive in place).
+
+        Gates: a living role is silent; a missing rose answers 43003
+        [0, 1012] (StageErrorCode). The manor-war 87060 refusal has no
+        producer here (no war system), so it is deferred, not faked.
+        Success consumes one fuhuo, broadcasts 43002 to the surround,
+        then removes DEAD and resets HP/MP like newerRevive.
+        """
+        role = self._pvp_self_role()
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        if rid not in self._dead:
+            return None
+        if self._guild_bag_count(role.get('id'), pvp_lib.REVIVE_GOODS_ID) < 1:
+            return frame(amf3_encode(
+                [str(CMD_GOODS_REVIVE), [0, REVIVE_ERR_NO_GOODS]]))
+        if not self._guild_bag_decr(role.get('id'), pvp_lib.REVIVE_GOODS_ID, 1):
+            return frame(amf3_encode(
+                [str(CMD_GOODS_REVIVE), [0, REVIVE_ERR_NO_GOODS]]))
+        out = list(self._dazuo_broadcast(rid, CMD_NEWER_REVIVE, rid))
+        self._dead.discard(rid)
+        max_hp = int(role.get('max_hp') or 0)
+        max_mp = int(role.get('max_mp') or 0)
+        self.save_role_state(rid, hp=max_hp, mp=max_mp)
+        out.append(frame(amf3_encode(combat_lib.hp_changed_frame(
+            rid, max_hp, max_hp, max_mp, max_mp))))
+        return tuple(out) if out else None
+
     # -- kill log (91005 / 91007 / role_die) ----------------------------
     def xianjie_log(self, msg):
         """Command 91005: getLog -> [[createTime, killData], ...].
@@ -5624,6 +6124,13 @@ class Session:
         max_mp = int(role.get('max_mp') or 0)
         self.save_role_state(rid, hp=max_hp, mp=max_mp)
         own = [frame(amf3_encode(['12004', [rid, max_hp, max_hp, max_mp, max_mp]]))]
+        # redNameDropYxb runs between the two reviveOnSamePlace resets; the
+        # money leaves the purse at the death tile before the teleport.
+        try:
+            own += self._red_name_drop(role)
+        except Exception:
+            log.warning('conn %d: red-name drop failed', self.conn_id,
+                        exc_info=True)
         own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
         birth = self.config.dead_birth(role.get('map_id')) if self.config else None
         if birth is None:
@@ -5935,18 +6442,19 @@ class Session:
                 log.warning('conn %d: kill activity failed', self.conn_id,
                             exc_info=True)
         # stage_monster_dead -> ChengHaoMonsterEventHandler (KILL_MONSTER)
-        # and roleDieLog type 2 (the 91007 monster kill line).
+        # and roleDieLog type 2 (the 91007 monster kill line on the
+        # killer's own log).
         map_id = role.get('map_id') or tpl.get('map') or ''
-        try:
-            self._chenghao_change(owner['id'], 'KILL_MONSTER')
-        except Exception:
-            log.warning('conn %d: kill title counter failed', self.conn_id,
-                        exc_info=True)
         try:
             self._xianjie_log_monster_kill(
                 owner['id'], map_id, tpl.get('name') or tpl.get('id'))
         except Exception:
             log.warning('conn %d: kill log append failed', self.conn_id,
+                        exc_info=True)
+        try:
+            self._chenghao_change(owner['id'], 'KILL_MONSTER')
+        except Exception:
+            log.warning('conn %d: kill title counter failed', self.conn_id,
                         exc_info=True)
         return exp_frames + [frame(amf3_encode(combat_lib.exp_drop_frame(
             dead_fighter['id'], tpl.get('id'), granted)))] + task_frames
@@ -5978,6 +6486,19 @@ class Session:
                 log.info('conn %d: 42002 target %r unknown/dead (skipped)',
                          self.conn_id, target_id)
                 continue
+            if target['kind'] == 'role':
+                # SkillTargetFilterFactory.stageProtect: a target on a safe
+                # path node is filtered out of every skill's target list.
+                if self._pvp_target_safe(target):
+                    log.info('conn %d: 42002 target %r on a safe node '
+                             '(skipped)', self.conn_id, target_id)
+                    continue
+                if actor['kind'] == 'role':
+                    allowed, pvp_frames = self._pvp_fire_check(actor, target)
+                    if pvp_frames:
+                        frames.extend(pvp_frames)
+                    if not allowed:
+                        continue
             tgt = self._fighter_attrs(target)
             harm_val, harm_type = combat_lib.resolve_hit(att, tgt, skill)
             cur_hp, max_hp, cur_mp, max_mp = self._fighter_hp(target)
@@ -6012,6 +6533,7 @@ class Session:
                     frames.extend(self._zuwu_kill_frames(actor, target))
                     frames.extend(self._guildfuben_kill_frames(actor, target))
                 if target['kind'] == 'role':
+                    frames.extend(self._pvp_role_death(actor, target))
                     try:
                         self._juqing_death_progress(target.get('role'))
                     except Exception:
@@ -6037,6 +6559,47 @@ class Session:
                 target = self._stage_fighter(target_id)
                 if target is not None:
                     frames.extend(self._kill_exp_frames(actor, target))
+        return self._fight_output(actor, frames)
+
+    def _fighter_surround(self, actor):
+        """(role_id, session) pairs that see a fighter's swing (surround role ids)."""
+        if self.stage_registry is None:
+            return []
+        if actor.get('kind') == 'role':
+            return self.stage_registry.surround(actor.get('id'))
+        if actor.get('kind') == 'pet':
+            owner = actor.get('owner')
+            if owner:
+                return self.stage_registry.surround(owner)
+            return []
+        reg = self._monster_reg.get(actor.get('id')) or {}
+        if reg.get('map') is None or reg.get('pos') is None:
+            return []
+        return self.stage_registry.surround_at(reg['map'], reg['pos'])
+
+    def _fight_output(self, actor, frames):
+        """Push the shared fight burst to the attacker's surround.
+
+        Java queues 12004/42100/43000/42002 to getSurroundRoleIds (the
+        attacker's 3x3 AOI block); the killer-only frames (12001 exp, 12030, quest and
+        task pushes) stay on the acting connection. Own copies of every
+        frame are returned so the actor's client still gets its reply.
+        """
+        if not frames:
+            return []
+        shared = []
+        for body in frames:
+            try:
+                cmd = amf3_decode(bytes(body)[4:])[0]
+            except Exception:
+                continue
+            if cmd in ('12004', '42100', '43000', '42002'):
+                shared.append(body)
+        if shared:
+            for _rid, sess in self._fighter_surround(actor):
+                if sess is self:
+                    continue
+                sess.push_frames(shared)
         return frames
 
     def skill_fire(self, msg):
@@ -6246,8 +6809,8 @@ class Session:
         on another map, owner-protected, or the bag cannot hold it;
         [1, goodsId, count, itemId] on success with the 30105/30104 bag
         pushes (BagExportServiceImpl.notifyClient order: adds, then
-        updates). Money ground items have no producer (moneyDropCal is
-        unported), so they answer [0] and stay on the ground.
+        updates). Money ground items credit tongqian (goodsPickUp's money
+        branch) and answer [1, 'money', count, itemId].
         """
         args = self.safe(msg, 1, []) or []
         if not args or not isinstance(args[0], str):
@@ -6286,13 +6849,31 @@ class Session:
             return fail
         if str(role.get('map_id')) != str(item.map_id):
             return fail
-        if item.goods_id == 'money':
-            log.info('conn %d: money pickup %r (no producer; left)',
-                     self.conn_id, item_id)
-            return fail
         if not _ground_can_pick_up(item, str(role.get('id')),
                                         self._team_id_of(role), now):
             return fail
+        if item.goods_id == pvp_lib.MONEY_GOODS_ID:
+            # goodsPickUp's money branch: leave, incr(YXB, count), answer
+            # [1, 'money', count, itemId] and push the new balance (32010).
+            claimed = store.remove(item_id)
+            if claimed is None:
+                return fail
+            try:
+                count = int(claimed.count or 0)
+            except (TypeError, ValueError):
+                count = 0
+            if count <= 0:
+                return fail
+            total = int(role.get('tongqian') or 0) + count
+            self.save_role_state(role.get('id'), tongqian=total)
+            money_role = dict(role, tongqian=total)
+            frames = [frame(amf3_encode(
+                ['30103', [1, pvp_lib.MONEY_GOODS_ID, count, claimed.id]])),
+                self.money_info(money_role)]
+            frames.extend(self._point_broadcast(
+                claimed.map_id, (claimed.x, claimed.y), '24004',
+                [claimed.id]))
+            return True, tuple(frames)
         if self.config._goods_table().get(str(item.goods_id)) is None:
             # Java destroys the item here (leave runs before putInBag1
             # reports the unknown config); the item is kept instead so a
@@ -7145,6 +7726,9 @@ class Session:
             adds.append(timed_buff(iid, 'birthprotect', lasttime, 1, wire_id))
             live.append([iid, 'birthprotect', float(lasttime), t0])
         self._buff_live = live
+        # A protected buff blocks role attacks and is stripped when the role
+        # starts one; mirror the window in the shared PvP world.
+        self._pvp_protection_frames(role)
         if not adds:
             return None
         return frame(amf3_encode(buff_change(wire_id, adds)))

@@ -1,20 +1,20 @@
 # Java-vs-Python command census
 
-Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (320 distinct values). Dispatch registration is counted, not behavioral parity.
+Mechanical diff: `*Commands` string constants from dntg_start.jar` (497 distinct numeric IDs) vs the `Session.handle` dispatcher (333 distinct values). Dispatch registration is counted, not behavioral parity.
 
 ## Totals
 
 - total Java numeric command IDs: 497
-- implemented: 247
-- implemented-untested: 8
+- implemented: 253
+- implemented-untested: 10
 - partial: 0
 - dispatched-no-direct-handler: 0
 - inline: 5
 - inline-untested: 0
-- stub: 2
+- stub: 3
 - push-only: 27
 - known-unhandled: 0
-- missing: 208
+- missing: 199
 - accounted: 497 of 497 (exact)
 
 `implemented` = dispatched, handler not stub-marked, and the ID string appears in the focused tests. `implemented-untested` = same without a test reference.
@@ -33,7 +33,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | gm | 1 | 0 | 0 | 0 | 24 | 25 |
 | huodong | 12 | 0 | 0 | 2 | 24 | 38 |
 | kuafu | 0 | 0 | 0 | 0 | 7 | 7 |
-| xianjiechenhao | 0 | 0 | 0 | 0 | 7 | 7 |
 | hefuhuodong | 0 | 0 | 0 | 0 | 7 | 7 |
 | shenqi | 0 | 0 | 0 | 0 | 6 | 6 |
 | sixzhuanpan | 0 | 0 | 0 | 0 | 6 | 6 |
@@ -53,7 +52,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | shenjiang | 7 | 0 | 0 | 0 | 4 | 11 |
 | toubao | 0 | 0 | 0 | 0 | 4 | 4 |
 | vipqq | 2 | 0 | 0 | 0 | 4 | 6 |
-| xianjiehuoyuedu | 0 | 0 | 0 | 0 | 4 | 4 |
 | zuwufuben | 5 | 1 | 1 | 0 | 4 | 11 |
 | qianfuhuodong | 1 | 0 | 0 | 0 | 4 | 5 |
 | jijin | 0 | 0 | 0 | 0 | 4 | 4 |
@@ -88,6 +86,8 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 | command | 1 | 0 | 0 | 0 | 1 | 2 |
 | goodsbuyback | 3 | 0 | 0 | 0 | 1 | 4 |
 | giftcode | 0 | 0 | 1 | 0 | 1 | 2 |
+| xianjiehuoyuedu | 3 | 0 | 0 | 0 | 1 | 4 |
+| xianjiechenhao | 3 | 2 | 1 | 0 | 1 | 7 |
 | io | 2 | 0 | 0 | 0 | 0 | 2 |
 | zhandouli | 1 | 0 | 0 | 0 | 0 | 1 |
 | setting | 1 | 4 | 0 | 0 | 0 | 5 |
@@ -115,7 +115,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 
 - gm (24): 100 (GM_100), 101 (GM_101), 102 (GM_102), 103 (GM_103), 104 (GM_104), 105 (GM_105), 106 (GM_106), 107 (GM_107), 108 (GM_108), 109 (GM_109), 110 (GM_110), 111 (GM_111), 113 (GM_113), 114 (GM_114), 115 (GM_115), 116 (GM_116), 117 (GM_117), 118 (GM_118), 120 (GM_120), 130 (GM_130), 131 (GM_131), 140 (GM_140), 141 (GM_141), 200 (GM_200)
 - huodong (24): 70100 (h70100), 70502 (h70502), 70503 (h70503), 70504 (h70504), 70505 (h70505), 70509 (h70509), 70510 (h70510), 70511 (h70511), 70530 (h70530), 70552 (CMD_70552), 70553 (CMD_70553), 70554 (CMD_70554), 70556 (ZUOQI_JINJIE), 70558 (GET_PROP), 70559 (RECHARGE_YB), 94002 (RANKHUODONG_LIST), 94003 (RANKHUODONG_SINGLE), 94004 (RANKHUODONG_MONSTER), 94005 (RANKHUODONG_GAIN), 94100 (RANKHUODONG2_LIST), 94101 (RANKHUODONG2_SINGLE), 94102 (RANKHUODONG2_MONSTER), 94103 (RANKHUODONG2_GAIN), 101000 (CMD_101000)
-- xianjiechenhao (7): 91002 (CMD_91002), 91003 (CMD_91003), 91004 (CMD_91004), 91005 (CMD_91005), 91006 (CMD_91006), 91007 (CMD_91007), 91009 (CMD_91009)
 - hefuhuodong (7): 113000 (CMD_113000), 113001 (CMD_113001), 113002 (CMD_113002), 113003 (CMD_113003), 113004 (CMD_113004), 113005 (CMD_113005), 113006 (CMD_113006)
 - kuafu (6): 125000 (CMD_125000), 125001 (CMD_125001), 125008 (CMD_125008), 125009 (CMD_125009), 125012 (CMD_125012), 125016 (_125016)
 - zhouhuan (6): 128000 (CMD_128000), 128001 (CMD_128001), 128002 (CMD_128002), 128003 (CMD_128003), 128004 (CMD_128004), 128005 (CMD_128005)
@@ -129,7 +128,6 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - stagecontroll (4): 20004 (APPLY_CHANGE_LINE), 20005 (GET_MAP_LINES), 21001 (CHANGE_LINE), 50500 (s50500)
 - toubao (4): 86000 (t86000), 86001 (t86001), 86002 (t86002), 86003 (t86003)
 - vipqq (4): 88005 (CAN_REWARDS), 89001 (GET_VIPQQ), 89008 (ROLEQQLIST_CHANGE), 89009 (VIPQQ_CHANGE)
-- xianjiehuoyuedu (4): 90000 (CMD_90000), 90001 (CMD_90001), 91000 (CMD_91000), 91001 (CMD_91001)
 - zuwufuben (4): 108003 (CMD_108003), 108005 (CMD_108005), 108007 (CMD_108007), 108008 (CMD_108008)
 - qianfuhuodong (4): 120001 (CMD_120001), 120002 (CMD_120002), 120003 (CMD_120003), 120004 (CMD_120004)
 - shenqi (4): 132000 (CMD_132000), 132001 (CMD_132001), 132002 (CMD_132002), 132003 (CMD_132003)
@@ -165,6 +163,8 @@ Void-reply inbound IDs proven by a wire/handler test (TESTED_BY_EVIDENCE) count 
 - goodsbuyback (1): 32005 (DELETE_BACK_GOODS_NOTIFY)
 - jiangli (1): 58016 (J58016)
 - meiren (1): 82004 (MEIREN_82004)
+- xianjiehuoyuedu (1): 91000 (CMD_91000)
+- xianjiechenhao (1): 91006 (CMD_91006)
 - guangyi (1): 102005 (CMD_102005)
 - touxian (1): 104004 (CMD_104004)
 - giftcode (1): 570001 (USE5CODE)

@@ -1222,6 +1222,7 @@ class Store:
                 ' c.zhenqi, c.shengwang,'
                 ' COALESCE(s.shanbi_val, 0) AS shanbi_val,'
                 ' s.zuoqi_info AS zuoqi_info,'
+                ' s.pk_info AS pk_info,'
                 ' c.created'
                 ' FROM characters c LEFT JOIN role_stage s ON s.role_id=c.id'
                 ' WHERE c.account=? AND c.server_id=? ORDER BY c.id',

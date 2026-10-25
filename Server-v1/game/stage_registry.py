@@ -12,6 +12,7 @@ block of cells around the role's cell (AOI.getElements(ROLE, 9)).
 import threading
 
 from .monster_world import MonsterWorld
+from .pvp import PvpWorld
 
 TILE_W = 60
 TILE_H = 30
@@ -36,6 +37,9 @@ class StageRegistry:
         self._pos = {}      # role_id -> (tile_x, tile_y)
         self._presence = {} # role_id -> session (login, placed or not)
         self.monsters = MonsterWorld()  # shared monster lifecycle for every session
+        # PK value/gray/protection live on the Java stage role element, so
+        # every connection reads the same copy; this is that shared copy.
+        self.pvp = PvpWorld()
 
     def register(self, role_id, map_id, session, x=None, y=None):
         """Place a role on a map under its session, relocating it if it moved."""

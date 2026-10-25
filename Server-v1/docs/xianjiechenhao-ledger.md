@@ -189,12 +189,15 @@ already expose the corresponding write points.
    (EQUIP_QIANGHUA), mall buy (STORE_BIND/STORE_YB) and the client
    91008 onhook/dazuo minutes. Deferred, because the producer itself is
    absent or unverified: story shop buy/sell/back (STORE_*), tanwei
-   sell/buy, task miaosha, lingqidan, sjjd, and the PvP 91006 kill line
-   (no role-death pipeline). Money/recharge features stay out of scope.
+   sell/buy, task miaosha, lingqidan, sjjd. Money/recharge features
+   stay out of scope. The PvP 91006 kill line is DONE (pvp-ledger): the
+   role-death pipeline now exists, so role-vs-role death writes the
+   `91006;{map|M};{user|ID,NAME}` line on the dead role's log.
 6. Kill log: DONE. 91005 pages `[[createTime, killData], ...]`, the
    client 91007 append stores the `91011` user line, monster deaths
-   append the `91007` monster line, and the store trims to the newest
-   100 rows after each insert.
+   append the `91007` monster line on the killer's log, PvP deaths
+   append the `91006` user line on the dead role's log, and the store
+   trims to the newest 100 rows after each insert.
 7. Tests: `tests/test_xianjie.py` covers thresholds, duplicate
    prevention, failed actions, strict `>` quirks, notices, persistence,
    reconnect, kill-log pagination and the 12010 [11]/[12] cells.

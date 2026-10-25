@@ -314,6 +314,10 @@ class GameTCPHandler(socketserver.BaseRequestHandler):
                 sess._pvp_on_disconnect()
             except Exception:
                 pass
+            try:
+                sess._stage_on_disconnect()
+            except Exception:
+                pass
             with self.server.sessions_lock:
                 self.server.sessions.pop(sess, None)
             self.server.stage_registry.unregister_session(sess)

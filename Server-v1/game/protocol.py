@@ -5175,6 +5175,63 @@ class Session:
             return set()
         return {_wire_id(r) for r in roles if r is not None}
 
+    def _stage_on_disconnect(self):
+        """syncRoleStageData at logout: dead roles persist the revive rewrite.
+
+        Java folds the dead element's revive point (born-config roll,
+        full HP/MP) into role_stage instead of the death tile, so a
+        role that logs out dead re-enters alive at its revive point.
+        Living roles need nothing: hp/mp/pos/pk persist incrementally
+        and copy/story maps never touch the row (offline-save rule).
+        """
+        if self.stage_registry is None:
+            return
+        try:
+            owned = list(self.stage_registry.roles_of(self))
+        except Exception:
+            return
+        if not owned:
+            return
+        try:
+            roles = self.get_roles(self.authed_user or '',
+                                   self.server_id or '') or []
+        except Exception:
+            return
+        for rid in owned:
+            if rid not in self._dead:
+                continue
+            role = _find_role(roles, rid)
+            if role is None:
+                continue
+            live_map = self.stage_registry.map_of(rid) \
+                or role.get('map_id')
+            pos = self.stage_registry.position_of(rid)
+            if pos is None:
+                pos = [role.get('map_x'), role.get('map_y')]
+            birth = self.config.dead_birth(live_map) \
+                if self.config is not None else None
+            if birth is None:
+                log.info('conn %d: dead logout with no revive config '
+                         'for map %r (row kept)', self.conn_id, live_map)
+                self._dead.discard(rid)
+                continue
+            try:
+                x, y = random.choice(birth['points'])
+            except (IndexError, TypeError, ValueError):
+                self._dead.discard(rid)
+                continue
+            max_hp = int(role.get('max_hp') or 0)
+            max_mp = int(role.get('max_mp') or 0)
+            try:
+                # The offline-save rule applies after the revive roll:
+                # a revive point off the save maps keeps the row's map.
+                self._stage_save_position(rid, birth['map'], x, y)
+                self.save_role_state(rid, hp=max_hp, mp=max_mp)
+            except Exception:
+                log.warning('conn %d: dead-logout save failed',
+                            self.conn_id, exc_info=True)
+            self._dead.discard(rid)
+
     def _red_name_drop(self, role):
         """FightServiceImpl.redNameDropYxb: red names drop tongqian.
 
@@ -5763,9 +5820,11 @@ class Session:
         x = role.get('map_x') if role.get('map_x') is not None else 57
         y = role.get('map_y') if role.get('map_y') is not None else 148
         # The client's requested stage is authoritative; persist it so a
-        # reconnect/enter-world returns the role where it actually is.
+        # reconnect/enter-world returns the role where it actually is,
+        # unless it is a copy or story map (the row keeps the offline
+        # save, which is where Java re-enters the role).
         if target_map:
-            self.save_role_state(role_id, map_id=map_id, map_x=x, map_y=y)
+            self._stage_save_position(role_id, map_id, x, y)
         try:
             before = self.stage_registry.map_of(_wire_id(role)) \
                 if self.stage_registry is not None else None
@@ -5975,7 +6034,9 @@ class Session:
             return None
         log.info('conn %d: tile role=%r -> (%s, %s)', self.conn_id, actor, x, y)
         old = [role.get('map_x'), role.get('map_y')]
-        self.save_role_state(_wire_id(role), map_x=int(x), map_y=int(y))
+        self._stage_save_position(
+            _wire_id(role), self._live_map(_wire_id(role), role), x, y,
+            with_map=False)
         if self.stage_registry is not None:
             self.stage_registry.set_position(_wire_id(role), x, y)
         self._presence_aggro(role, int(x), int(y))
@@ -6064,12 +6125,52 @@ class Session:
             log.info('conn %d: teleport for unowned %r (ignored)', self.conn_id, args[3])
             return None
         rid = _wire_id(role)
-        self.save_role_state(rid, map_x=x, map_y=y)
+        self._stage_save_position(
+            rid, self._live_map(rid, role), x, y, with_map=False)
         if self.stage_registry is not None:
             self.stage_registry.set_position(rid, x, y)
         frames = list(self._dazuo_cancel_frames(role) or ())
         frames.extend(self._dazuo_broadcast(rid, CMD_TELEPORT, args))
         return tuple(frames) if frames else None
+
+    def _live_map(self, rid, role=None):
+        """The map a role actually stands on: registry first, row fallback.
+
+        The row map is the offline save, so it goes stale on copies and
+        story maps by design; the sync and the save gate must read the
+        live stage position instead.
+        """
+        if self.stage_registry is not None:
+            try:
+                live = self.stage_registry.map_of(rid)
+            except Exception:
+                live = None
+            if live is not None:
+                return live
+        return (role or {}).get('map_id')
+
+    def _stage_save_position(self, rid, map_id, x, y, with_map=True):
+        """Persist the stage position iff the map takes offline saves.
+
+        syncRoleStageData writes map fields only on usedForOfflineSave
+        maps (NORMAL/ZHUCHENG); on copies and story maps the row keeps
+        the previous offline-save position so the role re-enters there.
+        The live registry position always updates; only the row write is
+        gated. Same-map moves persist just x/y (with_map=False), exactly
+        the old call shapes. True when the row was written.
+        """
+        if self.config is not None \
+                and not self.config.offline_save_map(map_id):
+            return False
+        try:
+            x, y = int(x), int(y)
+        except (TypeError, ValueError):
+            pass
+        if with_map:
+            self.save_role_state(rid, map_id=map_id, map_x=x, map_y=y)
+        else:
+            self.save_role_state(rid, map_x=x, map_y=y)
+        return True
 
     def change_map(self, rid, map_id, x, y):
         """Move a placed role to another map at (x, y): leave the old map, enter the new one.
@@ -6081,7 +6182,7 @@ class Session:
         if self.stage_registry is not None:
             self.stage_registry.unregister(rid)
             self.stage_registry.register(rid, map_id, self, x=x, y=y)
-        self.save_role_state(rid, map_id=map_id, map_x=x, map_y=y)
+        self._stage_save_position(rid, map_id, x, y)
         # P:STAGE_CHANGE, like apply_stage above.
         try:
             changed_frames = self._team_on_map(str(rid), map_id)
@@ -6132,18 +6233,19 @@ class Session:
             log.warning('conn %d: red-name drop failed', self.conn_id,
                         exc_info=True)
         own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
-        birth = self.config.dead_birth(role.get('map_id')) if self.config else None
+        live_map = self._live_map(rid, role)
+        birth = self.config.dead_birth(live_map) if self.config else None
         if birth is None:
-            log.info('conn %d: no revive config for map %r', self.conn_id, role.get('map_id'))
+            log.info('conn %d: no revive config for map %r', self.conn_id, live_map)
             return tuple(own)
         x, y = random.choice(birth['points'])
-        if birth['map'] != str(role.get('map_id')):
+        if birth['map'] != str(live_map):
             # Java queues SC:APPLY_CHANG_MAP, so the second 43001 still uses the old surround.
             own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
             own += self.change_map(rid, birth['map'], x, y)
             return tuple(own)
         self.stage_registry.set_position(rid, x, y)
-        self.save_role_state(rid, map_x=x, map_y=y)
+        self._stage_save_position(rid, live_map, x, y, with_map=False)
         own += self._dazuo_broadcast(rid, CMD_TELEPORT, [x, y, 0, rid])
         own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
         return tuple(own)
@@ -6170,10 +6272,11 @@ class Session:
         if role is None:
             return None
         rid = _wire_id(role)
-        if map_id != str(role.get('map_id') or ''):
+        if map_id != str(self._live_map(rid, role) or ''):
             return self.change_map(rid, map_id, x, y)
         self.stage_registry.set_position(rid, x, y)
-        self.save_role_state(rid, map_x=x, map_y=y)
+        self._stage_save_position(
+            rid, self._live_map(rid, role), x, y, with_map=False)
         out = self._dazuo_broadcast(rid, CMD_INNER_FLY, [x, y, 0, rid])
         return tuple(out) if out else None
 

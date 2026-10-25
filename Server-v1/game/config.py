@@ -1573,6 +1573,28 @@ class GameConfig:
             return None
         return int(row['maptype'])
 
+    # MapType clinit (dntg_start.jar bytecode): NORMAL 1, ZHUCHENG 2,
+    # JUQING 3, BOSSTIAOZHAN 4, GUAIWUGONGCHENG 5, JINDI 6, GUOZHAN 7,
+    # TEAMFUBEN 8, KUANGZHAN 11, CHALLENGE 12, QISHENGBOSS 13,
+    # PANTAOYUAN 14, ZUWUFUBEN 15, GUILDFUBEN 16, KUAFUSJZD 17.
+    OFFLINE_SAVE_MAP_TYPES = (1, 2)
+
+    def offline_save_map(self, map_id):
+        """MapType.usedForOfflineSave: only NORMAL(1)/ZHUCHENG(2) persist.
+
+        RoleStageServiceImpl.syncRoleStageData writes the live map/pos
+        into role_stage only on those types; everywhere else (copies,
+        story maps) the row keeps the previous offline-save position and
+        the role re-enters there. Unknown maps save (legacy behavior).
+        """
+        try:
+            map_type = self.map_type(map_id)
+        except (TypeError, ValueError):
+            return True
+        if map_type is None:
+            return True
+        return int(map_type) in self.OFFLINE_SAVE_MAP_TYPES
+
     def path_grid(self, map_id):
         """Walkability grid for a map from map_config/<id>/path.mm, or None if the file is absent."""
         key = str(map_id)

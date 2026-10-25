@@ -90,5 +90,6 @@ baoxiangjiangli1..4 chest items).
 - Copy isolation is covered in `tests/test_stage_instances.py`
   (GuildCopyTest: shared member copy, two-guild isolation, quit-home
   plus disconnect cleanup) alongside the 22 handler tests.
-- Next unfinished families per the census: `marry`, `kuafu`, `gm`
-  residuals.
+- Next unfinished families per the census: `kuafu` (cross-server,
+  deferred) and `gm` admin commands; `marry` is complete+tested
+  (`docs/marry-ledger.md`).

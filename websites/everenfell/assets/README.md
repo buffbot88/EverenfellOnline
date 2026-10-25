@@ -24,13 +24,13 @@ timelines and SymbolClass linkage; most HUD pieces are MovieClips
 composed of these bitmaps plus vector shapes (sprite/timeline mapping
 is the documented next step, not yet built).
 
-## maps/ — world tiles (ships in public/, not here)
+## maps/ — world tiles
 
-`public/maps/map0/` holds the 408 original Map 0 JPEG tiles (17x24 at
-256px, 4352x6144), referenced by relative URLs from
-`src/assets/map0.json` so dev and production resolve identically.
+`maps/map0/` holds the 408 original Map 0 JPEG tiles (17x24 at 256px,
+4352x6144), referenced by `src/assets/map0.json`. Vite serves them from
+source during local development; alpha requests use the authenticated
+`/protected-assets/` route. The production build never copies this tree.
 
 Rights: legacy Binjiang-distribution client art of unknown commercial
-reuse rights. These files ship with the client for development and
-faithful reconstruction only. Do not publish or bundle them for public
-deployment until rights are confirmed.
+reuse rights. Keep it out of public bundles until rights are confirmed;
+authorized alpha delivery is access control, not a license grant.

@@ -26,3 +26,7 @@ export const MAP_TILES = mapManifest.tiles as MapTile[];
 export function tileKey(tile: MapTile): string {
   return `map0-${tile.id}`;
 }
+
+export function mapTileUrl(tile: MapTile): string {
+  return `${import.meta.env.DEV ? '/assets/' : '/protected-assets/'}${tile.url}`;
+}

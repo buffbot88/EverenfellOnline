@@ -51,7 +51,12 @@ INITKEY = 'INITKEY'
 # here talks across entries.
 SERVERS = {'S1': 'fu1304'}
 
-SESSION_COOKIE = 'mko_session'
+WS_AUDIENCES = {'everenfell-gateway'}
+WS_ORIGINS = {
+    'https://everenfell.agpstudios.org',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+}
 
 
 def ws_accept_key(key):
@@ -132,31 +137,31 @@ class WsFrameReader:
         return events
 
 
-def handshake_cookies(request_text):
-    """Cookie header of a WebSocket upgrade request, as a dict."""
-    for line in request_text.split('\r\n')[1:]:
-        if ':' not in line:
-            continue
-        name, value = line.split(':', 1)
-        if name.strip().lower() == 'cookie':
-            out = {}
-            for part in value.split(';'):
-                if '=' in part:
-                    k, v = part.strip().split('=', 1)
-                    out[k] = v
-            return out
-    return {}
-
-
 def ws_handshake_response(request_text):
-    """Build the 101 response for an HTTP upgrade request, or None."""
+    """Build the 101 response for the Everenfell WebSocket route, or None."""
+    lines = request_text.split('\r\n')
+    request = lines[0].split() if lines else []
+    if len(request) != 3 or request[0] != 'GET' or request[1].split('?', 1)[0] != '/everenfell' or request[2] != 'HTTP/1.1':
+        return None
     headers = {}
-    for line in request_text.split('\r\n')[1:]:
+    for line in lines[1:]:
         if ':' in line:
             name, value = line.split(':', 1)
             headers[name.strip().lower()] = value.strip()
+    if headers.get('upgrade', '').lower() != 'websocket':
+        return None
+    if 'upgrade' not in {value.strip().lower() for value in headers.get('connection', '').split(',')}:
+        return None
+    if headers.get('sec-websocket-version') != '13':
+        return None
+    origin = headers.get('origin')
+    if origin and origin not in WS_ORIGINS:
+        return None
     key = headers.get('sec-websocket-key')
-    if not key:
+    try:
+        if len(base64.b64decode(key, validate=True)) != 16:
+            return None
+    except (TypeError, ValueError):
         return None
     accept = ws_accept_key(key)
     return ('HTTP/1.1 101 Switching Protocols\r\n'
@@ -325,11 +330,10 @@ class GatewaySession:
     SNAPSHOT_WAIT_S = 2.5
     MOVE_WAIT_S = 1.0
 
-    def __init__(self, conn, sessions, game_host, game_port,
+    def __init__(self, conn, game_host, game_port,
                  make_sign, server_id='fu1304', store=None,
                  servers=None):
         self.conn = conn
-        self.sessions = sessions
         self.game_host = game_host
         self.game_port = game_port
         self.make_sign = make_sign
@@ -341,7 +345,6 @@ class GatewaySession:
         self.username = None
         self.member = None
         self.game_server_id = server_id
-        self.handshake_token = None
         self.roles = []
         self.link = GameLink()
         self.reader = WsFrameReader()
@@ -350,10 +353,6 @@ class GatewaySession:
     def run(self):
         try:
             request = self._read_http_request()
-            # Same-host browsers send the website session cookie on the
-            # upgrade automatically; the token never passes through JS.
-            self.handshake_token = handshake_cookies(request).get(
-                SESSION_COOKIE)
             response = ws_handshake_response(request)
             if response is None:
                 self.conn.close()
@@ -434,24 +433,33 @@ class GatewaySession:
         self._send(op, seq, True, result)
 
     def op_auth_session(self, body):
-        token = str(body.get('token') or self.handshake_token or '')
-        rec = self.sessions.get(token)
-        if not rec:
-            raise GatewayError('invalid session')
-        member = rec.get('username') or rec.get('uid')
+        token = body.get('ticket')
+        if not isinstance(token, str) or not token or self.store is None:
+            raise GatewayError('valid one-use ticket required')
+        ticket = self.store.consume_gateway_ticket(token)
+        if not ticket:
+            raise GatewayError('invalid or expired ticket')
+        server = ticket['server']
+        game_server_id = self.servers.get(server)
+        if (ticket['game'] != 'everenfell' or server != 'S1'
+                or game_server_id != self.server_id
+                or ticket['game_server_id'] != game_server_id
+                or ticket['audience'] not in WS_AUDIENCES
+                or ticket['expires'] <= int(time.time())
+                or str(ticket['role']).strip().casefold() != 'admin'
+                or not ticket['entitled']):
+            raise GatewayError('ticket not authorized for this gateway')
+        if body.get('server') not in (None, server):
+            raise GatewayError('ticket server mismatch')
+        member = ticket['sub']
         if not member:
-            raise GatewayError('invalid session')
-        server = str(body.get('server') or 'S1')
-        if server not in self.servers:
-            raise GatewayError('unknown server: %s' % server)
-        game_server_id = self.servers[server]
-        # Lazy website-member -> per-server game account link: the row
-        # is written here on first game entry, never at registration.
-        if self.store is not None:
-            game_account = self.store.ensure_server_binding(
-                member, game_server_id, member)
-        else:
-            game_account = member
+            raise GatewayError('invalid ticket identity')
+        game_account = 'agp_' + hashlib.sha256(
+            (member + '\0' + game_server_id).encode()).hexdigest()[:32]
+        game_account = self.store.ensure_server_binding(
+            member, game_server_id, game_account, verified=True)
+        if not game_account:
+            raise GatewayError('existing legacy game account is not linked')
         self.member = member
         self.username = game_account
         self.game_server_id = game_server_id
@@ -470,8 +478,7 @@ class GatewaySession:
              'level': r[4]}
             for r in roles
             if isinstance(r, list) and len(r) > 4]
-        return {'roles': self.roles, 'server': server,
-                'member': self.member}
+        return {'roles': self.roles, 'server': server}
 
     def op_world_enter(self, _body):
         if not self.username:
@@ -560,12 +567,11 @@ class GatewayError(Exception):
 class GatewayServer:
     """TCP accept loop for browser WebSocket connections (daemon threads)."""
 
-    def __init__(self, host, port, sessions, game_host, game_port,
+    def __init__(self, host, port, game_host, game_port,
                  make_sign, server_id='fu1304', store=None,
                  servers=None):
         self.host = host
         self.port = port
-        self.sessions = sessions
         self.game_host = game_host
         self.game_port = game_port
         self.make_sign = make_sign
@@ -582,9 +588,8 @@ class GatewayServer:
         while True:
             conn, _addr = self.sock.accept()
             conn.settimeout(60)
-            session = GatewaySession(conn, self.sessions, self.game_host,
-                                     self.game_port, self.make_sign,
-                                     self.server_id, store=self.store,
-                                     servers=self.servers)
+            session = GatewaySession(conn, self.game_host, self.game_port,
+                                     self.make_sign, self.server_id,
+                                     store=self.store, servers=self.servers)
             thread = threading.Thread(target=session.run, daemon=True)
             thread.start()

@@ -14,7 +14,7 @@ import Phaser from 'phaser';
 import type { ActorSnapshot } from '../../net/protocol';
 import { TILE_H, TILE_W } from '../../net/protocol';
 import type { Camera } from '../../world/camera';
-import { MAP_H, MAP_TILES, MAP_W, tileKey, type MapTile } from '../mapManifest';
+import { MAP_H, MAP_TILES, MAP_W, mapTileUrl, tileKey, type MapTile } from '../mapManifest';
 
 export const WORLD_KEY = 'world';
 
@@ -201,7 +201,7 @@ export class WorldScene extends Phaser.Scene {
       if (!inside) continue;
       rec.state = 'loading';
       const key = tileKey(tile);
-      this.load.image(key, tile.url);
+      this.load.image(key, mapTileUrl(tile));
       this.load.once(`filecomplete-image-${key}`, () => {
         if (rec.state !== 'loading') return;
         rec.state = 'ready';

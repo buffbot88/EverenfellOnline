@@ -8,11 +8,10 @@ const source = await readFile(new URL('./public/access.js', import.meta.url), 'u
 vm.runInNewContext(source, { window, fetch() {} });
 const access = window.EverenfellAccess;
 
-test('maintenance allows admins only; normal mode allows signed-in members', () => {
+test('play UI requires the server-confirmed S1 entitlement', () => {
   assert.equal(access.canPlay(null), false);
-  assert.equal(access.canPlay({ role: 'Member' }), false);
-  assert.equal(access.canPlay({ role: 'Admin' }), true);
-  assert.equal(access.canPlay({ role: 'admin' }), true);
-  access.maintenance = false;
-  assert.equal(access.canPlay({ role: 'Member' }), true);
+  assert.equal(access.canPlay({ role: 'Admin', everenfell_s1: false, can_play: false }), false);
+  assert.equal(access.canPlay({ role: 'Admin', everenfell_s1: true, can_play: false }), false);
+  assert.equal(access.canPlay({ role: 'Admin', everenfell_s1: true, can_play: true }), true);
+  assert.equal(access.canPlay({ role: 'Member', everenfell_s1: true, can_play: false }), false);
 });

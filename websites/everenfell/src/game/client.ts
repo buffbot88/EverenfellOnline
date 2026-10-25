@@ -22,7 +22,6 @@ export interface ClientOptions {
   mount: HTMLElement;
   uiMount: HTMLElement;
   gatewayUrl: string;
-  websiteUrl: string;
   serverId?: string;
 }
 
@@ -127,7 +126,7 @@ export class PhaserClient {
     this.clearViews();
     if (user !== null && !canPlay(user)) {
       this.setStatus(
-        `Signed in as ${user.display_name || user.username}: S1 is in maintenance and closed to this account.`,
+        `Signed in as ${user.display_name || user.username}: this account is not entitled to Everenfell S1.`,
       );
       return;
     }
@@ -142,7 +141,7 @@ export class PhaserClient {
       note.textContent = 'Sign in with your website account to enter the world.';
       panel.appendChild(note);
       const link = document.createElement('a');
-      link.href = this.options.websiteUrl;
+      link.href = '/auth/login';
       link.textContent = 'Sign in on the website';
       panel.appendChild(link);
       const retry = document.createElement('button');
@@ -192,7 +191,8 @@ export class PhaserClient {
     this.setStatus('Connecting…');
     try {
       await this.gateway.connect();
-      await this.gateway.request('auth.session', { server: serverId });
+      const ticket = await this.auth.ticket(serverId);
+      await this.gateway.request('auth.session', { ticket, server: serverId });
       const entered = (await this.gateway.request('world.enter', {})) as {
         roles?: { id: string; name: string }[];
       };

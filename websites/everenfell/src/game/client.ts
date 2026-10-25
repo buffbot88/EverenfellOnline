@@ -77,7 +77,7 @@ export class PhaserClient {
     return scene instanceof WorldScene ? scene : null;
   }
 
-  private waitForMap(timeoutMs = 30000): Promise<void> {
+  private waitForMap(timeoutMs = 120000): Promise<void> {
     const started = Date.now();
     return new Promise((resolve, reject) => {
       const poll = () => {

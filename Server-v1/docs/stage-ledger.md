@@ -7,11 +7,12 @@ Oracle: `dntg_start.jar` via `javap -c` — `StageControllServiceImpl`
 plus the `10003`/`20000`/`21000` login burst in
 `output/orig-stack/java-session-summary.txt`.
 
-## Status: partial — offline-save sync DONE, copies/lines deferred
+## Status: partial — offline-save sync DONE, zuwu copies DONE, lines deferred
 
 The logout and map-move persistence now follows the Java sync instead
-of persisting every live position. True stage copies and line numbers
-remain architectural deviations (see Deferred).
+of persisting every live position. Zuwu dungeon copies run as genuine
+per-role stage instances; other families still share one world map and
+line numbers remain unported (see Deferred).
 
 ## DONE: offline-save position rule
 
@@ -34,16 +35,40 @@ remain architectural deviations (see Deferred).
 - Login placement falls out of the row: `enter_world` reads the
   persisted map, so a fuben logout re-enters at the offline save.
 
+## DONE: zuwu stage copies (one family end-to-end)
+
+- `StageRegistry` keys live membership by stage key; the base map stays
+  the client-visible id (`map_of`/`_live_map`). Ordinary stages use the
+  map id as its own key and share the server `MonsterWorld`.
+- `create_instance('base', 'ZUWU', rid)` mints the per-role copy
+  (`ZUWU-<rid>-<map>`); `change_map(..., stage_key=...)` joins it and
+  `_bind_stage_world` repoints monster HP/dead/reg/hatred/leave/spawn
+  plus ground items at the isolated world. Wire maps stay base ids.
+- Combat, hatred/AI, drops, pickups, expiry notices and frame delivery
+  resolve through the bound stage: cross-copy role/monster targets are
+  skipped, `_fighter_surround`/`_point_broadcast` stay inside the copy,
+  and `deliver_world_frames` fans instance frames to stage members only.
+- `zuwu_enter` saves the pre-copy position (`return_map/pos`), `quit` /
+  `expire` / `victory` / `disconnect` return there via
+  `_zuwu_home_frames` (`applyReturnLastStage`) and destroy the emptied
+  copy; kills count only inside the killer's own copy.
+- `tests/test_stage_instances.py` (3): registry isolation, two-copy
+  independence (stages/worlds/AOI/kills), quit-home plus cleanup.
+
 ## Deferred (verified in bytecode, needs stage-copy/line architecture)
 
-- Stage copies: `checkStageAndEnter` creates per-family copies
-  (`createJuQingCopy`, `createZuWuFuBen`, `createGuildFuBen`, ...);
-  the port shares one world map per fuben (already recorded in the
-  juqing/zuwu/guildfuben ledgers).
+- Stage copies for the remaining families: `checkStageAndEnter`
+  creates per-family copies (`createJuQingCopy`, `createGuildFuBen`,
+  ...); juqing/guildfuben still share one world map per fuben (see
+  those ledgers). The same `create_instance`/`stage_key` path applies.
+- Guild copies will key on the existing
+  `GUILDFUBEN-<gid>-<main>-<map>` id so authorized members share one
+  copy; juqing copies will key per role like zuwu.
 - Line numbers (`getStageLine`/`incrLineNo`, 20004/20005): the port
   has no lines; every map is line 1.
-- `hisRolePosition` / `applyReturnLastStage`: returning to the last
-  stage needs bus RoleState history, not ported.
+- `hisRolePosition` / `applyReturnLastStage`: the port stores the
+  pre-copy position on the zuwu attempt (return-home verified); other
+  families still need the bus RoleState history.
 - `encodeOfflineCopy` / `isOfflineSaveCopy` `copyInfo`: no reader or
   writer in the port; the field stays absent.
 - Role enter/leave wire records: the changeMap commit calls
@@ -59,5 +84,8 @@ remain architectural deviations (see Deferred).
 `tests/test_stage_sync.py` (10): map-type predicate, copy/story
 entry and steps skipping the row, alive/dead logout in each case,
 missing born config, and re-login placement at the offline save.
+`tests/test_stage_instances.py` (3) covers the zuwu copy path.
 Neighbors re-verified: teleport, change_map, movement_enter, revive,
-pvp, pickup, combat, xianjie.
+pvp, pickup, combat (consistency + shared), team, ground, juqing
+fuben, monster death. Guildfuben shows the same 8 failures + 1 error
+on and off this change (pre-existing, unported copy routing).

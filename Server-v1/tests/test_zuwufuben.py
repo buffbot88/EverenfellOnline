@@ -187,7 +187,9 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(entered[-2][0], '108007')
         self.assertEqual(self.call('zuwu_enter', [108002, [1]]),
                          [['108002', [0, 114008]]])
-        self.assertEqual(self.call('zuwu_quit'), [['108006', [1]]])
+        quit = self.call('zuwu_quit')
+        self.assertEqual(quit[-1], ['108006', [1]])
+        self.assertTrue(any(f[0] == '20000' for f in quit))
         entered = self.call('zuwu_enter', [108002, [1]])
         self.assertEqual(entered[-1], ['108002', [1, 1]])
 

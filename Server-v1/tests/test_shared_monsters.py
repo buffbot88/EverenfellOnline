@@ -188,6 +188,8 @@ class SharedMonsterTest(unittest.TestCase):
         self.seed_monster(a, hp=200.0)
         self.swing(a, self.role_a)
         self.role_a['map_id'] = '8'
+        self.reg.unregister('1')
+        self.reg.register('1', '8', a, x=0, y=0)
         a._world.begin_round()
         b.ai_tick()
         self.assertNotIn(MID, a._hatred)

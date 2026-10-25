@@ -57,16 +57,19 @@ sweep durations (`zuwutime` ms) and buy caps (`zuwucishu`).
 
 Python deliberate deviations (documented, not parity-verified):
 - No real copy instances: the attempt marker lives on the session
-  (`_zuwu_attempt`, dropped on quit/expiry/disconnect) instead of the
-  stage object; shared-world kills count toward the wanted total;
-  expiry/disconnect cleanup runs on the session scheduler.
+  (`_zuwu_attempt` plus `stage`/`return_map`/`return_pos`, dropped on
+  quit/expiry/disconnect/victory) instead of the stage object;
+  per-copy kills count toward the wanted total; expiry/disconnect
+  cleanup runs on the session scheduler and destroys the emptied copy.
 - `108001` daily rows are sorted for determinism; Java HashMap order
   is nondeterministic.
 - `111000` owned guardians render `[id,level,0,0,0]`; the trailing
   mock type cell has no owned-row source in the ported getter.
-- `SC:APPLY_COPY` / `SC:APPLY_CHANG_MAP` home routing is approximated
-  by shared-world `change_map`; the role keeps its map on quit/expiry
-  (needs the unported stagecontroll history).
+- `SC:APPLY_COPY` / `SC:APPLY_CHANG_MAP` home routing is realized by
+  `change_map(..., stage_key=...)` plus `_zuwu_home_frames` (the
+  pre-copy position rides the attempt, not the bus RoleState history).
+  Entry/exit peer wire records stay unported: no verified frame names
+  the entering/leaving role record, so none is invented.
 - `ZuWuFuBenRefreshEvent` and guardian-activation events have no
   ported subscribers and are skipped like every other publish.
 - Sweep auto-pass chains settle inline on the timer instead of the

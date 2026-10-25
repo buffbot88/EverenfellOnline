@@ -163,6 +163,8 @@ class ConsistencyTest(unittest.TestCase):
         self.seed_monster()
         self.swing_as_a()
         self.store.get(1)['map_id'] = '8'
+        self.reg.unregister('1')
+        self.reg.register('1', '8', self.a, x=0, y=0)
         self.monster_round()
         self.assertNotIn(MID, self.a._hatred)
 

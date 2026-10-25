@@ -1771,6 +1771,7 @@ class Session:
         # _leaving: dead id -> ticks until the 24002 AOI leave (asheslast).
         # _spawning: list of [template_id, map, born, ticks] until the 23002
         # re-enter (creattime). _respawn_next: per-map fresh-id counter.
+        self._bound_stage = None
         self._monster_reg = self._world.reg
         self._hatred = self._world.hatred
         self._leaving = self._world.leaving
@@ -1811,9 +1812,10 @@ class Session:
         # Meditation: role id -> {'daZuo': bool, 'target': role id or None}, and
         # state changes queued by other connections, run under this tick.
         self._dazuo = {}
-        # Clan-dungeon attempts: role id -> {'dungeon': id, 'kills': {...}}.
-        # Java holds this in the stage copy; the shared-world port keeps
-        # it on the session and drops it on quit/expiry/disconnect.
+        # Clan-dungeon attempts: role id -> {'dungeon', 'kills', 'stage',
+        # 'return_map', 'return_pos'}. Java holds this in the stage copy;
+        # the port keeps it on the session and drops it on quit/expiry/
+        # disconnect/victory, returning home and destroying the copy.
         self._zuwu_attempt = {}
         # Guild-dungeon presence: role ids inside (GuildFuBenUtil.fMap),
         # re-entry stamps per dungeon (refMap), and live attempts
@@ -5817,6 +5819,10 @@ class Session:
         if role is None:
             return None
         map_id = target_map or str(role.get('map_id') or '0')
+        try:
+            self._bind_stage_world(map_id)
+        except Exception:
+            pass
         x = role.get('map_x') if role.get('map_x') is not None else 57
         y = role.get('map_y') if role.get('map_y') is not None else 148
         # The client's requested stage is authoritative; persist it so a
@@ -6149,6 +6155,33 @@ class Session:
                 return live
         return (role or {}).get('map_id')
 
+    def _stage_key_of(self, rid):
+        """Stage key a role occupies (copies differ from the base map)."""
+        if self.stage_registry is None:
+            return None
+        try:
+            return self.stage_registry.stage_of(rid)
+        except Exception:
+            return None
+
+    def _bind_stage_world(self, stage_key):
+        """Point monster lifecycle at a stage copy's isolated world."""
+        self._bound_stage = stage_key
+        if self.stage_registry is None:
+            return
+        try:
+            world = self.stage_registry.monster_world_for(stage_key)
+        except Exception:
+            return
+        self._world = world
+        self._monster_hp = world.hp
+        self._dead = world.dead
+        self._monster_reg = world.reg
+        self._hatred = world.hatred
+        self._leaving = world.leaving
+        self._spawning = world.spawning
+        self._respawn_next = world.respawn_next
+
     def _stage_save_position(self, rid, map_id, x, y, with_map=True):
         """Persist the stage position iff the map takes offline saves.
 
@@ -6172,16 +6205,23 @@ class Session:
             self.save_role_state(rid, map_x=x, map_y=y)
         return True
 
-    def change_map(self, rid, map_id, x, y):
+    def change_map(self, rid, map_id, x, y, stage_key=None):
         """Move a placed role to another map at (x, y): leave the old map, enter the new one.
 
         Collapses Java's SC:APPLY_CHANG_MAP and its client-ready commit into one step: the
         own-session frames are 20000 [1, mapId, [x, y]], 21000 and the monster snapshot. The
         old map's peers get no leave notice and the new map's peers no enter record (unported).
+        A stage_key joins that copy while the wire map stays the base map.
         """
         if self.stage_registry is not None:
             self.stage_registry.unregister(rid)
-            self.stage_registry.register(rid, map_id, self, x=x, y=y)
+            self.stage_registry.register(rid, map_id, self, x=x, y=y,
+                                         stage_key=stage_key)
+            try:
+                live_stage = self.stage_registry.stage_of(rid)
+            except Exception:
+                live_stage = stage_key
+            self._bind_stage_world(live_stage)
         self._stage_save_position(rid, map_id, x, y)
         # P:STAGE_CHANGE, like apply_stage above.
         try:
@@ -6348,6 +6388,8 @@ class Session:
         if len(parts) == 3 and parts[0] == 'm' and self.config is not None:
             # Match by id: the snapshot list is AOI-filtered, so list position is not
             # the spawn index. Unfiltered records give the stable spawn identity.
+            # Seeding writes into the bound stage world, so each copy grows
+            # its own monster state under the shared snapshot id.
             rec = next((r for r in self.config.monster_snapshot(parts[1])
                         if r[0] == fid), None)
             if rec is not None:
@@ -6357,10 +6399,25 @@ class Session:
                         fid, float(rec[4] if rec[4] is not None else 0))
                     self._monster_reg.setdefault(fid, {
                         'template': tpl, 'map': parts[1],
-                        'born': [rec[11], rec[12]], 'pos': [rec[11], rec[12]]})
+                        'born': [rec[11], rec[12]], 'pos': [rec[11], rec[12]],
+                        'stage': getattr(self, '_bound_stage', None)})
                     return {'kind': 'monster', 'id': fid, 'template': tpl,
                             'record': rec, 'hp': hp}
         return None
+
+    def _fighter_stage(self, fighter):
+        """Stage key a fighter belongs to (monster stage, pet owner, role)."""
+        try:
+            if fighter.get('kind') == 'role':
+                return self._stage_key_of(fighter.get('id'))
+            if fighter.get('kind') == 'pet':
+                return self._stage_key_of(fighter.get('owner'))
+            reg = self._monster_reg.get(fighter.get('id')) or {}
+            if reg.get('stage') is not None:
+                return reg.get('stage')
+            return self._stage_key_of(self._chat_sender()[0] or '')
+        except Exception:
+            return None
 
     def _registry_role(self, role_id):
         """Role record owned by another session on the shared registry, or None.
@@ -6583,12 +6640,21 @@ class Session:
             index = 0
         frames = []
         hits = []
+        actor_stage = self._fighter_stage(actor)
         for target_id in target_ids:
             target = self._stage_fighter(str(target_id))
             if target is None or str(target_id) in self._dead:
                 log.info('conn %d: 42002 target %r unknown/dead (skipped)',
                          self.conn_id, target_id)
                 continue
+            try:
+                if actor_stage is not None and self._fighter_stage(target) is not None \
+                        and str(self._fighter_stage(target)) != str(actor_stage):
+                    log.info('conn %d: 42002 target %r in another stage (skipped)',
+                             self.conn_id, target_id)
+                    continue
+            except Exception:
+                pass
             if target['kind'] == 'role':
                 # SkillTargetFilterFactory.stageProtect: a target on a safe
                 # path node is filtered out of every skill's target list.
@@ -6678,6 +6744,9 @@ class Session:
         reg = self._monster_reg.get(actor.get('id')) or {}
         if reg.get('map') is None or reg.get('pos') is None:
             return []
+        stage = reg.get('stage') or getattr(self, '_bound_stage', None)
+        if stage is not None:
+            return self.stage_registry.surround_in_stage(stage, reg['pos'])
         return self.stage_registry.surround_at(reg['map'], reg['pos'])
 
     def _fight_output(self, actor, frames):
@@ -6884,7 +6953,8 @@ class Session:
             result['point'] = (item.x, item.y)
             own.extend(self._point_broadcast(
                 map_id, (item.x, item.y), '23004',
-                [self.goods_msg_data(item)]))
+                [self.goods_msg_data(item)],
+                stage_key=getattr(self, '_bound_stage', None)))
         return own
 
     def goods_msg_data(self, item, first_drop=1):
@@ -6936,7 +7006,7 @@ class Session:
         No distance, alive or expiry pre-check exists in Java beyond the
         leave itself: a missing/expired element answers [0], and roles
         pick up on their own stage only (here: the item's map must match
-        the role's map).
+        the role's live map, and the bound stage world holds the item).
         """
         now = now_ms if now_ms is not None else self._world_now_ms()
         store = self._world.ground_items
@@ -6950,7 +7020,7 @@ class Session:
             # The S:GOODS_DIS leave already fired (or would have): gone.
             store.remove(item_id)
             return fail
-        if str(role.get('map_id')) != str(item.map_id):
+        if str(self._live_map(_wire_id(role), role)) != str(item.map_id):
             return fail
         if not _ground_can_pick_up(item, str(role.get('id')),
                                         self._team_id_of(role), now):
@@ -6975,7 +7045,8 @@ class Session:
                 self.money_info(money_role)]
             frames.extend(self._point_broadcast(
                 claimed.map_id, (claimed.x, claimed.y), '24004',
-                [claimed.id]))
+                [claimed.id],
+                stage_key=getattr(self, '_bound_stage', None)))
             return True, tuple(frames)
         if self.config._goods_table().get(str(item.goods_id)) is None:
             # Java destroys the item here (leave runs before putInBag1
@@ -7018,7 +7089,8 @@ class Session:
         # surround (AoiMsgListener leave for GOODS); the picker keeps its
         # own copies inline, peers are pushed.
         frames.extend(self._point_broadcast(
-            claimed.map_id, (claimed.x, claimed.y), '24004', [claimed.id]))
+            claimed.map_id, (claimed.x, claimed.y), '24004', [claimed.id],
+            stage_key=getattr(self, '_bound_stage', None)))
         return True, tuple(frames)
 
     @staticmethod
@@ -7280,7 +7352,8 @@ class Session:
             for gone in self._world.ground_items.expire(
                     self._world_now_ms()):
                 frames.extend(self._point_broadcast(
-                    gone.map_id, (gone.x, gone.y), '24004', [gone.id]))
+                    gone.map_id, (gone.x, gone.y), '24004', [gone.id],
+                    stage_key=getattr(self, '_bound_stage', None)))
             frames.extend(self.deliver_world_frames(self.monster_world_step()))
         frames.extend(self.pet_ai_step())
         return tuple(frames) if frames else None
@@ -7308,13 +7381,20 @@ class Session:
                 by_map[map_id] = frames
             return by_map
 
-    def _target_off_map(self, target, map_id):
-        """True when a role target is not alive on the monster's map."""
+    def _target_off_map(self, target, map_id, monster_stage=None):
+        """True when a role target is not alive on the monster's map/stage."""
         if target['kind'] != 'role':
             return False
         role = target['role']
-        if str(role.get('map_id')) != str(map_id):
+        if str(self._live_map(_wire_id(role), role)) != str(map_id):
             return True
+        try:
+            if monster_stage is not None:
+                tstage = self._fighter_stage(target)
+                if tstage is not None and str(tstage) != str(monster_stage):
+                    return True
+        except Exception:
+            pass
         return self._fighter_hp(target)[0] <= 0
 
     def _monster_ai_map(self, map_id, frames):
@@ -7328,7 +7408,8 @@ class Session:
                 continue
             target = self._stage_fighter(self._hatred[mid])
             if (target is None or target['id'] in self._dead
-                    or self._target_off_map(target, map_id)):
+                    or self._target_off_map(target, map_id,
+                                            reg.get('stage'))):
                 # refreshState FIGHT -> BACK: hatred lost, walk home.
                 self._hatred.pop(mid, None)
                 if list(reg['pos']) != list(reg['born']):
@@ -7403,7 +7484,8 @@ class Session:
             self._respawn_next[str(map_id)] = n + 1
             nid = 'm_%s_%d' % (map_id, n)
             self._monster_reg[nid] = {'template': tpl, 'map': str(map_id),
-                                      'born': list(born), 'pos': list(born)}
+                                      'born': list(born), 'pos': list(born),
+                                      'stage': getattr(self, '_bound_stage', None)}
             self._monster_hp[nid] = float(tpl.get('hitpoints') or 0)
             frames.append(frame(amf3_encode(
                 ['23002', [ai_lib.respawn_record(nid, tpl, born)]])))
@@ -7440,7 +7522,8 @@ class Session:
 
         A session gets the frames of the maps where it has roles (or all frames when
         it has no stage registry). Every other session on a map is pushed that map's
-        frames once, however many of its roles are there.
+        frames once, however many of its roles are there. Stage copies deliver
+        to their own stage members only, never across copies.
         """
         if not by_map:
             return []
@@ -7448,6 +7531,26 @@ class Session:
             mine = []
             for frames in by_map.values():
                 mine.extend(frames)
+            return mine
+        try:
+            bound = getattr(self, '_bound_stage', None)
+            base = self.stage_registry.base_map_of_stage(bound) \
+                if bound is not None else None
+        except Exception:
+            bound = base = None
+        if bound is not None and base is not None and str(bound) != str(base):
+            mine = []
+            for frames in by_map.values():
+                mine.extend(frames)
+            if not mine:
+                return []
+            seen = set()
+            for _role, sess in self.stage_registry.peers_in_stage(bound):
+                if id(sess) in seen:
+                    continue
+                seen.add(id(sess))
+                if sess is not self:
+                    sess.push_frames(mine)
             return mine
         own_maps = {str(r.get('map_id')) for r in
                     self.get_roles(self.authed_user or '', self.server_id or '')}
@@ -7520,15 +7623,19 @@ class Session:
             return False
         pet['pos'] = [int(point[0]), int(point[1])]
         frames.extend(self._point_broadcast(
-            map_id, point, CMD_TELEPORT, [int(point[0]), int(point[1]), 0, pet_id]))
+            map_id, point, CMD_TELEPORT, [int(point[0]), int(point[1]), 0, pet_id],
+            stage_key=getattr(self, '_bound_stage', None)))
         return True
 
-    def _point_broadcast(self, map_id, point, command, payload):
+    def _point_broadcast(self, map_id, point, command, payload, stage_key=None):
         """Send a command to the 3x3 AOI around a tile; this session's own copies are returned."""
         body = frame(amf3_encode([str(command), payload]))
         if self.stage_registry is None:
             return [body]
-        targets = self.stage_registry.surround_at(map_id, point)
+        if stage_key is not None:
+            targets = self.stage_registry.surround_in_stage(stage_key, point)
+        else:
+            targets = self.stage_registry.surround_at(map_id, point)
         if not targets:
             return [body]
         own = []
@@ -8279,6 +8386,11 @@ class Session:
             self.stage_registry.register(_wire_id(role), map_id, self,
                                          x=role.get('map_x'),
                                          y=role.get('map_y'))
+            try:
+                self._bind_stage_world(
+                    self.stage_registry.stage_of(_wire_id(role)) or map_id)
+            except Exception:
+                pass
         map_type = self.map_type_for(map_id)
         frames = [frame(amf3_encode(['21000', [1, 1, map_type]]))]
         frames.extend(self.scene_tail_frames(role, map_id))
@@ -30185,13 +30297,36 @@ class Session:
         if err is not None:
             return frame(amf3_encode(['108002', [0, err]]))
         pos = cfg.get('pos') or []
+        base_map = str(cfg.get('map') or role.get('map_id'))
+        try:
+            ret_map = self._live_map(rid, role) or base_map
+        except Exception:
+            ret_map = base_map
+        try:
+            ret_pos = self.stage_registry.position_of(rid) \
+                if self.stage_registry is not None else None
+        except Exception:
+            ret_pos = None
+        if ret_pos is None:
+            ret_pos = [role.get('map_x') or 0, role.get('map_y') or 0]
+        stage_key = None
+        if self.stage_registry is not None:
+            try:
+                stage_key = self.stage_registry.create_instance(
+                    base_map, 'ZUWU', rid)
+            except Exception:
+                stage_key = None
         frames = list(self.change_map(
-            rid, str(cfg.get('map') or role.get('map_id')),
+            rid, base_map,
             int(pos[0]) if len(pos) > 0 else int(role.get('map_x') or 0),
-            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0)))
+            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0),
+            stage_key=stage_key))
         now = int(self._world_now_ms())
         rest_ms = max(int(cfg.get('expire_min') or 0) * 60000, 1)
-        self._zuwu_attempt[rid] = {'dungeon': int(did), 'kills': {}}
+        self._zuwu_attempt[rid] = {'dungeon': int(did), 'kills': {},
+                                   'stage': stage_key,
+                                   'return_map': str(ret_map),
+                                   'return_pos': [int(ret_pos[0]), int(ret_pos[1])]}
         row['saodang_data'] = zuwu_lib.encode_sao(
             vo.get('sdid') if vo else None,
             vo.get('start') if vo else 0, vo.get('chixu') if vo else 0,
@@ -30211,12 +30346,38 @@ class Session:
         frames.append(frame(amf3_encode(['108002', [1, int(did)]])))
         return tuple(frames)
 
+    def _zuwu_home_frames(self, rid, attempt):
+        """Return a role to its pre-copy position and drop the copy."""
+        try:
+            ret_map = attempt.get('return_map')
+            ret_pos = attempt.get('return_pos') or [0, 0]
+            stage = attempt.get('stage')
+            if ret_map is None:
+                return []
+            if self.stage_registry is not None:
+                try:
+                    if str(self.stage_registry.stage_of(rid)) != str(stage) \
+                            and stage is not None:
+                        return []
+                except Exception:
+                    pass
+            frames = list(self.change_map(
+                rid, str(ret_map), int(ret_pos[0]), int(ret_pos[1])))
+            if self.stage_registry is not None and stage is not None:
+                try:
+                    self.stage_registry.destroy_instance_if_empty(stage)
+                except Exception:
+                    pass
+            return frames
+        except Exception:
+            return []
+
     def _zuwu_expire(self, rid):
         """Forced-leave timer: an unfinished attempt ends (S:EXPIRE_ZW).
 
         The stage copy expires on its own clock; the bus side drops the
-        attempt marker and the center flag so the role can enter again.
-        The role keeps its map (no stagecontroll home routing is ported).
+        attempt marker and the center flag so the role can enter again,
+        returning the role to its pre-copy position (applyReturnLastStage).
         """
         from . import zuwu as zuwu_lib
         attempt = self._zuwu_attempt.pop(str(rid), None)
@@ -30238,14 +30399,14 @@ class Session:
             vo.get('sdid'), vo.get('start'), vo.get('chixu'),
             vo.get('autopass'), False)
         self._zuwu_save(rid, row)
-        return None
+        frames = self._zuwu_home_frames(str(rid), attempt)
+        return tuple(frames) if frames else None
 
     def zuwu_quit(self):
         """Command 108006: leave the dungeon, [1].
 
         quitFuben clears center, persists, drops the attempt and expiry,
-        and answers [1] (the SC:APPLY_CHANG_MAP home routing needs the
-        unported stagecontroll history, so the role keeps its map).
+        and returns the role to its pre-copy position (applyReturnLastStage).
         """
         from . import zuwu as zuwu_lib
         roles = self.get_roles(self.authed_user or '', self.server_id or '')
@@ -30260,12 +30421,14 @@ class Session:
                 vo.get('sdid'), vo.get('start'), vo.get('chixu'),
                 vo.get('autopass'), False)
             self._zuwu_save(rid, row)
-        self._zuwu_attempt.pop(str(rid), None)
+        attempt = self._zuwu_attempt.pop(str(rid), None)
         try:
             self.stage_scheduler.cancel(f'zuwu_expire:{rid}')
         except (AttributeError, KeyError, ValueError):
             pass
-        return frame(amf3_encode(['108006', [1]]))
+        home = self._zuwu_home_frames(str(rid), attempt or {})
+        reply = frame(amf3_encode(['108006', [1]]))
+        return (*home, reply) if home else reply
 
     def zuwu_saodang(self, msg):
         """Command 108004 [dungeonId|null]: start a sweep.
@@ -30599,7 +30762,18 @@ class Session:
                 rid = _wire_id(role)
             except Exception:
                 continue
-            self._zuwu_attempt.pop(str(rid), None)
+            attempt = self._zuwu_attempt.pop(str(rid), None)
+            if attempt is not None and self.stage_registry is not None:
+                try:
+                    self.stage_registry.unregister(str(rid))
+                except Exception:
+                    pass
+                try:
+                    stage = attempt.get('stage')
+                    if stage is not None:
+                        self.stage_registry.destroy_instance_if_empty(stage)
+                except Exception:
+                    pass
             row = self._zuwu_row(rid)
             if row.get('saodang_data') is None:
                 continue
@@ -32364,11 +32538,12 @@ class Session:
                     pass
 
     def _zuwu_kill_progress(self, owner_role, monster_tpl_id):
-        """ZuWuStageCopy.killMonster for shared-world dungeon kills.
+        """ZuWuStageCopy.killMonster for dungeon-copy kills.
 
-        Only the active attempt's wanted templates count; every kill
-        pushes 108008 like the stage copy, and reaching the wanted
-        total ends the copy (finishFuBen): unlock, rewards, 108003.
+        Only the active attempt's wanted templates count, and only kills
+        in the killer's own copy; every counted kill pushes 108008 like
+        the stage copy, and reaching the wanted total ends the copy
+        (finishFuBen): unlock, rewards, 108003, return home.
         """
         try:
             rid = _wire_id(owner_role)
@@ -32377,6 +32552,13 @@ class Session:
         attempt = self._zuwu_attempt.get(str(rid))
         if attempt is None:
             return []
+        try:
+            if attempt.get('stage') is not None and self.stage_registry is not None:
+                live = self.stage_registry.stage_of(str(rid))
+                if str(live) != str(attempt.get('stage')):
+                    return []
+        except Exception:
+            pass
         cfg = self._zuwu_cfg(attempt.get('dungeon'))
         if cfg is None:
             return []
@@ -32435,6 +32617,7 @@ class Session:
             self.stage_scheduler.cancel(f'zuwu_expire:{rid}')
         except (AttributeError, KeyError, ValueError):
             pass
+        out.extend(self._zuwu_home_frames(str(rid), attempt))
         out.append(frame(amf3_encode(['108003', [did, formarts]])))
         return out
 

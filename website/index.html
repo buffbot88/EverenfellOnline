@@ -22,7 +22,7 @@
   <header class="header">
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="https://www.agpstudios.org/"><b>AGP</b> STUDIOS</a>
-      <div class="links"><a href="#top">Home</a><a href="#game">The Game</a><a id="nav-preregister" href="#preregister">Pre-register</a></div>
+      <div class="links"><a href="#top">Home</a><a id="nav-play" class="nav-action" href="/servers/" hidden>Play</a><a id="nav-preregister" href="#preregister">Pre-register</a></div>
       <button id="signin" class="nav-action" type="button">Sign in</button>
       <details id="account" class="account" hidden>
         <summary id="account-name">Account</summary>
@@ -55,6 +55,7 @@
       <p id="auth-message" class="status" role="status" aria-live="polite"></p>
     </form>
   </dialog>
+  <script src="/access.js"></script>
   <script>
     const API = 'https://www.agpstudios.org/api';
     const dialog = document.querySelector('#auth-dialog');
@@ -72,11 +73,14 @@
       account.hidden = !user;
       document.querySelector('#nav-preregister').hidden = !!user;
       document.querySelector('#preregister').hidden = !!user;
+      document.querySelector('#nav-play').hidden = !window.EverenfellAccess.canPlay(user);
       if (user) {
         document.querySelector('#account-name').textContent = user.display_name || user.username;
         document.querySelector('#welcome').textContent = `Signed in as ${user.username}`;
         document.querySelector('#email').textContent = user.email;
-        status.textContent = 'Your AGP Studios account is connected. Game access will open here when available.';
+        status.textContent = window.EverenfellAccess.canPlay(user)
+          ? 'Your account is ready. Play Everenfell.'
+          : 'Everenfell is under maintenance; only admins can play right now.';
       } else {
         status.textContent = '';
       }

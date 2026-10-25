@@ -36,6 +36,7 @@ function devMapTiles(): Plugin {
 
 export default defineConfig({
   plugins: [devMapTiles()],
+  base: '/websites/everenfell/',
   server: {
     port: 5173,
     proxy: {

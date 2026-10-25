@@ -26,6 +26,8 @@ export interface AppOptions {
   gatewayUrl: string;
   /** Website homepage for signed-out visitors (`?website=` override). */
   websiteUrl: string;
+  /** Server selected on the website's server-selection page. */
+  serverId?: string;
 }
 
 export class App {
@@ -130,6 +132,10 @@ export class App {
       panel.appendChild(retry);
       this.options.uiMount.appendChild(panel);
       this.setStatus('Signed out.');
+      return;
+    }
+    if (this.options.serverId && GAME_SERVERS.some((server) => server.id === this.options.serverId)) {
+      await this.login(this.options.serverId);
       return;
     }
     const panel = document.createElement('div');

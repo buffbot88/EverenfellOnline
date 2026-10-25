@@ -457,7 +457,8 @@ def title_condition(kind, values, ctx, row=None):
         return (int(ctx.get('wing_level') or 0) >= _cell(v, 0)
                 and int(ctx.get('wing_books') or 0) >= _cell(v, 1))
     if kind == 9:
-        return (bool(ctx.get('shenjiang_done'))
+        finished = {str(i) for i in ctx.get('shenjiang_finished') or []}
+        return (str(_cell(v, 0)) in finished
                 and int(ctx.get('shenjiang_count') or 0) >= _cell(v, 1))
     if kind == 10:
         return (int(ctx.get('skill_count') or 0) >= _cell(v, 0)
@@ -552,6 +553,100 @@ def title_activate(table, row, kind, ctx):
         row = dict(row)
         row['chenhao_id'] = json.dumps(out)
     return row, granted
+
+
+def show_data(kind, title_id, ctx, row=None):
+    """getshowData: the 91002 progress cells for one title.
+
+    One entry per configured title id, in getIdAll order, shaped by the
+    title's limit1 exactly like the jar: ``[id, ...progress]``. Types 25
+    and 26 have no live source and answer ``[id, null]``; type 27 reads
+    the title's ``value2`` task ids.
+    """
+    tid = str(title_id)
+    if kind == 1:
+        return [tid, _int(ctx.get('sign_in_total'))]
+    if kind == 2:
+        return [tid, _int(ctx.get('bag_used')),
+                _int(ctx.get('storage_used'))]
+    if kind == 3:
+        return [tid, _int(ctx.get('store_buy')), _int(ctx.get('store_sell')),
+                _int(ctx.get('store_back'))]
+    if kind == 4:
+        return [tid, _int(ctx.get('onhook_minutes'))]
+    if kind == 5:
+        return [tid, _int(ctx.get('kill_monster')),
+                _int(ctx.get('kill_ghost')), _int(ctx.get('kill_god'))]
+    if kind == 6:
+        return [tid, _int(ctx.get('friend_count')),
+                _int(ctx.get('foe_count'))]
+    if kind == 7:
+        return [tid, _int(ctx.get('zuoqi_rank')),
+                _int(ctx.get('zuoqi_books'))]
+    if kind == 8:
+        return [tid, _int(ctx.get('wing_level')),
+                _int(ctx.get('wing_books'))]
+    if kind == 9:
+        finished = {str(i) for i in ctx.get('shenjiang_finished') or []}
+        ids = [i for i in str((row or {}).get('value1') or '').split('|')
+               if i]
+        return [tid, str(ids[0] if ids else '') in finished,
+                _int(ctx.get('shenjiang_count'))]
+    if kind == 10:
+        return [tid, _int(ctx.get('skill_count')),
+                _int(ctx.get('skill_max'))]
+    if kind == 11:
+        return [tid, bool(ctx.get('has_guild')),
+                _int(ctx.get('banggong'))]
+    if kind == 12:
+        return [tid, bool(ctx.get('has_team'))]
+    if kind == 13:
+        return [tid, _int(ctx.get('store_yb')),
+                _int(ctx.get('store_bind'))]
+    if kind == 14:
+        return [tid, _int(ctx.get('fuben_finish')),
+                _int(ctx.get('fuben_saodang'))]
+    if kind == 15:
+        return [tid, _int(ctx.get('task_finish')),
+                _int(ctx.get('task_tunshi')),
+                _int(ctx.get('task_miaosha'))]
+    if kind == 16:
+        return [tid, _int(ctx.get('meiren_count')),
+                _int(ctx.get('meiren_chanmian'))]
+    if kind == 17:
+        return [tid, _int(ctx.get('qibing_level')),
+                _int(ctx.get('qibing_books'))]
+    if kind == 18:
+        return [tid, _int(ctx.get('gear_worn')),
+                _int(ctx.get('gear_quality'))]
+    if kind == 19:
+        return [tid, _int(ctx.get('fight'))]
+    if kind == 20:
+        return [tid, _int(ctx.get('equip_qianghua')),
+                _int(ctx.get('gear_seven_star'))]
+    if kind == 21:
+        return [tid, _int(ctx.get('tanwei_sell')),
+                _int(ctx.get('tanwei_buy'))]
+    if kind == 22:
+        return [tid, _int(ctx.get('dazuo_minutes'))]
+    if kind == 23:
+        return [tid, _int(ctx.get('baoshi_count_0')),
+                _int(ctx.get('baoshi_count_1'))]
+    if kind == 24:
+        return [tid, _int(ctx.get('popularity_0')),
+                _int(ctx.get('popularity_1'))]
+    if kind in (25, 26):
+        return [tid, None]
+    if kind == 27:
+        done = {str(i) for i in ctx.get('finished_task_ids') or []}
+        ids = [i for i in str((row or {}).get('value2') or '').split('|')
+               if i]
+        if len(ids) >= 2:
+            return [tid, ids[0] in done, ids[1] in done]
+        if ids:
+            return [tid, ids[0] in done]
+        return [tid, False]
+    return [tid, None]
 
 
 def data_cells(row):

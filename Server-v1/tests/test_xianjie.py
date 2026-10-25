@@ -263,6 +263,92 @@ class XianjieHuoyueTest(unittest.TestCase):
         got = self.wire(91001, '1')
         self.assertEqual(got, [['91001', [0, 90003]]])
 
+    # -- 91002 / ranks ---------------------------------------------------
+    def _activity(self, amount):
+        self.store.save_role_xianjiehuoyuedu(
+            self.role_id, huoyuedu=amount, huoyuedu_list='{}',
+            meiri_jiangli_time=self._today())
+
+    def test_data_panel_lists_every_title(self):
+        got = self.wire(91002, None)
+        body = got[0][1]
+        self.assertEqual(body[0], None)
+        self.assertEqual(body[1], 0)
+        self.assertEqual(body[2], '1')
+        self.assertEqual(body[3], [])
+        self.assertEqual(len(body[4]), 72)
+        self.assertEqual(body[4][0], ['1', 0])
+
+    def test_rank_one_needs_its_activity(self):
+        got = self.wire(91003, '1')
+        self.assertEqual(got, [['91003', [0, 91003]]])
+        self.assertIsNone(self.store.get_role_xianjiechenhao(self.role_id))
+
+    def test_rank_upgrade_appends_switch_and_refreshes(self):
+        self._activity(150)
+        got = self.wire(91003, '1')
+        codes = [f[0] for f in got]
+        # Rank 1 has gonggao 0, so no 11101 rides it.
+        self.assertEqual(codes, ['91004', '12000', '91003', '12010'])
+        self.assertEqual(got[0][1], '1')
+        self.assertEqual(got[2][1], [1, '1'])
+        self.assertEqual(got[3][1][11], self.cfg.xianjie_fight('1'))
+        self.assertIn('"1"', self.store.get_role_xianjiechenhao(
+            self.role_id)['xianjie_id'])
+
+    def test_rank_five_broadcasts_the_upgrade(self):
+        self._activity(11250)
+        for rank in ('1', '2', '3', '4'):
+            self.wire(91003, rank)
+        got = self.wire(91003, '5')
+        self.assertEqual(got[0][0], '11101')
+        self.assertEqual(got[0][1][0], 91010)
+        self.assertEqual(got[0][1][1][0], 'Wukong')
+        self.assertEqual(got[0][1][1][1],
+                         self.cfg.xianjie_table()['5']['mingcheng'])
+
+    def test_rank_one_twice_is_denied(self):
+        self._activity(150)
+        self.wire(91003, '1')
+        got = self.wire(91003, '1')
+        self.assertEqual(got, [['91003', [0, 91002]]])
+
+    def test_rank_two_needs_rank_one(self):
+        self._activity(5000)
+        got = self.wire(91003, '2')
+        self.assertEqual(got, [['91003', [0, 91001]]])
+
+    def test_rank_chain_works_with_enough_activity(self):
+        self._activity(5000)
+        self.wire(91003, '1')
+        got = self.wire(91003, '2')
+        reply = [f for f in got if f[0] == '91003']
+        self.assertEqual(reply, [['91003', [1, '2']]])
+        body = self.wire(91002, None)[0][1]
+        self.assertEqual(body[2], '2')
+        self.assertEqual(body[1], 5000)
+
+    def test_switch_rank_stores_selection(self):
+        self._activity(150)
+        self.wire(91003, '1')
+        got = self.wire(91004, '1')
+        self.assertEqual(got, [['91004', [1, '1']]])
+        self.assertEqual(self.store.get_role_xianjiechenhao(
+            self.role_id)['xianjie_qiyong'], '1')
+        self.assertEqual(self.wire(91002, None)[0][1][0], '1')
+
+    def test_switch_to_unowned_rank_is_silent(self):
+        self.assertIsNone(self.sess.xianjie_switch([91004, '3']))
+
+    def test_rank_bag_feeds_12000(self):
+        before = self.wire(12000, None)[0][1]
+        self._activity(150)
+        self.wire(91003, '1')
+        after = self.wire(12000, None)[0][1]
+        moved = [key for key in after
+                 if int(after[key]) != int(before.get(key, 0))]
+        self.assertTrue(moved)
+
 
 if __name__ == '__main__':
     unittest.main()

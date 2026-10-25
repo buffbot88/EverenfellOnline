@@ -2516,6 +2516,12 @@ class Session:
             return self.xianjie_huoyue_miaosha(msg)
         if cmd_num == CMD_XIANJIE_REWARD:
             return self.xianjie_huoyue_claim(msg)
+        if cmd_num == CMD_XIANJIE_DATA:
+            return self.xianjie_data(msg)
+        if cmd_num == CMD_XIANJIE_UPGRADE:
+            return self.xianjie_upgrade(msg)
+        if cmd_num == CMD_XIANJIE_SWITCH:
+            return self.xianjie_switch(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
                         86000, 85000,
@@ -4441,6 +4447,301 @@ class Session:
                         self.conn_id, exc_info=True)
         return frame(amf3_encode(
             [str(CMD_XIANJIE_REWARD), [1, str(reward_id)]]))
+
+    # -- xianjie ranks / chenghao data ---------------------------------
+    def _xianjie_ch_row(self, rid):
+        """role_xianjiechenhao row with the Java defaults filled in."""
+        try:
+            stored = self.get_role_xianjiechenhao(rid)
+        except Exception:
+            stored = None
+        row = dict(stored or {})
+        row.setdefault('xianjie_id', '[]')
+        row.setdefault('chenhao_id', '[]')
+        row.setdefault('xianjie_qiyong', None)
+        row.setdefault('xianjie_data', '{}')
+        return row
+
+    def _xianjie_ch_save(self, rid, row):
+        """Persist the xianjie/chenghao row; False when the store refused."""
+        try:
+            return bool(self.save_role_xianjiechenhao(
+                rid,
+                xianjie_id=row.get('xianjie_id') or '[]',
+                chenhao_id=row.get('chenhao_id') or '[]',
+                xianjie_qiyong=row.get('xianjie_qiyong') or '',
+                xianjie_data=row.get('xianjie_data') or '{}',
+                xianjie_time=row.get('xianjie_time') or 0,
+                log_update_time=row.get('log_update_time') or 0))
+        except Exception:
+            log.warning('conn %d: xianjie save failed', self.conn_id,
+                        exc_info=True)
+            return False
+
+    def _xianjie_context(self, role, rid, stored=None):
+        """Live cells the limit1 title engine and 91002 progress read.
+
+        Sources are the port's own systems; a system with no port hook
+        reads 0, which is Java's empty-source default rather than a fake
+        value. The XianJieData half keeps Java's field names so the
+        changeData producers can write straight into it.
+        """
+        ctx = {}
+        row = stored if stored is not None else self._xianjie_ch_row(rid)
+        data = xianjie_lib.data_cells(row)
+        for key, value in data.items():
+            ctx[key] = value
+        # Story counters (limit1 3) are story_buy/sell/back, already in
+        # the data cells under those names.
+        ctx['store_buy'] = int(data.get('story_buy') or 0)
+        ctx['store_sell'] = int(data.get('story_sell') or 0)
+        ctx['store_back'] = int(data.get('story_back') or 0)
+        try:
+            qiandao = self.get_role_qiandao(rid) or {}
+            ctx['sign_in_total'] = int(
+                qiandao.get('total_qiandao_count') or 0)
+        except (TypeError, ValueError):
+            ctx['sign_in_total'] = 0
+        try:
+            bag = self.get_role_bag_slots(rid, 1, 150) or []
+            storage = self.get_role_bag_slots(rid, 151, 1000000) or []
+            ctx['bag_used'] = len(bag)
+            ctx['storage_used'] = len(storage)
+        except Exception:
+            ctx['bag_used'] = 0
+            ctx['storage_used'] = 0
+        try:
+            ctx['friend_count'] = int(self.count_friend_links('friend', rid))
+            ctx['foe_count'] = int(self.count_friend_links('foe', rid))
+        except Exception:
+            ctx['friend_count'] = 0
+            ctx['foe_count'] = 0
+        try:
+            mount = self.get_role_zuoqi(rid) or {}
+            ctx['zuoqi_rank'] = int(mount.get('zuoqi_rank') or 0)
+        except (TypeError, ValueError):
+            ctx['zuoqi_rank'] = 0
+        ctx['zuoqi_books'] = self._skillbook_band_count(
+            rid, SKILLBOOK_ZUOQI)
+        try:
+            wing = self.get_role_guangyi(rid) or {}
+            ctx['wing_level'] = int(wing.get('level') or 0)
+        except (TypeError, ValueError):
+            ctx['wing_level'] = 0
+        ctx['wing_books'] = self._skillbook_band_count(
+            rid, SKILLBOOK_GUANGYI)
+        try:
+            shenjiang = self.get_role_shenjiang(rid) or []
+        except Exception:
+            shenjiang = []
+        ctx['shenjiang_count'] = len(shenjiang)
+        ctx['shenjiang_finished'] = [
+            str(r.get('jieshu')) for r in shenjiang
+            if r.get('jieshu') not in (None, '', 0)]
+        try:
+            skills = self.get_role_skills(rid) or []
+        except Exception:
+            skills = []
+        ctx['skill_count'] = len(skills)
+        ctx['skill_max'] = max(
+            (int(s.get('level') or 0) for s in skills), default=0)
+        gid = None
+        try:
+            gid = self.get_guild_id(rid)
+        except Exception:
+            gid = None
+        ctx['has_guild'] = bool(gid)
+        ctx['banggong'] = 0
+        if gid is not None:
+            try:
+                member = self.get_guild_member(str(gid), rid) or {}
+                ctx['banggong'] = int(member.get('gongxian_sum')
+                                      or member.get('gongxian') or 0)
+            except (TypeError, ValueError):
+                pass
+        try:
+            ctx['has_team'] = self._team_export(rid) is not None
+        except Exception:
+            ctx['has_team'] = False
+        try:
+            meiren = self.get_role_meiren(rid) or []
+        except Exception:
+            meiren = []
+        ctx['meiren_count'] = len(meiren)
+        ctx['meiren_chanmian'] = sum(
+            int(m.get('meiren_heti') or 0) for m in meiren)
+        try:
+            qb = self.get_role_qibing(rid) or {}
+            ctx['qibing_level'] = int(qb.get('binqi_level') or 0)
+        except (TypeError, ValueError):
+            ctx['qibing_level'] = 0
+        ctx['qibing_books'] = self._skillbook_band_count(
+            rid, SKILLBOOK_QIZHAN)
+        try:
+            items = self.get_role_equip(rid) or []
+        except Exception:
+            items = []
+        ctx['gear_worn'] = len(items)
+        ctx['gear_quality'] = sum(
+            1 for it in items if int(it.get('rare_level') or 0) > 0)
+        seven = 0
+        for it in items:
+            try:
+                if xingxing_lv(equip_vo(it.get('attributes'))) >= 7:
+                    seven += 1
+            except (TypeError, ValueError):
+                continue
+        ctx['gear_seven_star'] = seven
+        try:
+            ctx['fight'] = self._fight_total(role)
+        except Exception:
+            ctx['fight'] = 0
+        try:
+            stones = self.get_role_baoshi(rid) or []
+        except Exception:
+            stones = []
+        ctx['baoshi_count_0'] = len(stones)
+        ctx['baoshi_count_1'] = len({str(s.get('baoshi_id'))
+                                     for s in stones})
+        ctx['popularity_0'] = 0
+        ctx['popularity_1'] = 0
+        finished = []
+        try:
+            for task in self.get_task_main(rid) or []:
+                if int(task.get('state') or 0) == 2:
+                    finished.append(str(task.get('id')))
+        except Exception:
+            pass
+        ctx['finished_task_ids'] = finished
+        return ctx
+
+    def _skillbook_band_count(self, rid, band):
+        """Worn skill books inside a slot band (get*SkillBooks().size())."""
+        lo, hi = band
+        try:
+            slots = self.get_role_skillbook_slots(rid) or []
+        except Exception:
+            return 0
+        count = 0
+        for slot in slots:
+            try:
+                num = int(slot.get('slot_num') or 0)
+            except (TypeError, ValueError):
+                continue
+            if lo <= num <= hi and int(slot.get('count') or 0) > 0:
+                count += 1
+        return count
+
+    def xianjie_data(self, msg):
+        """Command 91002: getxianJieChengHaoData.
+
+        Answers [selected rank, lifetime activity, max owned rank, owned
+        title ids, showData], where showData holds one progress row per
+        configured title (getIdAll order) from the same limit1 cells the
+        activation engine reads.
+        """
+        role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        stored = self._xianjie_ch_row(rid)
+        ctx = self._xianjie_context(role, rid, stored)
+        activity = 0
+        try:
+            activity = int((self.get_role_xianjiehuoyuedu(rid) or {}).get(
+                'huoyuedu') or 0)
+        except (TypeError, ValueError):
+            activity = 0
+        titles = xianjie_lib.title_owned(stored)
+        show = []
+        if self.config is not None:
+            by_type = xianjie_lib.title_types(self.config.chenghao_table())
+            for kind in sorted(by_type):
+                for cfg_row in by_type[kind]:
+                    show.append(xianjie_lib.show_data(
+                        kind, cfg_row.get('chenghaoid'), ctx, cfg_row))
+        return frame(amf3_encode([str(CMD_XIANJIE_DATA), [
+            stored.get('xianjie_qiyong'), activity,
+            self.xianjie_id_for(stored), titles, show]]))
+
+    def xianjie_upgrade(self, msg):
+        """Command 91003: upgradeChengHao -> exchange one rank.
+
+        Gates: previous rank owned (91001), already owned (91002), config
+        row (silent null), lifetime activity (91003). Success appends the
+        id, broadcasts 11101 [91010, [name, rankName]] when gonggao, pushes
+        91004, refreshes the attribute bag and 12010, then answers
+        [1, id]. Title re-evaluation follows in the chenghao slice.
+        """
+        role, rid = self._xianjie_self()
+        if rid is None or self.config is None:
+            return None
+        rank_id = self._xianjie_request_arg(msg)
+        if rank_id is None:
+            return None
+        table = self.config.xianjie_table()
+        row = self._xianjie_ch_row(rid)
+        try:
+            activity = int((self.get_role_xianjiehuoyuedu(rid) or {}).get(
+                'huoyuedu') or 0)
+        except (TypeError, ValueError):
+            activity = 0
+        if rank_id != '1':
+            try:
+                previous = str(int(rank_id) - 1)
+            except (TypeError, ValueError):
+                return None
+            if previous not in xianjie_lib.rank_owned(row):
+                return frame(amf3_encode(
+                    [str(CMD_XIANJIE_UPGRADE), [0, XIANJIE_ERR_PREV]]))
+        if rank_id in xianjie_lib.rank_owned(row):
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_UPGRADE), [0, XIANJIE_ERR_HAS]]))
+        cfg_row = table.get(rank_id)
+        if cfg_row is None:
+            return None
+        if int(cfg_row.get('huoyue') or 0) > activity:
+            return frame(amf3_encode(
+                [str(CMD_XIANJIE_UPGRADE), [0, XIANJIE_ERR_HUOYUE]]))
+        row = xianjie_lib.add_rank(row, rank_id)
+        row['xianjie_time'] = int(time.time() * 1000)
+        self._xianjie_ch_save(rid, row)
+        out = []
+        if int(cfg_row.get('gonggao') or 0):
+            out.append(frame(amf3_encode([
+                str(CMD_NOTICE_ALL),
+                [XIANJIE_ERR_NOTICE,
+                 [str(role.get('name') or ''),
+                  str(cfg_row.get('mingcheng') or '')]]])))
+        out.append(frame(amf3_encode(
+            [str(CMD_XIANJIE_SWITCH), rank_id])))
+        self._fight_changed()
+        try:
+            attrs = self.role_attribute_map(role)
+            if attrs is not None:
+                out.append(frame(amf3_encode(['12000', Obj(attrs)])))
+        except Exception:
+            pass
+        out.append(frame(amf3_encode(
+            [str(CMD_XIANJIE_UPGRADE), [1, rank_id]])))
+        return tuple(out)
+
+    def xianjie_switch(self, msg):
+        """Command 91004: qiYongChengHao -> select an owned rank.
+
+        Unknown or unowned ids answer nothing (Java returns null); a
+        success stores xianjie_qiyong and answers [1, id].
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        rank_id = self._xianjie_request_arg(msg)
+        row = self._xianjie_ch_row(rid)
+        if rank_id is None or rank_id not in xianjie_lib.rank_owned(row):
+            return None
+        row['xianjie_qiyong'] = rank_id
+        self._xianjie_ch_save(rid, row)
+        return frame(amf3_encode(
+            [str(CMD_XIANJIE_SWITCH), [1, rank_id]]))
 
     def loading_stub(self, msg, cmd_num):
         """Post-21000 loading replies: exact fresh-role Java shapes.
@@ -7376,6 +7677,25 @@ class Session:
 
     def _fighting_frame(self, role):
         """The 12010 frame for one role (shared by the query and the push)."""
+        return frame(amf3_encode(['12010', self._fight_slots(role)]))
+
+    def _fight_total(self, role):
+        """getRoleFight: the sum of every populated 12010 bucket.
+
+        Java keeps RoleZhanDouLi's buckets and getRoleFight adds them; the
+        port's wrapper is the same data, so a leaf sum of _fight_slots is
+        the total the title condition and rank notices read.
+        """
+        def add(value):
+            if isinstance(value, (list, tuple)):
+                return sum(add(v) for v in value)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return value
+            return 0
+        return int(add(self._fight_slots(role)))
+
+    def _fight_slots(self, role):
+        """The 25-slot ZhanDouLiWrapper.getFightObject list for a role."""
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
@@ -7484,14 +7804,14 @@ class Session:
                                                      SKILLBOOK_QIZHAN)
             guangyi_book = self._skillbook_band_fight(role.get('id'),
                                                       SKILLBOOK_GUANGYI)
-        return frame(amf3_encode(['12010', [
+        return [
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
             [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
             [qibing, qibing_dan], xianjie,
             0, zuoqi_book, qibing_book, 0,
             [guangyi, guangyi_dan, guangyi_book],
-            0, 0, 0, 0, 0, 0, [0, 0], 0]]))
+            0, 0, 0, 0, 0, 0, [0, 0], 0]
 
     def equip_info(self):
         """Command 31000: RoleEquipSlotServiceImpl.getInfoEquip -> formart1(List).

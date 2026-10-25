@@ -1,4 +1,4 @@
-"""MonkeyKingOnline Python server: game TCP :8008 + web account API.
+"""Everenfell Python server: game TCP :8008 + web account API.
 
 Replaces the Java game server + ESSamp Apache/PHP + MySQL with stdlib
 Python + SQLite (Pillow only for the captcha image).

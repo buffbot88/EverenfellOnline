@@ -2,7 +2,7 @@
 
 ## What this is
 
-A preservation/revival project for **MonkeyKingOnline (DNTG / 大闹天空, "TonNgoKhong")**, a 2014-era Chinese 2D MMO. Goal: keep the original Flash client running (Flash is EOL) and replace the Windows-only Java server + PHP/MySQL stack with a portable Python server. The end goal is a **downloadable desktop client**.
+A preservation/revival project for **Everenfell (the revival of MonkeyKingOnline, DNTG / 大闹天空, "TonNgoKhong")**, a 2014-era Chinese 2D MMO. Goal: keep the original Flash client running (Flash is EOL) and replace the Windows-only Java server + PHP/MySQL stack with a portable Python server. The end goal is a **downloadable desktop client**.
 
 ## Current state (read first)
 

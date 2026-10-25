@@ -1,7 +1,8 @@
-# MonkeyKingOnline Python Server (DNTG / 大闹天空)
+# Everenfell Python Server (DNTG / 大闹天空)
 
 A portable **Python replacement for the Windows-only Java game server +
-PHP/MySQL stack** behind MonkeyKingOnline, a 2014-era 2D MMO. It serves the
+PHP/MySQL stack** behind Everenfell, the revival of the 2014-era 2D MMO
+MonkeyKingOnline. It serves the
 original Flash client's account HTTP API and game socket from one process,
 using only the Python standard library plus Pillow (captcha image) —
 accounts, sessions and characters persist in **SQLite**.

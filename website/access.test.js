@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const window = {};
-const source = await readFile(new URL('./access.js', import.meta.url), 'utf8');
+const source = await readFile(new URL('./public/access.js', import.meta.url), 'utf8');
 vm.runInNewContext(source, { window, fetch() {} });
 const access = window.EverenfellAccess;
 

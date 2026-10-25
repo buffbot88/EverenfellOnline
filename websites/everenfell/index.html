@@ -7,13 +7,28 @@
     <title>Everenfell</title>
     <style>
       html, body { margin: 0; height: 100%; background: #06121b; overflow: hidden; }
-      #app { position: fixed; inset: 0; }
+      #sitebar { position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 5;
+        display: flex; align-items: center; gap: 18px; padding: 0 16px;
+        border-bottom: 1px solid #96c3d729; background: #06121bef;
+        font-family: system-ui, sans-serif; font-size: 13px; color: #b6c7cd; }
+      #sitebar a { color: inherit; text-decoration: none; }
+      #sitebar a:hover { color: #f6d16b; }
+      #sitebar .brand { font-weight: 800; letter-spacing: .1em; white-space: nowrap; }
+      #sitebar .brand b { color: #f1c25b; }
+      #sitebar-account { margin-left: auto; white-space: nowrap; }
+      #app { position: fixed; inset: 44px 0 0 0; }
       #app canvas { display: block; }
-      #ui { position: fixed; inset: 0; pointer-events: none; }
+      #ui { position: fixed; inset: 44px 0 0 0; pointer-events: none; }
       #ui > * { pointer-events: auto; }
     </style>
   </head>
   <body>
+    <header id="sitebar">
+      <a class="brand" href="/"><b>AGP</b> STUDIOS</a>
+      <a href="/">Home</a>
+      <a href="/servers/">Servers</a>
+      <span id="sitebar-account"><a href="https://www.agpstudios.org/">Sign in</a></span>
+    </header>
     <div id="app"></div>
     <div id="ui"></div>
     <script src="/access.js"></script>

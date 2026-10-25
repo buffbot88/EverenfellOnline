@@ -6,8 +6,9 @@ Two identity systems exist. Neither is replaced or duplicated.
 
 ### 1a. Studio member system (canonical website identity) — EXTERNAL
 
-`website/index.html` (temporary maintenance homepage, **untouched**) signs
-members in against `https://www.agpstudios.org/api`:
+`website/` (Vite + React site; the former temporary maintenance homepage
+is now the `/` route with a shared navbar on every route) signs members
+in against `https://www.agpstudios.org/api`:
 
 - `POST /auth/login {identifier, password}` and `POST /auth/register
   {username, email, password, display_name}` (JSON, `credentials:

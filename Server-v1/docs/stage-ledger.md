@@ -63,7 +63,7 @@ copy. Line numbers and peer enter/leave wire records remain unported
   Members join the same stage/world, kills gate on live map + live
   copy + guild ownership, quit/expire return home, and the emptied copy
   is destroyed; killboss/reward rows stay per guild (shared progress).
-- `tests/test_stage_instances.py` (8): registry isolation, zuwu
+- `tests/test_stage_instances.py` (11): registry isolation, zuwu
   two-copy independence + quit-home, juqing two-copy independence +
   victory-home + disconnect-abandon, guild shared-copy + two-guild
   isolation + quit/disconnect cleanup.
@@ -106,7 +106,8 @@ copy. Line numbers and peer enter/leave wire records remain unported
 `tests/test_stage_sync.py` (10): map-type predicate, copy/story
 entry and steps skipping the row, alive/dead logout in each case,
 missing born config, and re-login placement at the offline save.
-`tests/test_stage_instances.py` (8) covers all three copy paths.
+`tests/test_stage_instances.py` (11) covers all three copy paths
+plus cross-session guild kick/disband/expire home delivery.
 Neighbors re-verified: teleport, change_map, movement_enter, revive,
-pvp, pickup, combat (consistency + shared), team, ground, juqing
-fuben (34), zuwu (23), guildfuben (22), monster death.
+pvp, pickup, combat (consistency + shared), team, guild (19),
+ground, juqing fuben (34), zuwu (23), guildfuben (22), monster death.

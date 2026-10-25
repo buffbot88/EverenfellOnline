@@ -415,6 +415,59 @@ class GuildCopyTest(unittest.TestCase):
         self.assertIsNone(self.reg.stage_of(brid))
         self.assertNotIn(stage, self.reg._maps)
 
+    def test_kick_returns_member_home_cross_session(self):
+        arid, asess, gid = self.guild()
+        brid, bsess = self.member(gid)
+        self.enter(asess)
+        self.enter(bsess)
+        stage = self.reg.stage_of(brid)
+        # The kick runs on the master's session; delivery rides the
+        # member's tick like peer pushes.
+        self.assertIsNone(asess._guildfuben_on_guild_leave(brid, gid))
+        ticked = bsess.tick() or ()
+        got = [amf3.decode(bytes(f)[4:]) for f in ticked]
+        self.assertTrue(any(f[0] == '20000' for f in got))
+        self.assertIn(['118004', [1]], got)
+        self.assertEqual(self.reg.map_of(brid), self.HOME)
+        self.assertEqual(self.reg.stage_of(brid), self.HOME)
+        # The kicker stays inside the surviving copy.
+        self.assertEqual(self.reg.stage_of(arid), stage)
+        self.assertNotIn(brid, bsess._guildfuben_attempt)
+
+    def test_disband_evicts_members_home(self):
+        arid, asess, gid = self.guild()
+        brid, bsess = self.member(gid)
+        self.enter(asess)
+        self.enter(bsess)
+        stage = self.reg.stage_of(arid)
+        members = [{'role_id': arid}, {'role_id': brid}]
+        own = asess._guildfuben_on_guild_disband(gid, members) or []
+        flat = []
+        for item in own:
+            if isinstance(item, (tuple, list)):
+                flat.extend(item)
+            else:
+                flat.append(item)
+        own_frames = [amf3.decode(bytes(f)[4:]) for f in flat]
+        self.assertTrue(any(f[0] == '20000' for f in own_frames))
+        ticked = bsess.tick() or ()
+        got = [amf3.decode(bytes(f)[4:]) for f in ticked]
+        self.assertTrue(any(f[0] == '20000' for f in got))
+        self.assertIn(['118004', [1]], got)
+        self.assertEqual(self.reg.map_of(arid), self.HOME)
+        self.assertEqual(self.reg.map_of(brid), self.HOME)
+        self.assertNotIn(stage, self.reg._maps)
+
+    def test_expire_returns_member_home(self):
+        arid, asess, _gid = self.guild()
+        self.enter(asess)
+        out = asess._guildfuben_expire(arid, 1) or ()
+        got = [amf3.decode(bytes(f)[4:]) for f in out]
+        self.assertTrue(any(f[0] == '20000' for f in got))
+        self.assertIn(['118004', [1]], got)
+        self.assertEqual(self.reg.map_of(arid), self.HOME)
+        self.assertNotIn(arid, asess._guildfuben_attempt)
+
 
 if __name__ == '__main__':
     unittest.main()

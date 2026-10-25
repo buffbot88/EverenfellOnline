@@ -68,8 +68,11 @@ baoxiangjiangli1..4 chest items).
   in SQLite (shared progress by design).
 - Entry/exit move through `change_map(stage_key=...)` plus
   `_guildfuben_home_frames` (pre-copy position rides the attempt, not
-  the bus RoleState history). Kick/evict/disband drop presence without
-  map frames (cross-session home routing unported).
+  the bus RoleState history). Kick/evict/disband run
+  `_guildfuben_evict_home` on the member's own session (queued via
+  `push_op` cross-session, riding that session's tick), so the member
+  gets the return-home map frames plus the 118004 notice; offline
+  members get registry cleanup only (Java isOnline gate).
 - The quartz `refreshAll` schedule runs as a lazy boundary check on
   access; the 10-minute cooldown is a per-session stamp map.
 - `11130`/`11003` guild-notice frames reuse the canonical guild

@@ -17302,8 +17302,7 @@ class Session:
             ok = self._guild_ok(CMD_GUILD_EXIT, 1)
             out = (ok,) + tuple(self._guild_broadcast(
                 gid, GUILD_PUSH_EXIT, [str(rid), sid]))
-            if evicted is not None:
-                out = out + (evicted,)
+            out = out + tuple(self._flat_evict_frames(evicted))
             return out
         if position == GUILD_POS_MASTER:
             try:
@@ -17319,7 +17318,11 @@ class Session:
             except Exception:
                 evicted = []
             out = [self._guild_ok(CMD_GUILD_EXIT, 1)]
-            out.extend(evicted or [])
+            for item in evicted or []:
+                if isinstance(item, (tuple, list)):
+                    out.extend(item)
+                else:
+                    out.append(item)
             for m in members:
                 out.extend(self._guild_push(m.get('role_id'),
                                             GUILD_PUSH_DISBAND, [1]))
@@ -17349,8 +17352,7 @@ class Session:
             ok = self._guild_ok(CMD_GUILD_EXIT, 1)
             out = (ok,) + tuple(self._guild_broadcast(
                 gid, GUILD_PUSH_EXIT, [str(rid)]))
-            if evicted is not None:
-                out = out + (evicted,)
+            out = out + tuple(self._flat_evict_frames(evicted))
             return out
 
     def _guild_kick(self, rid, caller, gid, target):
@@ -17394,8 +17396,7 @@ class Session:
         ok = self._guild_ok(CMD_GUILD_EXIT, 1)
         out = (ok,) + tuple(self._guild_broadcast(
             gid, GUILD_PUSH_EXIT, [target], exclude=target))
-        if evicted is not None:
-            out = out + (evicted,)
+        out = out + tuple(self._flat_evict_frames(evicted))
         return out
 
     def guild_by_role(self):
@@ -17482,7 +17483,7 @@ class Session:
             self.delete_guild(gid)
         except Exception:
             return None
-        frames = list(evicted or [])
+        frames = list(self._flat_evict_frames(evicted))
         for m in members:
             frames.extend(self._guild_push(m.get('role_id'),
                                           GUILD_PUSH_DISBAND, [1]))
@@ -31773,21 +31774,60 @@ class Session:
             except Exception:
                 continue
 
+    @staticmethod
+    def _flat_evict_frames(evicted):
+        """Flatten an evict result (single frame or tuple) into a frame list."""
+        if evicted is None:
+            return []
+        if isinstance(evicted, (tuple, list)):
+            out = []
+            for item in evicted:
+                if isinstance(item, (tuple, list)):
+                    out.extend(item)
+                else:
+                    out.append(item)
+            return out
+        return [evicted]
+
+    def _guildfuben_evict_home(self, rid, mainid):
+        """Drop one role from a dungeon on its own session, returning home.
+
+        Runs on the member's session (directly or via a queued op): the
+        attempt drops, the role returns to its pre-copy position through
+        the verified `change_map` path, the emptied copy is destroyed,
+        and the 118004 notice trails the map frames.
+        """
+        try:
+            attempt = self._guildfuben_attempt.get(str(rid))
+        except Exception:
+            attempt = None
+        try:
+            dropped = self._guildfuben_drop_attempt(str(rid), mainid)
+        except Exception:
+            dropped = None
+        try:
+            home = self._guildfuben_home_frames(str(rid), attempt or {})
+        except Exception:
+            home = []
+        out = list(home or [])
+        if dropped is not None:
+            out.append(dropped)
+        return tuple(out) if out else None
+
     def _guildfuben_evict(self, rid, mainid):
         """Drop one role from a dungeon, cross-session when needed.
 
         The attempt lives on the member's own session; when the evict
-        runs elsewhere the drop is queued on that session's tick (ops
-        ride the tick like peer pushes) so the 118004 notice is never
-        lost. Offline roles have no session, like Java's isOnline gate.
+        runs elsewhere the drop runs on that session's tick (ops ride
+        the tick like peer pushes) so the 118004 notice and the
+        return-home map frames are never lost. Offline roles have no
+        session, like Java's isOnline gate: only registry cleanup runs.
         """
         sess = None
         try:
             sess = self._team_session_of(str(rid))
         except Exception:
             sess = None
-        out = frame(amf3_encode(
-            [str(CMD_GUILDFUBEN_QUIT), [int(mainid)]]))
         if sess is None:
             try:
                 self._guildfuben_drop_attempt(str(rid), mainid)
@@ -31796,16 +31836,15 @@ class Session:
             return None
         if sess is self:
             try:
-                self._guildfuben_drop_attempt(str(rid), mainid)
+                return self._guildfuben_evict_home(str(rid), int(mainid))
             except Exception:
-                pass
-            return out
+                return None
         # The drop runs on the member session's tick and its return
         # rides that tick exactly once (no separate push needed).
         try:
             sess.push_op(
                 lambda s=sess, r=str(rid), m=int(mainid):
-                s._guildfuben_drop_attempt(r, m))
+                s._guildfuben_evict_home(r, m))
         except Exception:
             pass
         return None
@@ -31877,8 +31916,7 @@ class Session:
                     out = self._guildfuben_evict(mid, mainid)
                 except Exception:
                     continue
-                if out is not None:
-                    own.append(out)
+                own.extend(self._flat_evict_frames(out))
         try:
             self.delete_guild_fubens(str(gid))
         except Exception:

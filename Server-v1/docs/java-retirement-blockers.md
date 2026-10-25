@@ -33,9 +33,12 @@ No hard blocker remains inside the migrated scope:
    peer-visible frame (no `*Commands` constant names it in any
    two-role capture). Movement/AOI itself is correct; only the exact
    peer record shape is missing.
-3. Kick/evict/disband home routing: presence/attempts drop
-   cross-session via tick ops, but the evicted role gets no
-   `change_map` home frames (quit/expire/victory paths do).
+3. ~~Kick/evict/disband home routing~~ — closed: `_guildfuben_evict_home`
+   runs on the member's own session (queued via `push_op`
+   cross-session), delivering return-home map frames plus the 118004
+   notice; offline members get registry cleanup only. Covered in
+   `tests/test_stage_instances.py` (GuildCopyTest kick/disband/expire)
+   and the `test_guildfuben.py` exit/disband tests.
 4. `hisRolePosition` bus history for arbitrary (non-dungeon) stage
    hops: dungeon return-home is stored per attempt and verified; the
    general history stays unported.
@@ -63,3 +66,8 @@ No hard blocker remains inside the migrated scope:
 Do not begin SWF extraction or client modernization: items D1–D2
 gate B1–B2, and guessing the frames would break parity rather than
 advance retirement.
+
+Python-only smoke (no Java process): Store migration + login-role
+read, `StageRegistry` + isolated `MonsterWorld` init, `change_map`
+(20000 path), `tick_sessions` round, and shared-registry second
+session all pass against the legacy config tree.

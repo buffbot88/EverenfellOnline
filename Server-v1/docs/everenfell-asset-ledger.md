@@ -148,3 +148,33 @@ Format, verified from headers only:
 Not established: which external PNG or embedded symbols gameUI references,
 how the HUD is laid out, and whether hash.dat lists gameui (hash.dat inflates
 with zlib, but no gameui entry was found in the decompressed text).
+
+## Runtime extraction of gameui: blocked at the launcher (verified 2026-10-25)
+
+Target: `MKO_Client/Assets/res/assets/tw/gameui.swf` (596,076 bytes).
+
+Tooling inspected:
+
+- `MKO_Client/flash-projector/flashplayer363.exe` (Flash Player 32.0.0.363)
+- `MKO_Client/flash-projector/flashplayer32_sa_debug.exe` (32.0.0.465, debug build)
+- `tools/projector-client.py` launches the projector only after a signed
+  session is obtained from the legacy web backend. Its default path
+  posts to `AccountHandler.php` and reads `Gamelogin.php`; its
+  `--api-base` path calls a separate API. Both need a live backend.
+
+Observed:
+
+- `tools/projector-client.py --dry-run` fails inside urllib with a
+  connection error, so no movie URL is produced and the projector is not
+  launched.
+- Something is listening on `127.0.0.1:8080` (PID 2220). Its identity is
+  unverified and it was not started by this investigation.
+
+Conclusion: runtime extraction of gameui cannot start without a live
+backend session. Retired PHP/Java must not be revived as production
+infrastructure, and this step does not do so. No gameui bytes were
+captured by this investigation.
+
+Next step that unblocks this: provide a signed flashvars/session capture
+from the original client run (or a verified loader trace) so that the
+projector can be launched once, without the backend running at runtime.

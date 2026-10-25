@@ -6,12 +6,13 @@ from world.enter eligibility, world renders snapshots and sends tile
 intents. The smallest playable loop ends at Render Player + Movement;
 NPCs, combat, inventory and quests attach as gateway ops land.
 */
-import { Application, Graphics } from 'pixi.js';
+import { Application } from 'pixi.js';
 import { AuthClient } from './net/auth';
 import { Gateway } from './net/gateway';
 import type { ActorSnapshot, WorldSnapshot } from './net/protocol';
 import { GAME_SERVERS } from './net/protocol';
 import { ActorLayer } from './world/actors';
+import { MapLayer } from './world/mapLayer';
 import { Camera } from './world/camera';
 import { Input } from './world/input';
 import { WindowManager } from './ui/windows';
@@ -27,8 +28,6 @@ export interface AppOptions {
   websiteUrl: string;
 }
 
-const GRID_STEP_TILES = 4;
-
 export class App {
   private pixi = new Application();
   private camera: Camera;
@@ -41,7 +40,7 @@ export class App {
   private statusEl: HTMLElement;
   private selfId: string | null = null;
   private selfTile = { x: 0, y: 0 };
-  private grid: Graphics | null = null;
+  private map: MapLayer | null = null;
 
   constructor(private readonly options: AppOptions) {
     this.camera = new Camera({ viewWidth: 1, viewHeight: 1 });
@@ -208,7 +207,7 @@ export class App {
       this.selfId = roleId;
       this.state = 'world';
       this.clearUi();
-      this.drawGrid(snapshot.mapId);
+      await this.drawMap();
       this.applySnapshot(snapshot);
       this.gateway.onPush('actor.moved', (body) => {
         const id = String(body['id'] ?? '');
@@ -259,25 +258,14 @@ export class App {
     }
   }
 
-  private drawGrid(mapId: string): void {
-    this.grid?.destroy();
-    const grid = new Graphics();
-    const stepX = GRID_STEP_TILES * 60;
-    const stepY = GRID_STEP_TILES * 30;
-    const w = this.pixi.screen.width + stepX * 2;
-    const h = this.pixi.screen.height + stepY * 2;
-    grid.setStrokeStyle({ width: 1, color: 0x1d3a4a, alpha: 0.6 });
-    for (let x = 0; x <= w; x += stepX) {
-      grid.moveTo(x, 0).lineTo(x, h);
-    }
-    for (let y = 0; y <= h; y += stepY) {
-      grid.moveTo(0, y).lineTo(w, y);
-    }
-    grid.stroke();
-    grid.zIndex = -1;
-    this.pixi.stage.addChildAt(grid, 0);
-    this.grid = grid;
-    void mapId;
+  /** Original map 0 tiles at native pixels (dev-only local asset source). */
+  private async drawMap(): Promise<void> {
+    this.map?.root.destroy({ children: true });
+    const map = new MapLayer();
+    await map.load();
+    map.root.zIndex = -2;
+    this.pixi.stage.addChildAt(map.root, 0);
+    this.map = map;
   }
 
   private renderWorldChrome(): void {

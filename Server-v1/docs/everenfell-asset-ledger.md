@@ -211,3 +211,29 @@ Verified at the request boundary:
 
 Not yet established: where the packed bytes are decoded into a SWF (the
 ByteArray / loadBytes step), and the HUD resource list.
+
+## Recovered gameui module from projector memory (verified 2026-10-25)
+
+Method: `scripts/asset_tools/dump_swf_from_memory.py` (read-only
+ReadProcessMemory scan of the running projector) writes every plausible
+SWF header it finds. Of the candidates, one matches the gameui module:
+
+- Source: memory candidate `mem-000010d40020-da6d57518e94.swf`, copied to
+  `output/gameui-recovered.swf` (local-only, `output/` is git-ignored).
+- 707,674 bytes, uncompressed FWS version 10, declared length equal to
+  file length.
+- sha256 `da6d57518e94021ada1afde2e00fdfe6689ac80ef9ad26bb9e53aeef63fae8d0`.
+- Tag walk from the header ends exactly at the declared length: 759 tags,
+  end tag reached at the final byte.
+- SymbolClass lists 96 entries, all HUD-style linkage names (`ui.panel.*`,
+  `ui.render.*`, `shared.ui.*`, `gameui_fla.*`). Strings `gameui` appear 7
+  times and `gameui_fla` symbols are present.
+
+The packed `assets/tw/gameui.swf` (596,076 bytes) is NOT decoded
+statically. The loader decodes it in RAM, and the decoded module is what
+the memory scan recovers. Decoded bytes are not published; the same
+rights rules as the rest of MKO_Client apply.
+
+Not yet established: the portrait and icon sheets the HUD references
+(`anhei_*`, `7sicon*`, `D11*`) are not in this module's strings, so they
+are loaded from elsewhere.

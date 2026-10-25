@@ -15,6 +15,7 @@ const app = new App({
   uiMount,
   apiBase: params.get('api') ?? '/legacy-api',
   gatewayUrl: params.get('gateway') ?? 'ws://127.0.0.1:8091/everenfell',
+  websiteUrl: params.get('website') ?? 'https://www.agpstudios.org/',
 });
 
 app.start().catch((err: unknown) => {

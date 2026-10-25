@@ -28,9 +28,11 @@ Dev proxy: `/legacy-api/*` forwards to the Python web API on
 `src/net/protocol.ts` is the contract. The gateway translates the
 server's authoritative TCP/AMF3 packets to JSON envelopes
 `{ op, seq, body }` with `{ op, seq, ok, body }` replies and seq-0
-pushes. Smallest loop: `auth.login -> auth.session -> world.enter ->
-world.snapshot -> player.move / actor.moved`. The gateway does not
-exist yet; the UI reports that honestly instead of faking a world.
+pushes. Smallest loop: `auth.session -> world.enter ->
+world.snapshot -> player.move / actor.moved`. Identity rides the
+website session cookie (no passwords in the client); the gateway
+enforces server scope and character ownership (see
+Server-v1/docs/website-accounts-s1.md).
 
 ## Assets
 

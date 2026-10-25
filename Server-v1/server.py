@@ -601,7 +601,7 @@ def main():
         gw_host, gw_port = a.gateway.rsplit(':', 1)
         gateway = GatewayServer(gw_host, int(gw_port), sessions,
                                 g_host, int(g_port), generate_sign,
-                                a.server_id)
+                                a.server_id, store=store)
         threading.Thread(target=gateway.serve_forever, daemon=True).start()
         log.info('gateway up: %s:%s', gw_host, gw_port)
     try:

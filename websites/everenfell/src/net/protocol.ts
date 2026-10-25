@@ -18,6 +18,16 @@ Later domains reuse server command semantics: npc.list, mob.list,
 combat.fire, combat.resolved, bag.*, skills.*, quests.*.
 */
 
+/** Browser-facing game servers. S1 only; later entries get their own
+ *  databases (see Server-v1/docs/website-accounts-s1.md). The id is
+ *  validated against the gateway registry — never trusted blindly. */
+export interface GameServerRef {
+  id: string;
+  name: string;
+}
+
+export const GAME_SERVERS: GameServerRef[] = [{ id: 'S1', name: 'S1' }];
+
 /** Domains the gateway will serve, in expansion order. */
 export const GATEWAY_OPS = [
   'auth.login',

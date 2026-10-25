@@ -13,8 +13,9 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from gateway import (GatewayError, GatewaySession, WsFrameReader,  # noqa: E402
-                     monster_actors, npc_actors, ws_accept_key,
-                     ws_encode_text, ws_handshake_response)
+                     SERVERS, handshake_cookies, monster_actors,
+                     npc_actors, ws_accept_key, ws_encode_text,
+                     ws_handshake_response)
 
 
 def masked_text_frame(text):
@@ -204,6 +205,136 @@ class SessionDispatchTest(unittest.TestCase):
                                          'body': {'x': 'far'}}))
         msg = self.last_message(conn)
         self.assertFalse(msg['ok'])
+
+
+class FakeLink:
+    """Headless upstream stub: canned 10001/10003/20000 replies."""
+
+    def __init__(self, roles=()):
+        self.roles = roles
+        self.sent = []
+
+    def connect(self, host, port):
+        pass
+
+    def send(self, cmd):
+        self.sent.append(cmd)
+
+    def wait_for(self, cmd, timeout=5.0):
+        if str(cmd) == '10001':
+            return ['10001', [1, None, None, self.roles]]
+        if str(cmd) == '10003':
+            return ['10003', ['ok']]
+        if str(cmd) == '20000':
+            return ['20000', ['apply', '3', [58, 149]]]
+        return None
+
+    def drain(self, timeout=0.2):
+        return []
+
+
+class FakeStore:
+    def __init__(self):
+        self.bindings = {}
+
+    def ensure_server_binding(self, member, server_id, game_account):
+        self.bindings.setdefault((member, server_id), game_account)
+        return self.bindings[(member, server_id)]
+
+
+class ServerBindingTest(unittest.TestCase):
+    def session(self, users=None, store=None, roles=()):
+        conn = FakeConn()
+        sess = GatewaySession(conn, FakeSessions(users or {}),
+                              '127.0.0.1', 8008,
+                              make_sign=lambda u, t: 'sig',
+                              store=store)
+        sess.link = FakeLink(roles)
+        return sess, conn
+
+    def auth(self, sess, conn, body, seq=1):
+        sess._handle_request(json.dumps({'op': 'auth.session', 'seq': seq,
+                                         'body': body}))
+        return self.last_message(conn)
+
+    def last_message(self, conn):
+        raw = bytes(conn.sent)
+        messages = []
+        while raw:
+            assert raw[0] == 0x81
+            length = raw[1]
+            pos = 2
+            if length == 126:
+                length = struct.unpack('>H', raw[2:4])[0]
+                pos = 4
+            elif length == 127:
+                length = struct.unpack('>Q', raw[2:10])[0]
+                pos = 10
+            messages.append(json.loads(bytes(raw[pos:pos + length]).decode()))
+            raw = raw[pos + length:]
+        return messages[-1]
+
+    def test_registry_lists_s1_only(self):
+        self.assertEqual(SERVERS, {'S1': 'fu1304'})
+
+    def test_handshake_cookie_parsing(self):
+        req = ('GET /everenfell HTTP/1.1\r\n'
+               'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+               'Cookie: mko_session=tok123; other=x\r\n\r\n')
+        self.assertEqual(handshake_cookies(req)['mko_session'], 'tok123')
+        self.assertEqual(handshake_cookies('GET / HTTP/1.1\r\n\r\n'), {})
+
+    def test_unknown_server_refused(self):
+        sess, conn = self.session({'tok': {'username': 'hero'}})
+        msg = self.auth(sess, conn, {'token': 'tok', 'server': 'S2'})
+        self.assertFalse(msg['ok'])
+        self.assertIn('unknown server', msg['body']['error'])
+
+    def test_auth_session_uses_handshake_cookie(self):
+        roles = [['7', 'Hero', 'A', 0, 1]]
+        sess, conn = self.session({'tok': {'username': 'hero'}},
+                                    store=FakeStore(), roles=roles)
+        sess.handshake_token = 'tok'
+        msg = self.auth(sess, conn, {'server': 'S1'})
+        self.assertTrue(msg['ok'])
+        self.assertEqual(msg['body']['member'], 'hero')
+        self.assertEqual(msg['body']['server'], 'S1')
+        login = [c for c in sess.link.sent if c[0] == 10001][0]
+        self.assertEqual(login[1][0], 'hero')
+        self.assertEqual(login[1][2], 'fu1304')
+
+    def test_binding_written_lazily_on_first_entry(self):
+        store = FakeStore()
+        roles = [['7', 'Hero', 'A', 0, 1]]
+        sess, conn = self.session({'tok': {'username': 'hero'}},
+                                    store=store, roles=roles)
+        self.assertEqual(store.bindings, {})
+        msg = self.auth(sess, conn, {'token': 'tok', 'server': 'S1'})
+        self.assertTrue(msg['ok'])
+        self.assertEqual(store.bindings, {('hero', 'fu1304'): 'hero'})
+
+    def test_snapshot_rejects_unowned_character(self):
+        sess, conn = self.session()
+        sess.username = 'hero'
+        sess.roles = [{'id': '7', 'name': 'Hero'}]
+        sess._handle_request(json.dumps({'op': 'world.snapshot', 'seq': 4,
+                                         'body': {'roleId': '9'}}))
+        msg = self.last_message(conn)
+        self.assertFalse(msg['ok'])
+        self.assertIn('not owned', msg['body']['error'])
+        self.assertIsNone(sess.role_id)
+
+    def test_snapshot_accepts_owned_character(self):
+        roles = [['7', 'Hero', 'A', 0, 1]]
+        sess, conn = self.session({'tok': {'username': 'hero'}},
+                                    roles=roles)
+        self.auth(sess, conn, {'token': 'tok', 'server': 'S1'})
+        sess._handle_request(json.dumps({'op': 'world.snapshot', 'seq': 5,
+                                         'body': {'roleId': '7'}}))
+        msg = self.last_message(conn)
+        self.assertTrue(msg['ok'])
+        self.assertEqual(msg['body']['mapId'], '3')
+        self.assertEqual(sess.role_id, '7')
 
 
 if __name__ == '__main__':

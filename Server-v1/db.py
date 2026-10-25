@@ -20,6 +20,18 @@ CREATE TABLE IF NOT EXISTS sessions (
   uid TEXT NOT NULL,
   created INTEGER NOT NULL
 );
+-- Website-member -> per-server game account binding (see
+-- docs/website-accounts-s1.md). Written lazily on first game entry,
+-- never at website registration. verified=0 until a server-side
+-- website-session check confirms the member id.
+CREATE TABLE IF NOT EXISTS member_links (
+  member TEXT NOT NULL,
+  server_id TEXT NOT NULL,
+  game_account TEXT NOT NULL,
+  verified INTEGER DEFAULT 0,
+  created INTEGER NOT NULL,
+  PRIMARY KEY(member, server_id)
+);
 CREATE TABLE IF NOT EXISTS role_settings (
   role_id INTEGER PRIMARY KEY,
   quickbar_info TEXT,
@@ -1163,6 +1175,31 @@ class Store:
         with self.lock:
             row = self.db.execute(
                 'SELECT * FROM accounts WHERE username=?', (username,)).fetchone()
+            return dict(row) if row else None
+
+    def ensure_server_binding(self, member, server_id, game_account):
+        """Record the member -> game account link for a server (lazy).
+
+        Called on first successful game entry only; returns the stored
+        game account. Existing rows are kept as-is (first link wins).
+        """
+        with self.lock:
+            self.db.execute(
+                'INSERT OR IGNORE INTO member_links(member, server_id,'
+                ' game_account, created) VALUES(?,?,?,?)',
+                (member, server_id, game_account, int(time.time())))
+            self.db.commit()
+            row = self.db.execute(
+                'SELECT game_account FROM member_links'
+                ' WHERE member=? AND server_id=?',
+                (member, server_id)).fetchone()
+            return row['game_account'] if row else game_account
+
+    def get_server_binding(self, member, server_id):
+        with self.lock:
+            row = self.db.execute(
+                'SELECT * FROM member_links WHERE member=? AND server_id=?',
+                (member, server_id)).fetchone()
             return dict(row) if row else None
 
     def close(self):

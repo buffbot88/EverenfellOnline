@@ -1,14 +1,18 @@
-/** Web account API client (PHP-compatible surface, new stack).
-
-Mirrors tools/projector-client.py login_api: POST AccountHandler.php
-with Action=Login, then GET gamesession.php on the same cookie jar.
-Keep this the single place that knows the legacy web shapes; the
-gateway will accept the resulting session, never raw passwords.
-*/
+/** Website session client: the game reuses the website member session.
+ *
+ * No passwords or registration live here (see
+ * Server-v1/docs/website-accounts-s1.md). The website signs members in
+ * and holds the session cookie; the client only asks the website backend
+ * whether that cookie is valid (gamesession.php over the same-origin
+ * API proxy, credentials included). The gateway reads the same cookie
+ * from the WebSocket handshake server-side, so the token never passes
+ * through JavaScript.
+ */
 
 export interface GameSession {
   ok: boolean;
-  user?: string;
+  uid?: string;
+  t?: string;
   sign?: string;
   server?: string;
   [key: string]: unknown;
@@ -17,31 +21,23 @@ export interface GameSession {
 export class AuthClient {
   constructor(private readonly apiBase: string) {}
 
-  async login(username: string, password: string): Promise<GameSession> {
-    const form = new URLSearchParams({
-      Action: 'Login',
-      uName: username,
-      uPas: password,
-    });
-    const loginRes = await fetch(`${this.apiBase}/AjaxRequest/AccountHandler.php`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      credentials: 'include',
-    });
-    if (!loginRes.ok) {
-      throw new Error(`login refused (http ${loginRes.status})`);
+  /** Current website session, or null when signed out (HTTP 401). */
+  async session(): Promise<GameSession | null> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.apiBase}/gamesession.php`, {
+        credentials: 'include',
+      });
+    } catch {
+      throw new Error('website unavailable');
     }
-    const sessionRes = await fetch(`${this.apiBase}/gamesession.php`, {
-      credentials: 'include',
-    });
-    if (!sessionRes.ok) {
-      throw new Error(`session refused (http ${sessionRes.status})`);
+    if (res.status === 401) {
+      return null;
     }
-    const session = (await sessionRes.json()) as GameSession;
-    if (!session.ok) {
-      throw new Error('session refused');
+    if (!res.ok) {
+      throw new Error(`session refused (http ${res.status})`);
     }
-    return session;
+    const session = (await res.json()) as GameSession;
+    return session.ok ? session : null;
   }
 }

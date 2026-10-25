@@ -44,6 +44,15 @@ from game.cipher import SimpleEncrypt
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 INITKEY = 'INITKEY'
 
+# Game server selector registry (see docs/website-accounts-s1.md). Keys
+# are the browser-facing ids; values are the game-scope server ids
+# characters are scoped to. S1 only: each future server gets its own
+# entry (and database). Cross-server play is a documented stub: nothing
+# here talks across entries.
+SERVERS = {'S1': 'fu1304'}
+
+SESSION_COOKIE = 'mko_session'
+
 
 def ws_accept_key(key):
     """RFC 6455 accept header for a client key (includes the test vector)."""
@@ -121,6 +130,22 @@ class WsFrameReader:
             else:
                 raise ValueError('unsupported ws opcode 0x%02X' % opcode)
         return events
+
+
+def handshake_cookies(request_text):
+    """Cookie header of a WebSocket upgrade request, as a dict."""
+    for line in request_text.split('\r\n')[1:]:
+        if ':' not in line:
+            continue
+        name, value = line.split(':', 1)
+        if name.strip().lower() == 'cookie':
+            out = {}
+            for part in value.split(';'):
+                if '=' in part:
+                    k, v = part.strip().split('=', 1)
+                    out[k] = v
+            return out
+    return {}
 
 
 def ws_handshake_response(request_text):
@@ -301,14 +326,22 @@ class GatewaySession:
     MOVE_WAIT_S = 1.0
 
     def __init__(self, conn, sessions, game_host, game_port,
-                 make_sign, server_id='fu1304'):
+                 make_sign, server_id='fu1304', store=None,
+                 servers=None):
         self.conn = conn
         self.sessions = sessions
         self.game_host = game_host
         self.game_port = game_port
         self.make_sign = make_sign
         self.server_id = server_id
+        self.store = store
+        self.servers = dict(servers) if servers else dict(SERVERS)
+        if 'S1' not in self.servers:
+            self.servers['S1'] = server_id
         self.username = None
+        self.member = None
+        self.game_server_id = server_id
+        self.handshake_token = None
         self.roles = []
         self.link = GameLink()
         self.reader = WsFrameReader()
@@ -317,6 +350,10 @@ class GatewaySession:
     def run(self):
         try:
             request = self._read_http_request()
+            # Same-host browsers send the website session cookie on the
+            # upgrade automatically; the token never passes through JS.
+            self.handshake_token = handshake_cookies(request).get(
+                SESSION_COOKIE)
             response = ws_handshake_response(request)
             if response is None:
                 self.conn.close()
@@ -397,17 +434,32 @@ class GatewaySession:
         self._send(op, seq, True, result)
 
     def op_auth_session(self, body):
-        rec = self.sessions.get(str(body.get('token') or ''))
+        token = str(body.get('token') or self.handshake_token or '')
+        rec = self.sessions.get(token)
         if not rec:
             raise GatewayError('invalid session')
-        self.username = rec.get('username') or rec.get('uid')
-        if not self.username:
+        member = rec.get('username') or rec.get('uid')
+        if not member:
             raise GatewayError('invalid session')
+        server = str(body.get('server') or 'S1')
+        if server not in self.servers:
+            raise GatewayError('unknown server: %s' % server)
+        game_server_id = self.servers[server]
+        # Lazy website-member -> per-server game account link: the row
+        # is written here on first game entry, never at registration.
+        if self.store is not None:
+            game_account = self.store.ensure_server_binding(
+                member, game_server_id, member)
+        else:
+            game_account = member
+        self.member = member
+        self.username = game_account
+        self.game_server_id = game_server_id
         self.link.connect(self.game_host, self.game_port)
         stamp = str(int(time.time()))
         sign = self.make_sign(self.username, stamp)
         self.link.send([10001, [self.username, float(stamp),
-                                self.server_id, False, sign, 0, 1]])
+                                self.game_server_id, False, sign, 0, 1]])
         reply = self.link.wait_for('10001', timeout=5.0)
         if not reply or len(reply) < 2 or not reply[1][0]:
             raise GatewayError('game login refused')
@@ -418,7 +470,8 @@ class GatewaySession:
              'level': r[4]}
             for r in roles
             if isinstance(r, list) and len(r) > 4]
-        return {'roles': self.roles}
+        return {'roles': self.roles, 'server': server,
+                'member': self.member}
 
     def op_world_enter(self, _body):
         if not self.username:
@@ -463,6 +516,9 @@ class GatewaySession:
         role_id = str(body.get('roleId') or '')
         if not role_id:
             raise GatewayError('roleId required')
+        owned = {r['id'] for r in (self.roles or []) if 'id' in r}
+        if role_id not in owned:
+            raise GatewayError('character not owned on this server')
         self.role_id = role_id
         map_id, at, frames = self._collect_snapshot(
             role_id, self.SNAPSHOT_WAIT_S)
@@ -505,7 +561,8 @@ class GatewayServer:
     """TCP accept loop for browser WebSocket connections (daemon threads)."""
 
     def __init__(self, host, port, sessions, game_host, game_port,
-                 make_sign, server_id='fu1304'):
+                 make_sign, server_id='fu1304', store=None,
+                 servers=None):
         self.host = host
         self.port = port
         self.sessions = sessions
@@ -513,6 +570,8 @@ class GatewayServer:
         self.game_port = game_port
         self.make_sign = make_sign
         self.server_id = server_id
+        self.store = store
+        self.servers = servers
         self.sock = None
 
     def serve_forever(self):
@@ -525,6 +584,7 @@ class GatewayServer:
             conn.settimeout(60)
             session = GatewaySession(conn, self.sessions, self.game_host,
                                      self.game_port, self.make_sign,
-                                     self.server_id)
+                                     self.server_id, store=self.store,
+                                     servers=self.servers)
             thread = threading.Thread(target=session.run, daemon=True)
             thread.start()

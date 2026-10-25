@@ -10,6 +10,7 @@ import { Application, Graphics } from 'pixi.js';
 import { AuthClient } from './net/auth';
 import { Gateway } from './net/gateway';
 import type { ActorSnapshot, WorldSnapshot } from './net/protocol';
+import { GAME_SERVERS } from './net/protocol';
 import { ActorLayer } from './world/actors';
 import { Camera } from './world/camera';
 import { Input } from './world/input';
@@ -22,6 +23,8 @@ export interface AppOptions {
   uiMount: HTMLElement;
   apiBase: string;
   gatewayUrl: string;
+  /** Website homepage for signed-out visitors (`?website=` override). */
+  websiteUrl: string;
 }
 
 const GRID_STEP_TILES = 4;
@@ -87,33 +90,85 @@ export class App {
     this.options.uiMount.querySelectorAll('.ev-view').forEach((node) => node.remove());
   }
 
+  /** Website-session gate: no password or registration form lives here.
+   *  Signed-out visitors go to the website homepage to sign in; members
+   *  pick a server and continue on the existing website session. */
   private renderLogin(): void {
     this.state = 'login';
     this.clearUi();
-    const form = document.createElement('form');
-    form.className = 'ev-view ev-login';
-    form.innerHTML =
-      `<h1>Everenfell</h1>` +
-      `<label>Account<input name="username" autocomplete="username" required /></label>` +
-      `<label>Password<input name="password" type="password" autocomplete="current-password" required /></label>` +
-      `<button type="submit">Enter world</button>`;
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const data = new FormData(form);
-      void this.login(String(data.get('username') ?? ''), String(data.get('password') ?? ''));
-    });
-    this.options.uiMount.appendChild(form);
+    void this.checkWebsiteSession();
   }
 
-  private async login(username: string, password: string): Promise<void> {
-    this.setStatus('Signing in…');
+  private async checkWebsiteSession(): Promise<void> {
+    this.setStatus('Checking website session…');
+    let signedIn = false;
     try {
-      const session = await this.auth.login(username, password);
+      signedIn = (await this.auth.session()) !== null;
+    } catch (err) {
+      this.setStatus(err instanceof Error ? err.message : 'Website unavailable.');
+      return;
+    }
+    this.clearUi();
+    if (!signedIn) {
+      const panel = document.createElement('div');
+      panel.className = 'ev-view ev-login';
+      const title = document.createElement('h1');
+      title.textContent = 'Everenfell';
+      panel.appendChild(title);
+      const note = document.createElement('p');
+      note.textContent = 'Sign in with your website account to enter the world.';
+      panel.appendChild(note);
+      const link = document.createElement('a');
+      link.href = this.options.websiteUrl;
+      link.textContent = 'Sign in on the website';
+      panel.appendChild(link);
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'I signed in — continue';
+      retry.addEventListener('click', () => {
+        void this.checkWebsiteSession();
+      });
+      panel.appendChild(retry);
+      this.options.uiMount.appendChild(panel);
+      this.setStatus('Signed out.');
+      return;
+    }
+    const panel = document.createElement('div');
+    panel.className = 'ev-view ev-login';
+    const title = document.createElement('h1');
+    title.textContent = 'Everenfell';
+    panel.appendChild(title);
+    const label = document.createElement('label');
+    label.textContent = 'Server';
+    const select = document.createElement('select');
+    for (const server of GAME_SERVERS) {
+      const option = document.createElement('option');
+      option.value = server.id;
+      option.textContent = server.name;
+      select.appendChild(option);
+    }
+    label.appendChild(select);
+    panel.appendChild(label);
+    const enter = document.createElement('button');
+    enter.type = 'button';
+    enter.textContent = 'Enter world';
+    enter.addEventListener('click', () => {
+      void this.login(select.value);
+    });
+    panel.appendChild(enter);
+    this.options.uiMount.appendChild(panel);
+    this.setStatus('Website account connected. Choose a server.');
+  }
+
+  private async login(serverId: string): Promise<void> {
+    this.setStatus('Connecting…');
+    try {
       await this.gateway.connect();
-      const roles = (await this.gateway.request('world.enter', {
-        session,
-      })) as { roles?: { id: string; name: string }[] };
-      this.renderSelect(roles.roles ?? []);
+      await this.gateway.request('auth.session', { server: serverId });
+      const entered = (await this.gateway.request('world.enter', {})) as {
+        roles?: { id: string; name: string }[];
+      };
+      this.renderSelect(entered.roles ?? []);
     } catch (err) {
       this.setStatus(err instanceof Error ? err.message : 'Sign in failed.');
     }

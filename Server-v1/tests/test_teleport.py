@@ -162,6 +162,9 @@ class WaypointTeleportTest(unittest.TestCase):
     def test_cross_map_hop_changes_map(self):
         a = self.session(1, 1)
         out = a.waypoint_teleport([20001, 'wp_cross'])
+        # _feed_unlocked flattens tuples only; a list would kill the
+        # live connection at sendall (seen on the real client).
+        self.assertIsInstance(out, tuple)
         got = decode(out)
         self.assertEqual(got[0], ['20000', [1, '8', [79, 33]]])
         self.assertEqual(got[1][0], '21000')

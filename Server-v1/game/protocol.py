@@ -6360,7 +6360,9 @@ class Session:
             self._stage_save_position(rid, to_map, x, y, with_map=False)
             out = self._dazuo_broadcast(rid, CMD_TELEPORT, [x, y, 0, rid])
             return tuple(out) if out else None
-        return self.change_map(rid, to_map, x, y)
+        # _feed_unlocked flattens tuple replies only; a bare list would
+        # reach sendall and kill the connection (seen live on 20001).
+        return tuple(self.change_map(rid, to_map, x, y))
 
     def inner_fly(self, msg):
         """Command 40101 C> [_, mapId, x, y, stageId]: same-map moves teleport and echo [x, y, 0, roleId]; other maps change map in one step (RoleBehaviourServiceImpl.innerFly).
@@ -6385,7 +6387,9 @@ class Session:
             return None
         rid = _wire_id(role)
         if map_id != str(self._live_map(rid, role) or ''):
-            return self.change_map(rid, map_id, x, y)
+            # _feed_unlocked flattens tuple replies only; a bare list
+            # would reach sendall and kill the connection.
+            return tuple(self.change_map(rid, map_id, x, y))
         self.stage_registry.set_position(rid, x, y)
         self._stage_save_position(
             rid, self._live_map(rid, role), x, y, with_map=False)

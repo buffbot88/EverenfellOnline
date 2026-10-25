@@ -68,6 +68,9 @@ class InnerFlyTest(unittest.TestCase):
     def test_cross_map_changes_map_without_echo(self):
         a = self.session(1, 1, x=1, y=3, map_id='7')
         out = a.inner_fly([40101, [None, '9', 2, 4, 'stage']])
+        # _feed_unlocked flattens tuples only; a list would kill the
+        # live connection at sendall.
+        self.assertIsInstance(out, tuple)
         decoded = decode(out)
         self.assertEqual(decoded[0], ['20000', [1, '9', [2, 4]]])
         self.assertEqual(decoded[1], ['21000', [1, 1, a.map_type_for('9')]])

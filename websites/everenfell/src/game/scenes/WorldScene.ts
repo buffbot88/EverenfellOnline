@@ -31,6 +31,8 @@ declare global {
       failed: string[];
       tileCount: number;
       zoom: number;
+      /** True once every tile in the current view finished loading. */
+      ready: boolean;
     };
   }
 }
@@ -221,11 +223,27 @@ export class WorldScene extends Phaser.Scene {
 
   private updateStatus(): void {
     const loaded = this.tiles.filter((rec) => rec.state === 'ready').length;
+    const { x, y, w, h } = this.view;
+    const x0 = x - MARGIN_PX;
+    const y0 = y - MARGIN_PX;
+    const x1 = x + w + MARGIN_PX;
+    const y1 = y + h + MARGIN_PX;
+    const ready = this.tiles.every((rec) => {
+      if (rec.state === 'ready' || rec.state === 'failed') return true;
+      const { tile } = rec;
+      return !(
+        tile.x + tile.width > x0 &&
+        tile.x < x1 &&
+        tile.y + tile.height > y0 &&
+        tile.y < y1
+      );
+    });
     window.__evfMapStatus = {
       loaded,
       failed: this.failures,
       tileCount: this.tiles.length,
       zoom: this.cameras.main.zoom,
+      ready,
     };
   }
 

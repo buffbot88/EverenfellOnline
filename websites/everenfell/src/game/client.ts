@@ -82,7 +82,9 @@ export class PhaserClient {
     return new Promise((resolve, reject) => {
       const poll = () => {
         const status = window.__evfMapStatus;
-        if (status && status.failed.length === 0 && status.loaded === status.tileCount) {
+        // Progressive loading: proceed once the current view is ready;
+        // offscreen tiles keep streaming as the camera moves.
+        if (status && status.ready) {
           resolve();
           return;
         }

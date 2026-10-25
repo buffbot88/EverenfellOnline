@@ -83,11 +83,16 @@ server, beginning with S1 only.
 ## 3. Client changes (no duplicate member system)
 
 The Everenfell login view keeps no password or registration form. It
-checks the website session (`gamesession.php` over the dev proxy with
-cookies); signed-out visitors get a link to the website homepage to
-sign in. Signed-in members pick a server (S1-only selector, ready for
-more entries) and the client runs `auth.session {server}` →
-`world.enter` → select → `world.snapshot`.
+checks the AGP website session directly
+(`https://www.agpstudios.org/api/auth/session` with cookies; the retired
+`gamesession.php` dev-proxy endpoint is no longer used by the modern
+client). Signed-out visitors get a link to the website homepage to sign
+in. Signed-in non-admin members see the maintenance gate and the client
+never contacts the gateway for them. Admin members pick a server
+(S1-only selector, ready for more entries) and the client runs
+`auth.session {server}` → `world.enter` → select → `world.snapshot`;
+when the gateway answers `invalid session` the client reports that S1
+gameplay is closed pending the §5 bridge instead of a generic failure.
 
 ## 4. Data isolation and scope
 
@@ -114,6 +119,17 @@ in the registry with its own database; no shared tables.
   protocol is invented here and no duplicate accounts are created.
   The legacy `web.py` path remains development-only on loopback (the
   server logs a warning if the gateway binds elsewhere).
+- Alpha root cause (verified from code, 2026-10-25): the deployed alpha
+  client has no `/legacy-api` route (that proxy exists only in Vite dev
+  toward a loopback `web.py`), so `AuthClient` reported `session refused
+  (http 404)`. The fix removes the retired dependency: identity now
+  comes from the AGP session endpoint. What is still missing for S1
+  gameplay is a server-side way for the Python gateway to verify an AGP
+  session (introspection endpoint + credential, or a signed bridge
+  token minted by the website backend). Until that contract exists, the
+  gateway can only verify sessions it issued itself, the client never
+  sends browser-supplied uid/role as proof, and shared S1 gameplay
+  access stays closed.
 - **Cross-server play**: no inter-server networking, presence, or
   battles. The registry shape reserves it; nothing implements it.
 - **Asset work stays primary**: account work stops here (registry +

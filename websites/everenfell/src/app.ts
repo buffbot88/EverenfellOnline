@@ -51,7 +51,7 @@ export class App {
     this.actors = new ActorLayer(this.camera);
     this.windows = new WindowManager(options.uiMount);
     this.gateway = new Gateway({ url: options.gatewayUrl });
-    this.auth = new AuthClient(options.apiBase);
+    this.auth = new AuthClient();
     this.statusEl = document.createElement('p');
     this.statusEl.className = 'ev-status';
     options.uiMount.appendChild(this.statusEl);

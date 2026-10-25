@@ -26,6 +26,7 @@ declare global {
       tileCount: number;
       zoom: number;
     };
+    __evfCam?: Record<string, number>;
   }
 }
 
@@ -82,6 +83,16 @@ export class WorldScene extends Phaser.Scene {
     cam.setZoom(startZoom);
     cam.centerOn(MAP_W / 2, MAP_H / 2);
     clampCam(cam);
+    window.__evfCam = {
+      scrollX: Math.round(cam.scrollX),
+      scrollY: Math.round(cam.scrollY),
+      viewW: Math.round(cam.width),
+      viewH: Math.round(cam.height),
+      zoom: cam.zoom,
+      scaleW: this.scale.width,
+      scaleH: this.scale.height,
+      dpr: window.devicePixelRatio || 1,
+    };
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       cam.setViewport(0, 0, gameSize.width, gameSize.height);
       clampCam(cam);

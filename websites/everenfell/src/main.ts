@@ -23,12 +23,10 @@ const mode = resolveMode(window.location.search, window.location.hostname);
 try {
   const account = document.querySelector('#sitebar-account');
   if (account) {
-    const apiBase = params.get('api') ?? '/legacy-api';
-    void new AuthClient(apiBase)
+    void new AuthClient()
       .session()
-      .then((session) => {
-        const name =
-          session !== null && typeof session['uid'] === 'string' ? session['uid'] : '';
+      .then((user) => {
+        const name = user?.display_name || user?.username || '';
         account.textContent = name !== '' ? `Signed in (${name})` : '';
         if (name === '') {
           const link = document.createElement('a');
@@ -46,7 +44,6 @@ try {
 const client = new PhaserClient({
   mount,
   uiMount,
-  apiBase: params.get('api') ?? '/legacy-api',
   gatewayUrl: params.get('gateway') ?? 'ws://127.0.0.1:8091/everenfell',
   websiteUrl: params.get('website') ?? 'https://www.agpstudios.org/',
   serverId: params.get('server') ?? undefined,

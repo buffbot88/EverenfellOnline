@@ -1,24 +1,34 @@
-/** Website session client: the game reuses the website member session.
+/** Website session client: the game reuses the AGP Studios member session.
+ *
+ * Identity comes from the existing website membership system
+ * (https://www.agpstudios.org/api/auth/session), never from a second
+ * login system and never from the retired PHP-compatible gamesession.php
+ * endpoint (see Server-v1/docs/website-accounts-s1.md). The browser
+ * session cookie is HttpOnly and is never read by JavaScript.
+ *
+ * This proves *website identity* only. Gameplay authorization is decided
+ * independently by the Python gateway handshake server-side; a
+ * browser-supplied role or account id is never accepted as proof there.
+ * Until server-side AGP verification exists, S1 gameplay stays closed
+ * and this client only gates the UI (map stays inspectable).
+ */
 
-No passwords or registration live here (see
-Server-v1/docs/website-accounts-s1.md). The website signs members in
-and holds the session cookie. This client only asks the legacy-compatible
-session endpoint whether the cookie is valid. It is used for gameplay mode
-only; rendering mode never calls it. The gateway reads the same cookie from
-the WebSocket handshake server-side, so the token never passes through
-JavaScript.
-*/
-
-export interface GameSession {
-  ok: boolean;
-  uid?: string;
-  t?: string;
-  sign?: string;
-  server?: string;
-  [key: string]: unknown;
+export interface SiteUser {
+  username: string;
+  display_name?: string;
+  email?: string;
+  role?: string;
 }
 
-/** Raised when an API answers with something other than the expected JSON. */
+const AGP_SESSION_URL = 'https://www.agpstudios.org/api/auth/session';
+
+/** Mirrors the website's own play gate: maintenance allows admins only. */
+export function canPlay(user: SiteUser | null): boolean {
+  if (!user) return false;
+  return typeof user.role === 'string' && user.role.toLowerCase() === 'admin';
+}
+
+/** Raised when the session endpoint answers unexpectedly. */
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -27,15 +37,11 @@ export class ApiError extends Error {
 }
 
 export class AuthClient {
-  constructor(private readonly apiBase: string) {}
-
-  /** Current website session, or null when signed out (HTTP 401). */
-  async session(): Promise<GameSession | null> {
+  /** Current website user, or null when signed out (HTTP 401 / not authenticated). */
+  async session(): Promise<SiteUser | null> {
     let res: Response;
     try {
-      res = await fetch(`${this.apiBase}/gamesession.php`, {
-        credentials: 'include',
-      });
+      res = await fetch(AGP_SESSION_URL, { credentials: 'include' });
     } catch {
       throw new ApiError('website unavailable', 0);
     }
@@ -45,20 +51,12 @@ export class AuthClient {
     if (!res.ok) {
       throw new ApiError(`session refused (http ${res.status})`, res.status);
     }
-    const type = res.headers.get('content-type') ?? '';
-    const text = await res.text();
-    if (!type.includes('application/json')) {
-      throw new ApiError(
-        'session endpoint returned a non-JSON page; the website backend is not serving the game API',
-        res.status,
-      );
-    }
-    let session: GameSession;
+    let body: { authenticated?: boolean; user?: SiteUser };
     try {
-      session = JSON.parse(text) as GameSession;
+      body = (await res.json()) as { authenticated?: boolean; user?: SiteUser };
     } catch {
       throw new ApiError('session endpoint returned malformed JSON', res.status);
     }
-    return session.ok ? session : null;
+    return body.authenticated && body.user ? body.user : null;
   }
 }

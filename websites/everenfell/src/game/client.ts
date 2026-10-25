@@ -6,7 +6,7 @@
  * the Python gateway (auth boundary enforced server-side as well).
  * Views are thin: the server owns positions, auth and progression.
  */
-import { AuthClient } from '../net/auth';
+import { AuthClient, canPlay, type SiteUser } from '../net/auth';
 import { Gateway } from '../net/gateway';
 import type { ActorSnapshot, WorldSnapshot } from '../net/protocol';
 import { GAME_SERVERS } from '../net/protocol';
@@ -21,7 +21,6 @@ export type ViewState = 'loading' | 'select' | 'world';
 export interface ClientOptions {
   mount: HTMLElement;
   uiMount: HTMLElement;
-  apiBase: string;
   gatewayUrl: string;
   websiteUrl: string;
   serverId?: string;
@@ -41,7 +40,7 @@ export class PhaserClient {
   constructor(private readonly options: ClientOptions) {
     this.windows = new WindowManager(options.uiMount);
     this.gateway = new Gateway({ url: options.gatewayUrl });
-    this.auth = new AuthClient(options.apiBase);
+    this.auth = new AuthClient();
     this.statusEl = document.createElement('p');
     this.statusEl.className = 'ev-status';
     options.uiMount.appendChild(this.statusEl);
@@ -116,15 +115,21 @@ export class PhaserClient {
 
   private async checkWebsiteSession(): Promise<void> {
     this.setStatus('Checking website session…');
-    let signedIn = false;
+    let user: SiteUser | null;
     try {
-      signedIn = (await this.auth.session()) !== null;
+      user = await this.auth.session();
     } catch (err) {
       this.setStatus(err instanceof Error ? err.message : 'Website unavailable.');
       return;
     }
     this.clearViews();
-    if (!signedIn) {
+    if (user !== null && !canPlay(user)) {
+      this.setStatus(
+        `Signed in as ${user.display_name || user.username}: S1 is in maintenance and closed to this account.`,
+      );
+      return;
+    }
+    if (user === null) {
       this.clearViews();
       const panel = document.createElement('div');
       panel.className = 'ev-view ev-login';
@@ -191,7 +196,15 @@ export class PhaserClient {
       };
       this.renderSelect(entered.roles ?? []);
     } catch (err) {
-      this.setStatus(err instanceof Error ? err.message : 'Sign in failed.');
+      const message = err instanceof Error ? err.message : 'Sign in failed.';
+      // The gateway only accepts sessions it issued itself; until a
+      // server-side AGP verification contract exists it cannot verify
+      // website members, so S1 gameplay stays closed by default.
+      this.setStatus(
+        message.includes('invalid session')
+          ? 'S1 gameplay is closed: the gateway cannot verify website sessions yet (server-side AGP check pending). Map remains inspectable.'
+          : message,
+      );
     }
   }
 

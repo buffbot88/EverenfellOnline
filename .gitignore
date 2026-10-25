@@ -61,3 +61,6 @@ websites/**/dist/
 *.MYI
 *.MYD
 /Server-v1/.jrecon
+!/scripts/
+!/scripts/asset_tools/
+!/scripts/asset_tools/**

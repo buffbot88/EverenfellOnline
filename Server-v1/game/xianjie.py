@@ -441,7 +441,7 @@ def title_condition(kind, values, ctx, row=None):
                 and int(ctx.get('store_sell') or 0) >= _cell(v, 1)
                 and int(ctx.get('store_back') or 0) >= _cell(v, 2))
     if kind == 4:
-        return int(ctx.get('onhook_minutes') or 0) >= _cell(v, 0)
+        return int(ctx.get('onhook') or 0) >= _cell(v, 0)
     if kind == 5:
         # Strict '>' on the monster counter, '>=' on the other two.
         return (int(ctx.get('kill_monster') or 0) > _cell(v, 0)
@@ -497,7 +497,7 @@ def title_condition(kind, values, ctx, row=None):
         return (int(ctx.get('tanwei_sell') or 0) >= _cell(v, 0)
                 and int(ctx.get('tanwei_buy') or 0) >= _cell(v, 1))
     if kind == 22:
-        return int(ctx.get('dazuo_minutes') or 0) >= _cell(v, 0)
+        return int(ctx.get('dazuo_time') or 0) >= _cell(v, 0)
     if kind == 23:
         # Java compares the cells in swapped order ([1] then [0]).
         return (int(ctx.get('baoshi_count_1') or 0) >= _cell(v, 0)
@@ -573,7 +573,7 @@ def show_data(kind, title_id, ctx, row=None):
         return [tid, _int(ctx.get('store_buy')), _int(ctx.get('store_sell')),
                 _int(ctx.get('store_back'))]
     if kind == 4:
-        return [tid, _int(ctx.get('onhook_minutes'))]
+        return [tid, _int(ctx.get('onhook'))]
     if kind == 5:
         return [tid, _int(ctx.get('kill_monster')),
                 _int(ctx.get('kill_ghost')), _int(ctx.get('kill_god'))]
@@ -628,7 +628,7 @@ def show_data(kind, title_id, ctx, row=None):
         return [tid, _int(ctx.get('tanwei_sell')),
                 _int(ctx.get('tanwei_buy'))]
     if kind == 22:
-        return [tid, _int(ctx.get('dazuo_minutes'))]
+        return [tid, _int(ctx.get('dazuo_time'))]
     if kind == 23:
         return [tid, _int(ctx.get('baoshi_count_0')),
                 _int(ctx.get('baoshi_count_1'))]

@@ -68,6 +68,10 @@ class XianjieHuoyueTest(unittest.TestCase):
             save_role_xianjiechenhao=self.store.save_role_xianjiechenhao,
             get_role_xianjiehuoyuedu=self.store.get_role_xianjiehuoyuedu,
             save_role_xianjiehuoyuedu=self.store.save_role_xianjiehuoyuedu,
+            get_role_qiandao=self.store.get_role_qiandao,
+            get_role_die_log=self.store.get_role_die_log,
+            insert_role_die=self.store.insert_role_die,
+            get_role_brief=lambda ref: {'id': str(ref), 'name': 'Other'},
             get_role_bag_slots=self.store.get_role_bag_slots,
             get_role_bag_state=self.store.get_role_bag_state,
             get_role_bag_slot=self.store.get_role_bag_slot,
@@ -348,6 +352,203 @@ class XianjieHuoyueTest(unittest.TestCase):
         moved = [key for key in after
                  if int(after[key]) != int(before.get(key, 0))]
         self.assertTrue(moved)
+
+    # -- titles (91006/91008/91009) --------------------------------------
+    def _rank_one(self):
+        self.store.save_role_xianjiechenhao(
+            self.role_id, xianjie_id='["1"]', xianjie_qiyong='1',
+            chenhao_id='[]', xianjie_data='{}')
+
+    def _signins(self, count):
+        self.store.save_role_qiandao(
+            self.role_id, total_qiandao_count=count,
+            month=0, month_qiandao='', total_qiandao_reward='[]')
+
+    def _titles(self):
+        row = self.store.get_role_xianjiechenhao(self.role_id) or {}
+        import json
+        return json.loads(row.get('chenhao_id') or '[]')
+
+    def test_config_has_seventy_two_titles_over_26_live_types(self):
+        table = self.cfg.chenghao_table()
+        self.assertEqual(len(table), 72)
+        types = xianjie_lib.title_types(table)
+        # Type 25 is the deliberately unreachable branch: no rows use it.
+        self.assertEqual(sorted(types), list(range(1, 25)) + [26, 27])
+        self.assertEqual(table['1']['limit1'], 1)
+        self.assertEqual(table['1']['xianjieid'], 1)
+        self.assertEqual(table['1']['jialibangdingyuanbao'], 50)
+
+    def test_title_needs_rank_level_and_condition(self):
+        self._signins(5)
+        self.assertIsNone(self.sess.xianjie_activate([91009, '1']))
+        self.assertEqual(self.push(), [])
+        # Rank owned but the role is below level 20.
+        self.store.update_character_state(self.role_id, level=19)
+        self._rank_one()
+        self.push()
+        self.assertIsNone(self.sess.xianjie_activate([91009, '1']))
+        self.assertEqual(self.push(), [])
+        self.store.update_character_state(self.role_id, level=25)
+        self.assertIsNone(self.sess.xianjie_activate([91009, '1']))
+        self.assertEqual(self.push(),
+                         [['91006', ['1']],
+                          ['11101', [91009, ['Wukong', 'เงียบ']]]])
+        self.assertEqual(self._titles(), ['1'])
+
+    def test_title_grants_bind_yb_and_attributes(self):
+        self._rank_one()
+        # Title 2 needs 30 used bag cells and adds physicdamage:15.
+        self.store.save_role_bag_slots(self.role_id, [
+            {'slot_num': n, 'goods_id': 'zj0011', 'count': 1,
+             'bag_id': 'g%d' % n, 'bind': 0, 'expire_time': 0,
+             'rare_level': 0, 'item_level': 1, 'attributes': None}
+            for n in range(1, 31)])
+        before = int(self.wire(12000, None)[0][1].get('2') or 0)
+        self.assertIsNone(self.sess.xianjie_activate([91009, '2']))
+        self.push()
+        self.assertEqual(int(self.role().get('bind_lingshi') or 0), 50)
+        title = self.cfg.chenghao_attribute_map(['2']).get('physicdamage', 0)
+        after = int(self.wire(12000, None)[0][1].get('2') or 0)
+        self.assertEqual(after, before + int(title))
+        self.assertEqual(self.wire(12010, None)[0][1][12],
+                         self.cfg.chenghao_fight(['2']))
+
+    def test_title_duplicate_is_not_reactivated(self):
+        self._signins(5)
+        self._rank_one()
+        self.sess.xianjie_activate([91009, '1'])
+        self.push()
+        self.sess.xianjie_activate([91009, '1'])
+        self.assertEqual(self.push(), [])
+        self.assertEqual(self._titles(), ['1'])
+
+    def test_title_only_family_of_the_requested_id(self):
+        self._signins(5)
+        self._rank_one()
+        # Title 2 is the bag family, whose counters are untouched.
+        self.sess.xianjie_activate([91009, '2'])
+        self.assertEqual(self.push(), [])
+        self.assertEqual(self._titles(), [])
+
+    def test_title_survives_reconnect(self):
+        self._signins(5)
+        self._rank_one()
+        self.sess.xianjie_activate([91009, '1'])
+        self.push()
+        other = self.make_sess()
+        row = other._xianjie_ch_row(self.role_id)
+        self.assertEqual(xianjie_lib.title_owned(row), ['1'])
+
+    def test_client_progress_feeds_onhook_titles(self):
+        self._rank_one()
+        got = self.wire(91008, ['4', [60]])
+        self.assertEqual([f[0] for f in got], ['91006', '12010'])
+        self.assertEqual(got[0][1], ['4'])
+        self.assertEqual(xianjie_lib.data_cells(
+            self.store.get_role_xianjiechenhao(self.role_id))['onhook'], 60)
+        # Title 4 has gonggao 0, so no 11101.
+        self.assertEqual(self._titles(), ['4'])
+
+    def test_client_progress_accumulates_and_ignores_unknown_types(self):
+        self._rank_one()
+        self.wire(91008, ['22', [5]])
+        self.wire(91008, ['22', [5]])
+        self.wire(91008, ['99', [5]])
+        data = xianjie_lib.data_cells(
+            self.store.get_role_xianjiechenhao(self.role_id))
+        self.assertEqual(data['dazuo_time'], 10)
+        self.assertNotIn('99', data)
+
+    # -- kill log (91005 / 91007) ---------------------------------------
+    def test_kill_log_is_empty_for_a_fresh_role(self):
+        got = self.wire(91005, None)
+        self.assertEqual(got, [['91005', []]])
+
+    def test_client_kill_log_append_and_read(self):
+        self.assertEqual(self.wire(91007, ['9', None, '1024']), [])
+        rows = self.store.get_role_die_log(self.role_id)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['kill_data'],
+                         '91011;{map|1024};{user|9,Other}')
+        got = self.wire(91005, None)
+        self.assertEqual(len(got[0][1]), 1)
+        self.assertEqual(got[0][1][0][1], rows[0]['kill_data'])
+        self.assertEqual(got[0][1][0][0], rows[0]['create_time'])
+
+    def test_kill_log_caps_at_one_hundred_newest(self):
+        for n in range(105):
+            self.store.insert_role_die(
+                self.role_id, '91007;{map|1};m%d' % n, create_time=1000 + n)
+        rows = self.store.get_role_die_log(self.role_id)
+        self.assertEqual(len(rows), 100)
+        self.assertEqual(rows[0]['kill_data'], '91007;{map|1};m5')
+        self.assertEqual(rows[-1]['kill_data'], '91007;{map|1};m104')
+
+    def test_monster_kill_writes_counter_and_log(self):
+        self._rank_one()
+        role = self.role()
+        killer = {'kind': 'role', 'id': self.role_id, 'role': role}
+        dead = {'kind': 'monster', 'id': 'm1',
+                'template': {'id': 'D000006', 'name': 'Monkey',
+                             'basicexp': 50, 'level': 1, 'difficulty': 1}}
+        self.sess._kill_exp_frames(killer, dead)
+        data = xianjie_lib.data_cells(
+            self.store.get_role_xianjiechenhao(self.role_id))
+        self.assertEqual(data['kill_monster'], 1)
+        rows = self.store.get_role_die_log(self.role_id)
+        self.assertEqual(rows[-1]['kill_data'], '91007;{map|%s};Monkey'
+                         % (role.get('map_id') or ''))
+
+    def test_kill_title_uses_strict_greater_than(self):
+        self._rank_one()
+        self.store.save_role_xianjiechenhao(
+            self.role_id, xianjie_id='["1"]', xianjie_qiyong='1',
+            chenhao_id='[]', xianjie_data='{"kill_monster": 9999}')
+        # changeData adds first, so 9999 -> 10000 is not > 10000.
+        self.sess._chenghao_change(self.role_id, 'KILL_MONSTER')
+        self.assertEqual(self._titles(), [])
+        self.sess._chenghao_change(self.role_id, 'KILL_MONSTER')
+        self.assertEqual(self._titles(), ['5'])
+
+    def test_change_data_uses_the_java_field_map(self):
+        self._rank_one()
+        for name in ('STORE_BUY', 'STORE_BACK', 'STORE_SELL',
+                     'FUBEN_FINISH', 'TASK_TUNSHI', 'EQUIP_QIANGHUA'):
+            self.sess._chenghao_change(self.role_id, name)
+        data = xianjie_lib.data_cells(
+            self.store.get_role_xianjiechenhao(self.role_id))
+        # STORE_BUY writes story_back and STORE_BACK writes story_buy.
+        self.assertEqual(data['story_back'], 1)
+        self.assertEqual(data['story_buy'], 1)
+        self.assertEqual(data['story_sell'], 1)
+        self.assertEqual(data['fuben_finish'], 1)
+        self.assertEqual(data['task_tunshi'], 1)
+        self.assertEqual(data['equip_qianghua'], 1)
+
+    def test_data_panel_reruns_activation_first(self):
+        self._signins(5)
+        self._rank_one()
+        got = self.wire(91002, None)
+        self.assertEqual([f[0] for f in got],
+                         ['91006', '11101', '91002', '12010'])
+        self.assertIn('1', got[2][1][3])
+        self.assertIn('1', self._titles())
+
+    def test_data_panel_show_reads_onhook_progress(self):
+        self._rank_one()
+        self.wire(91008, ['4', [60]])
+        body = self.wire(91002, None)[-1][1]
+        show = {row[0]: row for row in body[4]}
+        self.assertEqual(show['4'], ['4', 60])
+
+    def test_rank_upgrade_reactivates_new_rank_titles(self):
+        self._signins(5)
+        self._activity(150)
+        got = self.wire(91003, '1')
+        self.assertEqual([f[0] for f in got],
+                         ['91004', '12000', '91006', '11101', '91003', '12010'])
+        self.assertEqual(self._titles(), ['1'])
 
 
 if __name__ == '__main__':

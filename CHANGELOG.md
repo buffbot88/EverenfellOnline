@@ -10,6 +10,12 @@ Gameplay release: 1690 server tests, all passing; 240 command IDs
 implemented with tests plus 26 server-push IDs (313 of 497 Java IDs
 dispatched). New in v1.5:
 
+- **Xianjie / Chenghao** (90000/90001/91001–91009, pushes 91000/91004/
+  91006/11101): daily activity points with the original caps and reward
+  ladder, eight rank upgrades with 12010 [11] and the attribute bag, the
+  72-title / 26-family `limit1` engine with bind-YB rewards, notices and
+  12010 [12], and the 100-row kill log (`tests/test_xianjie.py`, 45;
+  `docs/xianjiechenhao-ledger.md`).
 - **Marriage** (135000–135006, pushes 135002/135003/11131/11101):
   proposals with ring/broadcast gates, two-sided acceptance, divorce
   (free offline, YB online), spouse teleport, ring strengthening,

@@ -125,6 +125,29 @@ XIANJIE_ERR_ACTIVATE = 91006
 XIANJIE_ERR_LOG_APPEND = 91007
 XIANJIE_ERR_TITLE = 91009
 XIANJIE_ERR_NOTICE = 91010
+# XianJieData.getType (XianjiechenhaoServiceImpl.changeData) -> (cell, limit1).
+CHENGHAO_DATA_FIELDS = {
+    'STORE_BUY': ('story_back', 3),
+    'STORE_BACK': ('story_buy', 3),
+    'STORE_SELL': ('story_sell', 3),
+    'ONHOOK': ('onhook', 4),
+    'KILL_MONSTER': ('kill_monster', 5),
+    'KILL_GHOST': ('kill_ghost', 5),
+    'KILL_GOD': ('kill_god', 5),
+    'STORE_YB': ('store_yb', 13),
+    'STORE_BIND': ('store_bind', 13),
+    'FUBEN_FINISH': ('fuben_finish', 14),
+    'FUBEN_SAODANG': ('fuben_saodang', 14),
+    'TASK_FINISH': ('task_finish', 15),
+    'TASK_TUNSHI': ('task_tunshi', 15),
+    'TASK_MIAOSHA': ('task_miaosha', 15),
+    'EQUIP_QIANGHUA': ('equip_qianghua', 20),
+    'TANWEI_SELL': ('tanwei_sell', 21),
+    'TANWEI_BUY': ('tanwei_buy', 21),
+    'DAZUO_TIME': ('dazuo_time', 22),
+    'SJJD_PUTONG': ('sjjd_putong', 26),
+    'SJJD_VIP': ('sjjd_vip', 26),
+}
 CMD_MALL = 32000
 CMD_MALL_BUY = 32001
 CMD_DAFUWENG = 105003
@@ -1256,6 +1279,7 @@ class Session:
                  save_role_xianjiechenhao=None,
                  get_role_xianjiehuoyuedu=None,
                  save_role_xianjiehuoyuedu=None,
+                 get_role_die_log=None, insert_role_die=None,
                  get_role_meiren=None, save_role_meiren=None,
                  get_role_baoshi=None, save_role_baoshi=None,
                  get_role_zuoqi=None, save_role_zuoqi=None,
@@ -1380,6 +1404,9 @@ class Session:
             (lambda role_id: None)
         self.save_role_xianjiehuoyuedu = save_role_xianjiehuoyuedu or \
             (lambda *a, **k: False)
+        self.get_role_die_log = get_role_die_log or (lambda role_id: [])
+        self.insert_role_die = insert_role_die or \
+            (lambda *a, **k: None)
         self.get_role_jianding = get_role_jianding or (lambda role_id: None)
         self.save_role_jianding = save_role_jianding or (lambda *a, **k: False)
         self.save_role_vip = save_role_vip or (lambda *a, **k: False)
@@ -2522,6 +2549,14 @@ class Session:
             return self.xianjie_upgrade(msg)
         if cmd_num == CMD_XIANJIE_SWITCH:
             return self.xianjie_switch(msg)
+        if cmd_num == CMD_XIANJIE_ROUTE:
+            return self.xianjie_client_progress(msg)
+        if cmd_num == CMD_XIANJIE_ACTIVATE:
+            return self.xianjie_activate(msg)
+        if cmd_num == CMD_XIANJIE_LOG:
+            return self.xianjie_log(msg)
+        if cmd_num == CMD_XIANJIE_LOG_APPEND:
+            return self.xianjie_log_append(msg)
         if cmd_num in (53006, 51000,
                         82024, 74000,
                         86000, 85000,
@@ -4632,6 +4667,203 @@ class Session:
                 count += 1
         return count
 
+    def _jihuo_titles(self, rid, kind, role=None):
+        """jihuoChengHao(role, type): activate every newly eligible title.
+
+        Returns the pushes in Java order: for each granted row, 91006
+        ``[titleId]`` then (when gonggao) 11101 ``[91009, [name, title]]``.
+        The caller decides where they ride; role level 20 is the gate and
+        every condition miss is a skip, not an error.
+        """
+        if rid is None or kind is None or self.config is None:
+            return []
+        if role is None:
+            role, rid = self._xianjie_self()
+            if rid is None:
+                return []
+        row = self._xianjie_ch_row(rid)
+        ctx = self._xianjie_context(role, rid, row)
+        try:
+            ctx['level'] = int(role.get('level') or 0)
+        except (TypeError, ValueError):
+            ctx['level'] = 0
+        ctx['rank_owned'] = xianjie_lib.rank_owned(row)
+        by_type = xianjie_lib.title_types(self.config.chenghao_table())
+        row, granted = xianjie_lib.title_activate(by_type, row, kind, ctx)
+        if not granted:
+            return []
+        row['xianjie_time'] = int(time.time() * 1000)
+        self._xianjie_ch_save(rid, row)
+        reward = sum(int(c.get('jialibangdingyuanbao') or 0)
+                     for c in granted)
+        if reward:
+            try:
+                self.save_role_state(
+                    rid, bind_lingshi=int(role.get('bind_lingshi') or 0)
+                    + reward)
+                role['bind_lingshi'] = int(
+                    role.get('bind_lingshi') or 0) + reward
+            except Exception:
+                log.warning('conn %d: title bind-YB grant failed',
+                            self.conn_id, exc_info=True)
+        out = []
+        for cfg_row in granted:
+            title_id = str(cfg_row.get('chenghaoid'))
+            out.append(frame(amf3_encode(
+                [str(CMD_XIANJIE_ACTIVATE_PUSH), [title_id]])))
+            if int(cfg_row.get('gonggao') or 0):
+                out.append(frame(amf3_encode([
+                    str(CMD_NOTICE_ALL),
+                    [XIANJIE_ERR_TITLE,
+                     [str(role.get('name') or ''),
+                      str(cfg_row.get('chenghao') or '')]]])))
+        self._fight_changed()
+        return out
+
+    def _jihuo_all_titles(self, rid, role=None):
+        """Re-run every limit1 family, in configured type order."""
+        if self.config is None:
+            return []
+        out = []
+        for kind in sorted(xianjie_lib.title_types(
+                self.config.chenghao_table())):
+            out.extend(self._jihuo_titles(rid, kind, role))
+        return out
+
+    def _chenghao_change(self, rid, name, delta=1):
+        """changeData: bump one XianJieData cell and re-check its family.
+
+        ``name`` is the DataType key (STORE_BUY, KILL_MONSTER, ...). The
+        field/type map is Java's, including the swapped STORE_* cells.
+        Activation pushes queue behind the triggering reply here (Java
+        sends them immediately), matching the port's push convention.
+        """
+        spec = CHENGHAO_DATA_FIELDS.get(str(name))
+        if spec is None or rid is None:
+            return
+        field, kind = spec
+        row = self._xianjie_ch_row(rid)
+        row = xianjie_lib.change_data(row, field, delta)
+        self._xianjie_ch_save(rid, row)
+        role, _rid = self._xianjie_self()
+        self._xianjie_pushes.extend(
+            self._jihuo_titles(rid, kind, role))
+
+    def xianjie_activate(self, msg):
+        """Command 91009: jiHuoChengHao -> manual re-check of a title.
+
+        The payload is a title id; its config limit1 picks the family to
+        re-evaluate. No reply frame (Java only sends the 91006/11101
+        pushes), so activation frames queue for the request tail.
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None or self.config is None:
+            return None
+        title_id = self._xianjie_request_arg(msg)
+        cfg_row = self.config.chenghao_table().get(str(title_id))
+        if cfg_row is None:
+            return None
+        try:
+            kind = int(cfg_row.get('limit1'))
+        except (TypeError, ValueError):
+            return None
+        self._xianjie_pushes.extend(self._jihuo_titles(rid, kind))
+        return None
+
+    def xianjie_client_progress(self, msg):
+        """Command 91008: clientJinDu (onhook 4 / dazuo 22 minutes).
+
+        Payload ``[type, [minutes]]``; anything else is ignored, like
+        Java's two string checks. No reply frame.
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        args = self.safe(msg, 1)
+        if not isinstance(args, list) or len(args) < 2:
+            return None
+        kind = str(args[0])
+        minutes = self.safe(args, 1)
+        if isinstance(minutes, list):
+            minutes = minutes[0] if minutes else 0
+        try:
+            minutes = int(minutes or 0)
+        except (TypeError, ValueError):
+            return None
+        if minutes <= 0:
+            return None
+        if kind == '4':
+            self._chenghao_change(rid, 'ONHOOK', minutes)
+        elif kind == '22':
+            self._chenghao_change(rid, 'DAZUO_TIME', minutes)
+        return None
+
+    # -- kill log (91005 / 91007 / role_die) ----------------------------
+    def xianjie_log(self, msg):
+        """Command 91005: getLog -> [[createTime, killData], ...].
+
+        Java answers the role's RoleDie rows in load order and null when
+        the list is null; an empty list is what the port's fresh role has.
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        try:
+            rows = self.get_role_die_log(rid) or []
+        except Exception:
+            log.warning('conn %d: kill log read failed', self.conn_id,
+                        exc_info=True)
+            rows = []
+        return frame(amf3_encode([str(CMD_XIANJIE_LOG), [
+            [int(row.get('create_time') or 0), str(row.get('kill_data') or '')]
+            for row in rows]]))
+
+    def _xianjie_log_line(self, prefix, map_id, tail):
+        """One RoleDie.killData string: PREFIX;{map|M};TAIL."""
+        return '%s;{map|%s};%s' % (prefix, map_id, tail)
+
+    def _xianjie_log_append(self, rid, kill_data):
+        """Insert one kill-log row (RoleDieDao.cacheInsert + 100 cap)."""
+        if rid is None:
+            return None
+        try:
+            return self.insert_role_die(rid, kill_data)
+        except Exception:
+            log.warning('conn %d: kill log insert failed', self.conn_id,
+                        exc_info=True)
+            return None
+
+    def _xianjie_log_monster_kill(self, rid, map_id, monster_name):
+        """roleDieLog type 2: 91007;{map|M};<monsterName>."""
+        return self._xianjie_log_append(
+            rid, self._xianjie_log_line('91007', map_id, str(monster_name)))
+
+    def xianjie_log_append(self, msg):
+        """Command 91007: jishaLog -> roleDieLog1 (91011 user kill line).
+
+        Payload ``[otherRoleId, ?, mapId]``: Java looks the other role up
+        for its name and stores ``91011;{map|M};{user|ID,NAME}`` under the
+        requesting role. No reply frame.
+        """
+        _role, rid = self._xianjie_self()
+        if rid is None:
+            return None
+        args = self.safe(msg, 1)
+        if not isinstance(args, list) or len(args) < 3:
+            return None
+        other = self.safe(args, 0)
+        map_id = self.safe(args, 2)
+        if other is None or map_id is None:
+            return None
+        try:
+            brief = self.get_role_brief(str(other)) or {}
+        except Exception:
+            brief = {}
+        tail = '{user|%s,%s}' % (other, brief.get('name') or '')
+        self._xianjie_log_append(
+            rid, self._xianjie_log_line('91011', map_id, tail))
+        return None
+
     def xianjie_data(self, msg):
         """Command 91002: getxianJieChengHaoData.
 
@@ -4643,6 +4875,8 @@ class Session:
         role, rid = self._xianjie_self()
         if rid is None:
             return None
+        # getxianJieChengHaoData re-runs every title type before answering.
+        out = self._jihuo_all_titles(rid, role)
         stored = self._xianjie_ch_row(rid)
         ctx = self._xianjie_context(role, rid, stored)
         activity = 0
@@ -4659,9 +4893,10 @@ class Session:
                 for cfg_row in by_type[kind]:
                     show.append(xianjie_lib.show_data(
                         kind, cfg_row.get('chenghaoid'), ctx, cfg_row))
-        return frame(amf3_encode([str(CMD_XIANJIE_DATA), [
+        out.append(frame(amf3_encode([str(CMD_XIANJIE_DATA), [
             stored.get('xianjie_qiyong'), activity,
-            self.xianjie_id_for(stored), titles, show]]))
+            self.xianjie_id_for(stored), titles, show]])))
+        return tuple(out) if len(out) > 1 else out[0]
 
     def xianjie_upgrade(self, msg):
         """Command 91003: upgradeChengHao -> exchange one rank.
@@ -4721,6 +4956,7 @@ class Session:
                 out.append(frame(amf3_encode(['12000', Obj(attrs)])))
         except Exception:
             pass
+        out.extend(self._jihuo_all_titles(rid, role))
         out.append(frame(amf3_encode(
             [str(CMD_XIANJIE_UPGRADE), [1, rank_id]])))
         return tuple(out)
@@ -5698,6 +5934,20 @@ class Session:
             except Exception:
                 log.warning('conn %d: kill activity failed', self.conn_id,
                             exc_info=True)
+        # stage_monster_dead -> ChengHaoMonsterEventHandler (KILL_MONSTER)
+        # and roleDieLog type 2 (the 91007 monster kill line).
+        map_id = role.get('map_id') or tpl.get('map') or ''
+        try:
+            self._chenghao_change(owner['id'], 'KILL_MONSTER')
+        except Exception:
+            log.warning('conn %d: kill title counter failed', self.conn_id,
+                        exc_info=True)
+        try:
+            self._xianjie_log_monster_kill(
+                owner['id'], map_id, tpl.get('name') or tpl.get('id'))
+        except Exception:
+            log.warning('conn %d: kill log append failed', self.conn_id,
+                        exc_info=True)
         return exp_frames + [frame(amf3_encode(combat_lib.exp_drop_frame(
             dead_fighter['id'], tpl.get('id'), granted)))] + task_frames
 
@@ -7699,6 +7949,7 @@ class Session:
         level, base, qianghua, fujia, dan, vip = 0, 0, 0, 0, 0, 0
         pozhen = 0
         zuoqi, zuoqi_equip, longhun, xianjie = 0, 0, 0, 0
+        chenghao = 0
         qibing, qibing_dan, qibing_book = 0, 0, 0
         zuoqi_book = 0
         guangyi, guangyi_dan, guangyi_book = 0, 0, 0
@@ -7776,6 +8027,9 @@ class Session:
             except Exception:
                 stored = None
             xianjie = self.config.xianjie_fight(self.xianjie_id_for(stored))
+            # [12] getchenghao: getFight over every owned title's bag.
+            chenghao = self.config.chenghao_fight(
+                self.chenhao_ids_for(stored))
             # [16] getGuangYiZhanli / getGuangYiAttDanZhanli /
             # getGuangYiSkillBookZhanLi: the worn level's attribute bag,
             # its dan contributions, and the combat of the worn books in
@@ -7808,8 +8062,8 @@ class Session:
             [base, qianghua, fujia, 0, 0], level, skill_pair,
             [zuoqi, zuoqi_equip, longhun],
             [0, 0], vip, shenjiang_slot, pozhen, 0, dan,
-            [qibing, qibing_dan], xianjie,
-            0, zuoqi_book, qibing_book, 0,
+            [qibing, qibing_dan], xianjie, chenghao,
+            zuoqi_book, qibing_book, 0,
             [guangyi, guangyi_dan, guangyi_book],
             0, 0, 0, 0, 0, 0, [0, 0], 0]
 
@@ -8442,6 +8696,9 @@ class Session:
             rid, row, self._vo_enhanced_blob(row, new_qh, ok))
         role = self._equip_role()
         frames = []
+        if ok:
+            # equip_qianghua -> ChengHaoEquipQiangHuaEventHandler.
+            self._chenghao_change(rid, 'EQUIP_QIANGHUA')
         if ok and cfg['qhNotice']:
             frames.append(frame(amf3_encode(
                 [str(CMD_NOTICE_ALL),
@@ -10053,6 +10310,8 @@ class Session:
         new_qh = qh + 1
         blob = self._vo_enhanced_blob(row, new_qh, True)
         self._equip_persist(rid, row, blob)
+        # The max-upgrade path always succeeds, so it always counts.
+        self._chenghao_change(rid, 'EQUIP_QIANGHUA')
         role = self._equip_role()
         grow = self.config._goods_table().get(str(row.get('goods_id')))
         goods_name = (grow or {}).get('name') or str(row.get('goods_id'))
@@ -13038,6 +13297,8 @@ class Session:
             if not ok:
                 break
             frames.extend(pushes)
+            # task_finish -> ChengHaoTaskFinishEventHandler (TASK_FINISH).
+            self._chenghao_change(rid, 'TASK_FINISH')
             frames.extend(self._task_reward(role, rid, current) or [])
             if not nxt:
                 break
@@ -13867,6 +14128,8 @@ class Session:
         except Exception:
             pass
         keeper.update(updates)
+        # taofa_tunshi -> ChengHaoTaskTunshiEventHandler (TASK_TUNSHI).
+        self._chenghao_change(rid, 'TASK_TUNSHI')
         info = self._taofa_out_info(keeper)
         return frame(amf3_encode(['50103', [1, [info, str(eaten_guid)]]]))
 
@@ -27774,8 +28037,11 @@ class Session:
         # 2 (STORE), YB is type 3 (STORE_YB).
         if money_name == 'BIND_YB':
             self._huoyue_record(rid, 2, 1)
+            # mall_buy -> ChengHaoMallBuyEventHandler (STORE_BIND).
+            self._chenghao_change(rid, 'STORE_BIND')
         elif money_name == 'YB':
             self._huoyue_record(rid, 3, 1)
+            self._chenghao_change(rid, 'STORE_YB')
         return frame(amf3_encode(
             [str(CMD_MALL_BUY),
              [1, [str(goods_id), count, total, money_type]]]))
@@ -28370,6 +28636,8 @@ class Session:
         now = int(self._world_now_ms())
         row['auto_pass_info'] = juqing_lib.encode_auto(onekey, cid, now)
         self._juqing_save(rid, row)
+        # juqing_fuben_saodang -> ChengHaoFubenSaodangEventHandler.
+        self._chenghao_change(rid, 'FUBEN_SAODANG')
         return frame(amf3_encode(
             ['64004', [1, cid, bool(onekey), best['fast']]]))
 
@@ -28397,6 +28665,8 @@ class Session:
                 ['64006', [-1, auto['curid'], remain]]))
         now = int(self._world_now_ms())
         self._juqing_commit_sweep(rid, row, auto, best, now)
+        # juqing_fuben_finish -> ChengHaoFubenFinishEventHandler.
+        self._chenghao_change(rid, 'FUBEN_FINISH')
         return frame(amf3_encode(
             ['64006', [1, auto['curid'], bool(auto['onekey'])]], ))
 

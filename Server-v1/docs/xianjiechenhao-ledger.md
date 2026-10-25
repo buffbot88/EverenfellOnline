@@ -166,21 +166,35 @@ already expose the corresponding write points.
 
 ## Port plan / status
 
-1. Schema: add `xianjie_qiyong`, `xianjie_data`, `xianjie_time`,
-   `log_update_time` to `role_xianjiechenhao` (plus the `role_die` log
-   table for 91005/91007).
-2. `xianjiehuoyuedu`: daily accumulation with per-type caps, the
-   90000/90001/91000/91001 surface and its ~20 producers.
-3. Xianjie rank: 91003 + the `91004` self push, 91002 rank cells,
+1. Schema: DONE. `role_xianjiechenhao` carries `xianjie_qiyong`,
+   `xianjie_data` (XianJieData JSON), `xianjie_time` and
+   `log_update_time`; `role_die` stores the kill-log lines with the
+   Java 100-row cap.
+2. `xianjiehuoyuedu`: DONE (d6d3999). Daily accumulation with the
+   per-type caps, the 90000/90001/91000/91001 surface and the producers
+   whose Python gameplay paths exist (VIP, mall buy, monster death by
+   difficulty, exp, zhenqi, dazuo, meiren chanmian, baixian, jianding,
+   daily-task finish, richang). Types whose only source is an unfinished
+   system (arena, shenjiang boss, weiduan, fengshen) stay at 0 rather
+   than being faked.
+3. Xianjie rank: DONE (95ad1f2). 91003/91004, 91002 rank cells,
    `_fight_changed()` on a new rank (12010 [11]) and the 12000 bag.
-4. Titles: `limit1` condition engine, auto-activation on every
-   `changeData`, `91006` push, 91002 show cells, 91009 manual re-check,
-   91004 switching, bind-YB reward, `gonggao` notices.
-5. Fight/attributes: xianjie bag and title bags already flow through the
-   existing `xianjie_id_for`/`chenhao_ids_for` attribute-bag wiring;
-   add the `[11]`/`[12]` 12010 cells and the shared refresh.
-6. Tests: thresholds, duplicate protection, failed actions, two distinct
-   event sources, persistence/reconnect, command dispatch, notices.
-
-Nothing in the command family is wired yet; the port only computes the
-xianjie/chenghao attribute bags for migrated roles.
+4. Titles: DONE. `limit1` engine in `game/xianjie.py`, activation on
+   `changeData` / rank upgrade / 91002 / 91009, 91006 + 91009-notice
+   pushes, 91002 show cells, bind-YB reward, `gonggao` notices.
+5. Events: the port's `_huoyue_record` sites double as the chenghao
+   `changeData` sites where Java has one: monster death (KILL_MONSTER),
+   main-task submit (TASK_FINISH), taofa tunshi (TASK_TUNSHI), juqing
+   sweep/finish (FUBEN_SAODANG/FUBEN_FINISH), enhancement
+   (EQUIP_QIANGHUA), mall buy (STORE_BIND/STORE_YB) and the client
+   91008 onhook/dazuo minutes. Deferred, because the producer itself is
+   absent or unverified: story shop buy/sell/back (STORE_*), tanwei
+   sell/buy, task miaosha, lingqidan, sjjd, and the PvP 91006 kill line
+   (no role-death pipeline). Money/recharge features stay out of scope.
+6. Kill log: DONE. 91005 pages `[[createTime, killData], ...]`, the
+   client 91007 append stores the `91011` user line, monster deaths
+   append the `91007` monster line, and the store trims to the newest
+   100 rows after each insert.
+7. Tests: `tests/test_xianjie.py` covers thresholds, duplicate
+   prevention, failed actions, strict `>` quirks, notices, persistence,
+   reconnect, kill-log pagination and the 12010 [11]/[12] cells.

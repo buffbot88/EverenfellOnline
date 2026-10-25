@@ -103,3 +103,23 @@ reader producing frame/direction/anchor metadata.
 (maps.dat / cj scene .paks / config xmls) not yet traced.
 5. No recovered bytes ship publicly: originals stay under MKO_Client/
 (immutable reference); output/ extracts are local working material.
+
+## Packed UI SWF decode attempt (2026-10-25, blocked)
+
+Verified facts for `res/assets/*.swf` (98 files tested):
+
+- No file has a plaintext FWS/CWS/ZWS signature in its first 64 bytes.
+- First 4 bytes are not a length: big-endian u32 is about size/2, not size-4.
+- First two bytes are one of 7 values (0000..0002, 0005, 0006, 081f), so
+  the leading bytes are not random.
+- The standalone `tools/de_debug.py` decoder is a no-op: `run_de` returns
+  its input unchanged (verified on Shop.swf, sha-identical). It exits at
+  the first `iffalse` with the loop counter unseeded. It is NOT a decoder.
+
+Blocker: the decode key/state (MD5 seed, `ds` buffer, `_Md5_decode` input
+contract) is not recoverable from the bytes alone. Nothing here is decoded.
+No artwork is recovered from these SWFs by this path.
+
+Note: `tools/` is git-ignored (`.gitignore: /tools/*`), so the Alchemy
+interpreter and avm2 parser fixes are local-only and cannot be committed
+from this repository.

@@ -542,6 +542,38 @@ class XianjieHuoyueTest(unittest.TestCase):
         show = {row[0]: row for row in body[4]}
         self.assertEqual(show['4'], ['4', 60])
 
+    def test_activity_to_rank_to_title_end_to_end(self):
+        self._signins(5)
+        self.store.save_role_vip(self.role_id, vip_level=10)
+        # 90000 is the real login/panel path and accounts VIP 10 -> 50.
+        got = self.wire(90000, None)
+        self.assertEqual(got[0][1][0], 50)
+        for type_id, data, add in ((2, 1, True), (3, 1, True),
+                                   (4, 10, True), (12, 1, True),
+                                   (19, 1, True)):
+            self.sess._huoyue_record(self.role_id, type_id, data, add=add)
+        self.sess._huoyue_record(self.role_id, 16, 5, add=False)
+        self.assertEqual(self.row()['huoyuedu'], 130)
+        role = self.role()
+        killer = {'kind': 'role', 'id': self.role_id, 'role': role}
+        for difficulty in (2, 3):
+            dead = {'kind': 'monster', 'id': 'm%d' % difficulty,
+                    'template': {'id': 'D000006', 'name': 'Monkey',
+                                 'basicexp': 50, 'level': 1,
+                                 'difficulty': difficulty}}
+            self.sess._kill_exp_frames(killer, dead)
+        self.assertEqual(self.row()['huoyuedu'], 150)
+        got = self.wire(91003, '1')
+        codes = [f[0] for f in got]
+        self.assertIn('91006', codes)
+        self.assertIn('91003', codes)
+        self.assertEqual(self._titles(), ['1'])
+        slots = self.wire(12010, None)[0][1]
+        self.assertEqual(slots[11], self.cfg.xianjie_fight('1'))
+        self.assertEqual(slots[12], self.cfg.chenghao_fight(['1']))
+        self.sess.xianjie_activate([91009, '1'])
+        self.assertEqual(self.push(), [])
+
     def test_rank_upgrade_reactivates_new_rank_titles(self):
         self._signins(5)
         self._activity(150)

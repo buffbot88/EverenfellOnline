@@ -13,6 +13,7 @@ import type { ActorSnapshot, WorldSnapshot } from './net/protocol';
 import { GAME_SERVERS } from './net/protocol';
 import { ActorLayer } from './world/actors';
 import { MapLayer } from './world/mapLayer';
+import { MapViewer } from './world/mapViewer';
 import { Camera } from './world/camera';
 import { Input } from './world/input';
 import { WindowManager } from './ui/windows';
@@ -43,6 +44,7 @@ export class App {
   private selfId: string | null = null;
   private selfTile = { x: 0, y: 0 };
   private map: MapLayer | null = null;
+  private mapViewer: MapViewer | null = null;
 
   constructor(private readonly options: AppOptions) {
     this.camera = new Camera({ viewWidth: 1, viewHeight: 1 });
@@ -55,6 +57,7 @@ export class App {
     options.uiMount.appendChild(this.statusEl);
   }
 
+  /** Boot the renderer. Never calls the website session or the gateway. */
   async start(): Promise<void> {
     await this.pixi.init({
       background: '#0a141d',
@@ -73,8 +76,25 @@ export class App {
     this.input.onMoveIntent(({ dx, dy }) => {
       void this.sendMove(dx, dy);
     });
+    await this.showMap();
+  }
+
+  /** Rendering mode: original Map 0 tiles, no session, no gameplay. */
+  private async showMap(): Promise<void> {
+    this.setStatus('Loading recovered Map 0…');
+    try {
+      await this.drawMap();
+      this.setStatus(`Rendering ${this.map?.name ?? 'Map 0'} (recovered original tiles).`);
+    } catch (err) {
+      this.setStatus(
+        `Map failed to load: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Gameplay mode: website session, then the Python gateway. Opt-in only. */
+  startGameplay(): void {
     this.renderLogin();
-    this.setStatus('Sign in to enter Everenfell.');
   }
 
   destroy(): void {
@@ -266,12 +286,26 @@ export class App {
 
   /** Original map 0 tiles at native pixels (dev-only local asset source). */
   private async drawMap(): Promise<void> {
+    this.mapViewer?.detachControls();
     this.map?.root.destroy({ children: true });
     const map = new MapLayer();
     await map.load();
     map.root.zIndex = -2;
     this.pixi.stage.addChildAt(map.root, 0);
     this.map = map;
+    // Centre the whole recovered map in the viewport, then allow local
+    // pan/zoom for inspection (view-only; no gameplay intents).
+    const fit = Math.min(
+      this.pixi.screen.width / map.pixelWidth,
+      this.pixi.screen.height / map.pixelHeight,
+    );
+    map.root.scale.set(Math.min(1, fit));
+    map.root.position.set(
+      (this.pixi.screen.width - map.pixelWidth * map.root.scale.x) / 2,
+      (this.pixi.screen.height - map.pixelHeight * map.root.scale.y) / 2,
+    );
+    this.mapViewer = new MapViewer(map.root, this.pixi.canvas);
+    this.mapViewer.attach();
   }
 
   private renderWorldChrome(): void {

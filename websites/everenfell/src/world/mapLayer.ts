@@ -32,17 +32,32 @@ const manifest = mapManifest as MapManifest;
 export class MapLayer {
   readonly root = new Container();
 
-  /** Load every tile texture and place it at its measured position. */
+  /** Tiles that failed to load, as `id: reason`. Empty when complete. */
+  readonly failures: string[] = [];
+
+  /** Load every tile at its measured position. Failures are recorded and
+   *  reported, never replaced with placeholder art. */
   async load(): Promise<void> {
     const loads = manifest.tiles.map(async (tile) => {
-      const texture: Texture = await Assets.load(tile.url);
-      const sprite = new Sprite(texture);
-      sprite.position.set(tile.x, tile.y);
-      sprite.width = tile.width;
-      sprite.height = tile.height;
-      this.root.addChild(sprite);
+      try {
+        const texture: Texture = await Assets.load(tile.url);
+        const sprite = new Sprite(texture);
+        sprite.position.set(tile.x, tile.y);
+        sprite.width = tile.width;
+        sprite.height = tile.height;
+        this.root.addChild(sprite);
+      } catch (err) {
+        this.failures.push(
+          `${tile.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     });
     await Promise.all(loads);
+    if (this.failures.length > 0) {
+      throw new Error(
+        `${this.failures.length} of ${manifest.tiles.length} tiles failed (first: ${this.failures[0]})`,
+      );
+    }
   }
 
   get pixelWidth(): number {

@@ -53,6 +53,11 @@ agents.json
 knowledge.md
 brain-install.js
 package.json
+# Browser client manifests/locks ship; local build output does not.
+!websites/**/package.json
+!websites/**/package-lock.json
+websites/**/node_modules/
+websites/**/dist/
 *.MYI
 *.MYD
 /Server-v1/.jrecon

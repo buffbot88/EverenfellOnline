@@ -373,7 +373,12 @@ def main():
     tcpd.daemon_threads = True
     tcpd.sessions = {}
     tcpd.sessions_lock = threading.Lock()
-    tcpd.check_sign = staticmethod(check_sign)
+    # Assign the plain function (callable on every Python). `staticmethod(...)`
+    # wraps it in a descriptor object that is only callable in Python 3.10+;
+    # the live interpreter is 3.9, so the wrapper made every 10001 login crash
+    # with "'staticmethod' object is not callable" and the gateway rejected all
+    # valid tickets upstream.
+    tcpd.check_sign = check_sign
     tcpd.get_roles = lambda u, s: [
         dict(r)
         for r in store.list_roles(u, s)]

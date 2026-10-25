@@ -188,6 +188,41 @@ class TestGamesessionEndpoint(unittest.TestCase):
         self.assertTrue(check_sign(sess['uid'], sess['t'], sess['sign']))
 
 
+class TestResRoute(unittest.TestCase):
+    """/res/ serves the local original client assets read-only; nothing escapes the root."""
+
+    def setUp(self):
+        httpd = ThreadingHTTPServer(('127.0.0.1', 0), web.Handler)
+        self.base = 'http://127.0.0.1:%d' % httpd.server_address[1]
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def get(self, path):
+        try:
+            with urllib.request.urlopen(self.base + path, timeout=5) as r:
+                return r.status, r.headers.get('Content-Type'), r.read()
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, None, b''
+
+    def test_serves_original_swf_with_flash_type(self):
+        status, ctype, body = self.get('/res/Main.swf')
+        self.assertEqual(status, 200)
+        self.assertEqual(ctype, 'application/x-shockwave-flash')
+        self.assertEqual(body[:3], b'CWS')
+
+    def test_refuses_path_traversal_out_of_res_root(self):
+        for path in ('/res/../web.py', '/res/..%2F..%2Fweb.py', '/res/%2e%2e/web.py'):
+            status, _, body = self.get(path)
+            self.assertEqual(status, 404, path)
+            self.assertNotIn(b'ThreadingHTTPServer', body)
+
+    def test_missing_file_is_404(self):
+        status, _, _ = self.get('/res/does-not-exist.swf')
+        self.assertEqual(status, 404)
+
+
 class TestCrossOrigin(unittest.TestCase):
     def test_no_browser_headers_allowed(self):
         self.assertFalse(web.cross_origin({'Host': '127.0.0.1:8080'}))

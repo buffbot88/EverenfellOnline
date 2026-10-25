@@ -11,6 +11,7 @@
 import io
 import json
 import logging
+import os
 import random
 import string
 import threading
@@ -24,6 +25,15 @@ log = logging.getLogger('web')
 
 SEID, SPORT, IP, PID = 'fu1304', 8008, '127.0.0.1', 'gmthai'
 
+# Read-only local asset root for the original client (dev only, never shipped).
+RES_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         '..', 'MKO_Client', 'Assets', 'res'))
+RES_TYPES = {'.swf': 'application/x-shockwave-flash', '.png': 'image/png',
+             '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp3': 'audio/mpeg',
+             '.xml': 'application/xml', '.gz': 'application/octet-stream',
+             '.mpq': 'application/octet-stream', '.dat': 'application/octet-stream',
+             '.ani': 'application/octet-stream', '.pak': 'application/octet-stream',
+             '.txt': 'text/plain'}
 LOGIN_FAIL_LIMIT = 5      # failed logins/registers per client IP ...
 LOGIN_FAIL_WINDOW_S = 300  # ... within this window before we refuse
 
@@ -130,7 +140,24 @@ class Handler(BaseHTTPRequestHandler):
             self.server.sessions.set_captcha(tok, code)
             return self._send(200, render_captcha(code), 'image/png',
                               {'Set-Cookie': session_cookie(tok)})
+        if path.startswith('/res/'):
+            return self._send_res(path[len('/res/'):])
         return self._send(404, 'not found', 'text/plain')
+
+    def _send_res(self, rel):
+        """Read-only static route for the local original client assets (dev only).
+
+        Serves regular files under the res root and nothing else; any path that
+        escapes the root is refused.
+        """
+        root = RES_ROOT
+        target = os.path.realpath(os.path.join(root, urllib.parse.unquote(rel)))
+        if not target.startswith(root + os.sep) or not os.path.isfile(target):
+            return self._send(404, 'not found', 'text/plain')
+        ctype = RES_TYPES.get(os.path.splitext(target)[1].lower(),
+                              'application/octet-stream')
+        with open(target, 'rb') as fh:
+            return self._send(200, fh.read(), ctype)
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path

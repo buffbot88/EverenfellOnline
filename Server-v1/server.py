@@ -346,6 +346,8 @@ def main():
                     help='server id characters are scoped to')
     ap.add_argument('--tick-interval', type=float, default=1.0,
                     help='scheduler tick seconds (0 disables the tick loop)')
+    ap.add_argument('--gateway', default='',
+                    help='browser WebSocket gateway HOST:PORT (empty disables)')
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.debug else logging.INFO,
                         format='%(asctime)s [%(name)s] %(message)s')
@@ -593,6 +595,15 @@ def main():
                          daemon=True).start()
         log.info('scheduler tick every %ss', a.tick_interval)
     log.info('game up: %s:%s', g_host, g_port)
+    if a.gateway:
+        from auth import generate_sign
+        from gateway import GatewayServer
+        gw_host, gw_port = a.gateway.rsplit(':', 1)
+        gateway = GatewayServer(gw_host, int(gw_port), sessions,
+                                g_host, int(g_port), generate_sign,
+                                a.server_id)
+        threading.Thread(target=gateway.serve_forever, daemon=True).start()
+        log.info('gateway up: %s:%s', gw_host, gw_port)
     try:
         serve_web(store, sessions, w_host, int(w_port), a.captcha,
                   g_host, int(g_port))

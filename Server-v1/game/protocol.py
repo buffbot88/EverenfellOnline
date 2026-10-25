@@ -29195,10 +29195,14 @@ class Session:
         try:
             kills = {str(k): int(v)
                      for k, v in dict(data.get('kills') or {}).items()}
-            return {'chapter': str(data['chapter']),
-                    'start': int(data.get('start') or 0),
-                    'kills': kills,
-                    'deaths': int(data.get('deaths') or 0)}
+            active = {'chapter': str(data['chapter']),
+                      'start': int(data.get('start') or 0),
+                      'kills': kills,
+                      'deaths': int(data.get('deaths') or 0)}
+            for opt in ('stage', 'return_map', 'return_pos'):
+                if data.get(opt) is not None:
+                    active[opt] = data.get(opt)
+            return active
         except (TypeError, ValueError):
             return None
 
@@ -29221,13 +29225,20 @@ class Session:
             return None
 
     def _juqing_attempt_save(self, rid, row, chapter, start_ms,
-                             kills=None, deaths=0):
+                             kills=None, deaths=0, stage=None,
+                             return_map=None, return_pos=None):
         """Write the attempt marker and persist."""
         import json as _json
-        row['tiaozhan_jindu'] = _json.dumps(
-            {'chapter': str(chapter), 'start': int(start_ms),
-             'kills': {str(k): int(v) for k, v in (kills or {}).items()},
-             'deaths': int(deaths)})
+        marker = {'chapter': str(chapter), 'start': int(start_ms),
+                  'kills': {str(k): int(v) for k, v in (kills or {}).items()},
+                  'deaths': int(deaths)}
+        if stage is not None:
+            marker['stage'] = str(stage)
+        if return_map is not None:
+            marker['return_map'] = str(return_map)
+        if return_pos is not None:
+            marker['return_pos'] = [int(return_pos[0]), int(return_pos[1])]
+        row['tiaozhan_jindu'] = _json.dumps(marker)
         self._juqing_save(rid, row)
 
     def _juqing_idle(self, rid, row):
@@ -29346,15 +29357,37 @@ class Session:
         if err is not None:
             return frame(amf3_encode(['64002', [0, err]]))
         pos = cfg.get('pos') or []
+        base_map = str(cfg.get('map') or role.get('map_id'))
+        try:
+            ret_map = self._live_map(rid, role) or base_map
+        except Exception:
+            ret_map = base_map
+        try:
+            ret_pos = self.stage_registry.position_of(rid) \
+                if self.stage_registry is not None else None
+        except Exception:
+            ret_pos = None
+        if ret_pos is None:
+            ret_pos = [role.get('map_x') or 0, role.get('map_y') or 0]
+        stage_key = None
+        if self.stage_registry is not None:
+            try:
+                stage_key = self.stage_registry.create_instance(
+                    base_map, 'JUQING', rid)
+            except Exception:
+                stage_key = None
         frames = list(self.change_map(
-            rid, str(cfg.get('map') or role.get('map_id')),
+            rid, base_map,
             int(pos[0]) if len(pos) > 0 else int(role.get('map_x') or 0),
-            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0)))
+            int(pos[1]) if len(pos) > 1 else int(role.get('map_y') or 0),
+            stage_key=stage_key))
         now = int(self._world_now_ms())
         row['passed_ids_daily'] = juqing_lib.set_count(
             row.get('passed_ids_daily'), cid, 1)
         row['refresh_time'] = now
-        self._juqing_attempt_save(rid, row, cid, now)
+        self._juqing_attempt_save(
+            rid, row, cid, now, stage=stage_key,
+            return_map=ret_map, return_pos=list(ret_pos))
         try:
             self.stage_scheduler.cancel(f'juqing_expire:{rid}')
         except (AttributeError, KeyError, ValueError):
@@ -29372,14 +29405,39 @@ class Session:
         frames.append(frame(amf3_encode(['64002', [1, cid]])))
         return tuple(frames)
 
+    def _juqing_home_frames(self, rid, active):
+        """Return a role to its pre-copy position and drop the copy."""
+        try:
+            ret_map = (active or {}).get('return_map')
+            ret_pos = (active or {}).get('return_pos') or [0, 0]
+            stage = (active or {}).get('stage')
+            if ret_map is None:
+                return []
+            if self.stage_registry is not None and stage is not None:
+                try:
+                    live = self.stage_registry.stage_of(str(rid))
+                    if live is not None and str(live) != str(stage):
+                        return []
+                except Exception:
+                    pass
+            frames = list(self.change_map(
+                str(rid), str(ret_map), int(ret_pos[0]), int(ret_pos[1])))
+            if self.stage_registry is not None and stage is not None:
+                try:
+                    self.stage_registry.destroy_instance_if_empty(stage)
+                except Exception:
+                    pass
+            return frames
+        except Exception:
+            return []
+
     def _juqing_expire(self, rid):
         """Forced-leave timer: an unfinished attempt expires (COPY_EXPIRE3).
 
         Ports StageJuQingCopyServiceImpl.expireCheck: the copy ends with
         COPY_EXPIRE3, challengeResult answers [1, chapter, 3] for the
-        64003 push, and the role is sent home with 64008 [1]. Home-map
-        routing lives in stagecontroll (unported), so the role keeps its
-        current map while the attempt state clears.
+        64003 push, and the role is sent home with 64008 [1] plus the
+        applyReturnLastStage map frames.
         """
         from . import juqing as juqing_lib
         try:
@@ -29399,9 +29457,15 @@ class Session:
             self.stage_scheduler.cancel(f'juqing_expire:{rid}')
         except (AttributeError, KeyError, ValueError):
             pass
+        home = self._juqing_home_frames(str(rid), active)
         return (frame(amf3_encode(
             ['64003', [1, int(active['chapter']),
                        juqing_lib.COPY_EXPIRE3]])),
+            frame(amf3_encode(['64008', [1]])),
+            *home) if home else (
+            frame(amf3_encode(
+                ['64003', [1, int(active['chapter']),
+                           juqing_lib.COPY_EXPIRE3]])),
             frame(amf3_encode(['64008', [1]])))
 
     def juqing_saodang(self, msg):
@@ -29826,10 +29890,12 @@ class Session:
         self._juqing_save(rid, row)
 
     def _juqing_on_disconnect(self):
-        """handleLogout: freeze a running sweep clock at logout.
+        """handleLogout: freeze a running sweep clock and abandon the copy.
 
         useTime accumulates the session's elapsed millis so offline
-        time never counts toward the sweep.
+        time never counts toward the sweep. An active challenge attempt
+        ends with the stage copy: the marker clears and the emptied
+        instance is destroyed (the row keeps the offline-save position).
         """
         from . import juqing as juqing_lib
         try:
@@ -29847,15 +29913,34 @@ class Session:
             if row is None:
                 continue
             auto = juqing_lib.decode_auto(row.get('auto_pass_info'))
-            if auto is None or auto.get('curid') is None:
-                continue
-            try:
-                use = int(auto.get('usetime') or 0) + \
-                    max(now - int(auto.get('start') or 0), 0)
-            except (TypeError, ValueError):
-                continue
-            row['auto_pass_info'] = juqing_lib.encode_auto(
-                auto['onekey'], auto['curid'], now, use)
+            if auto is not None and auto.get('curid') is not None:
+                try:
+                    use = int(auto.get('usetime') or 0) + \
+                        max(now - int(auto.get('start') or 0), 0)
+                except (TypeError, ValueError):
+                    use = None
+                if use is not None:
+                    row['auto_pass_info'] = juqing_lib.encode_auto(
+                        auto['onekey'], auto['curid'], now, use)
+            active = self._juqing_active(row)
+            if active is not None:
+                stage = active.get('stage')
+                row['tiaozhan_jindu'] = ''
+                if self.stage_registry is not None:
+                    try:
+                        self.stage_registry.unregister(str(rid))
+                    except Exception:
+                        pass
+                    if stage is not None:
+                        try:
+                            self.stage_registry.destroy_instance_if_empty(
+                                stage)
+                        except Exception:
+                            pass
+                try:
+                    self.stage_scheduler.cancel(f'juqing_expire:{rid}')
+                except (AttributeError, KeyError, ValueError):
+                    pass
             self._juqing_save(rid, row)
 
     def _juqing_kill_frames(self, actor, dead_monster):
@@ -29898,6 +29983,13 @@ class Session:
         active = self._juqing_active(row)
         if active is None:
             return []
+        try:
+            if active.get('stage') is not None and self.stage_registry is not None:
+                live = self.stage_registry.stage_of(str(rid))
+                if str(live) != str(active.get('stage')):
+                    return []
+        except Exception:
+            pass
         cfg = self._juqing_cfg(active['chapter'])
         if cfg is None:
             return []
@@ -29907,8 +29999,11 @@ class Session:
             return []
         kills = dict(active['kills'])
         kills[mid] = int(kills.get(mid, 0)) + 1
-        self._juqing_attempt_save(rid, row, active['chapter'],
-                                  active['start'], kills, active['deaths'])
+        self._juqing_attempt_save(
+            rid, row, active['chapter'], active['start'], kills,
+            active['deaths'], stage=active.get('stage'),
+            return_map=active.get('return_map'),
+            return_pos=active.get('return_pos'))
         # Java sends no per-kill push (killMap only rides the 64009
         # enter state); victory is total kills >= total wanted, like
         # getWantedListComplete (killCount >= monsterCount).
@@ -29967,11 +30062,13 @@ class Session:
                 roll_formarts = []
         else:
             roll_formarts = None
-        return [frame(amf3_encode(
+        home = self._juqing_home_frames(str(rid), active)
+        victory = frame(amf3_encode(
             ['64003', [1, int(active['chapter']), str(rid),
                        computed['exp'], computed['yxb'],
                        computed['zhenqi'], pairs,
-                       roll_formarts, use_ms, active['deaths']]]))]
+                       roll_formarts, use_ms, active['deaths']]]))
+        return [*home, victory] if home else [victory]
 
     def _juqing_death_progress(self, owner_role):
         """JuqingStageCopy.incrDeadTimes: a death during an attempt counts."""
@@ -29985,9 +30082,12 @@ class Session:
         active = self._juqing_active(row)
         if active is None:
             return
-        self._juqing_attempt_save(rid, row, active['chapter'],
-                                  active['start'], active['kills'],
-                                  active['deaths'] + 1)
+        self._juqing_attempt_save(
+            rid, row, active['chapter'], active['start'],
+            active['kills'], active['deaths'] + 1,
+            stage=active.get('stage'),
+            return_map=active.get('return_map'),
+            return_pos=active.get('return_pos'))
 
     def zuwufuben_info(self):
         """Command 108001: [1, [passMax, everyday[], saodangOrNull]].
@@ -30356,8 +30456,9 @@ class Session:
                 return []
             if self.stage_registry is not None:
                 try:
-                    if str(self.stage_registry.stage_of(rid)) != str(stage) \
-                            and stage is not None:
+                    live = self.stage_registry.stage_of(rid)
+                    if live is not None and stage is not None \
+                            and str(live) != str(stage):
                         return []
                 except Exception:
                     pass
@@ -31068,6 +31169,32 @@ class Session:
         except (AttributeError, KeyError, ValueError):
             pass
 
+    def _guildfuben_home_frames(self, rid, attempt):
+        """Return a role to its pre-copy position and drop the copy."""
+        try:
+            ret_map = (attempt or {}).get('return_map')
+            ret_pos = (attempt or {}).get('return_pos') or [0, 0]
+            stage = (attempt or {}).get('stage')
+            if ret_map is None:
+                return []
+            if self.stage_registry is not None and stage is not None:
+                try:
+                    live = self.stage_registry.stage_of(str(rid))
+                    if live is not None and str(live) != str(stage):
+                        return []
+                except Exception:
+                    pass
+            frames = list(self.change_map(
+                str(rid), str(ret_map), int(ret_pos[0]), int(ret_pos[1])))
+            if self.stage_registry is not None and stage is not None:
+                try:
+                    self.stage_registry.destroy_instance_if_empty(stage)
+                except Exception:
+                    pass
+            return frames
+        except Exception:
+            return []
+
     def _guildfuben_drop_attempt(self, rid, mainid=None):
         """Release presence and the attempt; the 118004 leave notice."""
         rid = str(rid)
@@ -31080,6 +31207,20 @@ class Session:
         else:
             attempt = None
         self._guildfuben_inside.discard(rid)
+        if self.stage_registry is not None:
+            try:
+                live = self.stage_registry.stage_of(rid)
+                if attempt is None or attempt.get('stage') is None \
+                        or live is None or str(live) == str(attempt.get('stage')):
+                    self.stage_registry.unregister(rid)
+            except Exception:
+                pass
+            if attempt is not None and attempt.get('stage') is not None:
+                try:
+                    self.stage_registry.destroy_instance_if_empty(
+                        attempt.get('stage'))
+                except Exception:
+                    pass
         if attempt is None:
             return None
         return frame(amf3_encode(
@@ -31263,12 +31404,41 @@ class Session:
             old_map = str(role.get('map_id') or '')
         except AttributeError:
             old_map = ''
+        base_map = str(cfg.get('map') or old_map)
+        try:
+            ret_map = self._live_map(str(rid), role) or base_map
+        except Exception:
+            ret_map = base_map
+        try:
+            ret_pos = self.stage_registry.position_of(str(rid)) \
+                if self.stage_registry is not None else None
+        except Exception:
+            ret_pos = None
+        if ret_pos is None:
+            try:
+                ret_pos = [role.get('map_x') or 0, role.get('map_y') or 0]
+            except AttributeError:
+                ret_pos = [0, 0]
+        stage_key = self._guildfuben_stage_id(gid, mainid, base_map)
+        if self.stage_registry is not None:
+            try:
+                made = self.stage_registry.create_instance(
+                    base_map, 'GUILDFUBEN', '%s-%s' % (gid, mainid))
+                if made != stage_key:
+                    stage_key = made
+            except Exception:
+                pass
         frames = list(self.change_map(
-            rid, str(cfg.get('map') or old_map),
+            rid, base_map,
             int(pos[0]) if len(pos) > 0 else 0,
-            int(pos[1]) if len(pos) > 1 else 0))
+            int(pos[1]) if len(pos) > 1 else 0,
+            stage_key=stage_key))
         self._guildfuben_attempt[str(rid)] = {'guild': str(gid),
-                                              'mainid': int(mainid)}
+                                              'mainid': int(mainid),
+                                              'stage': str(stage_key),
+                                              'return_map': str(ret_map),
+                                              'return_pos': [int(ret_pos[0]),
+                                                             int(ret_pos[1])]}
         try:
             deadline = self.config.guildfuben_deadline_ms(mainid,
                                                            int(self._world_now_ms()))
@@ -31307,11 +31477,9 @@ class Session:
     def guildfuben_quit(self, msg):
         """Command 118004 [mainid]: leave the guild dungeon, [1].
 
-        quitFuBen drops presence and the attempt (already-out is still
-        [1]); the role keeps its map -- the SC:APPLY_CHANG_MAP home
-        routing needs the stagecontroll history (not yet ported),
-        exactly the zuwu_quit deviation. Members hear the 118012
-        guild notice.
+        quitFuBen drops presence and the attempt, returns the role to
+        its pre-copy position (applyReturnLastStage) and destroys the
+        emptied copy. Members hear the 118012 guild notice.
         """
         role, rid = self._guild_self()
         if role is None or rid is None:
@@ -31324,8 +31492,9 @@ class Session:
             return frame(amf3_encode([str(CMD_GUILDFUBEN_QUIT), [1]]))
         gid, _guild = self._guildfuben_guild(rid)
         cfg = self._guildfuben_config(mainid)
+        attempt = self._guildfuben_attempt.get(str(rid))
         self._guildfuben_drop_attempt(rid, mainid)
-        frames = []
+        frames = list(self._guildfuben_home_frames(str(rid), attempt or {}))
         if gid is not None and cfg is not None:
             try:
                 member_name = str(role.get('name') or '')
@@ -31464,10 +31633,17 @@ class Session:
         if boss_tpl not in wanted:
             return []
         try:
-            if str(owner_role.get('map_id') or '') != str(cfg.get('map')):
+            if str(self._live_map(str(rid), owner_role)) != str(cfg.get('map')):
                 return []
         except AttributeError:
             return []
+        try:
+            if attempt.get('stage') is not None and self.stage_registry is not None:
+                live = self.stage_registry.stage_of(str(rid))
+                if str(live) != str(attempt.get('stage')):
+                    return []
+        except Exception:
+            pass
         gid, guild = self._guildfuben_guild(rid)
         if gid is None or str(gid) != str(attempt.get('guild')):
             return []
@@ -31523,11 +31699,23 @@ class Session:
         return out
 
     def _guildfuben_expire(self, rid, mainid):
-        """Copy-expiry forced leave: drop the attempt, push 118004."""
+        """Copy-expiry forced leave: drop the attempt, return home."""
         try:
-            return self._guildfuben_drop_attempt(rid, mainid)
+            attempt = self._guildfuben_attempt.get(str(rid))
         except Exception:
-            return None
+            attempt = None
+        try:
+            dropped = self._guildfuben_drop_attempt(rid, mainid)
+        except Exception:
+            dropped = None
+        try:
+            home = self._guildfuben_home_frames(str(rid), attempt or {})
+        except Exception:
+            home = []
+        out = list(home or [])
+        if dropped is not None:
+            out.append(dropped)
+        return tuple(out) if out else None
 
     def _guildfuben_on_enter(self, rid):
         """handleLogin: ensure the claim row and prune expired claims."""
@@ -31559,6 +31747,17 @@ class Session:
             attempt = self._guildfuben_attempt.pop(rid, None)
             if attempt is not None:
                 self._guildfuben_cancel(rid, attempt.get('mainid'))
+            if self.stage_registry is not None:
+                try:
+                    self.stage_registry.unregister(rid)
+                except Exception:
+                    pass
+                if attempt is not None and attempt.get('stage') is not None:
+                    try:
+                        self.stage_registry.destroy_instance_if_empty(
+                            attempt.get('stage'))
+                    except Exception:
+                        pass
 
     def _guildfuben_on_guild_create(self, gid):
         """listenGuildCreate/moduleInit: one sealed row per dungeon."""

@@ -16,7 +16,7 @@ genuine-Java-no-op, not-an-inbound-command.
 | ID | Java method | Status | Notes |
 | -- | ----------- | ------ | ----- |
 | 64001 | getInfo | complete+tested | `[1,[highest,daily,best,offline]]`; daily entries are **strings** (`[[id,count]]`); offline entry is `[oneKey,curId,remainMs]` |
-| 64002 | challenge(chapterId) | complete+tested | gates NOT_EXIST/LEVEL/IN_COPY/IS_PASS/NOT_ACTIVATED; `SC:APPLY_COPY` approximated by shared-world entry + `64009` enter state; daily set to 1 at entry |
+| 64002 | challenge(chapterId) | complete+tested | gates NOT_EXIST/LEVEL/IN_COPY/IS_PASS/NOT_ACTIVATED; `SC:APPLY_COPY` joins the per-role copy (`JUQING-<rid>-<map>`) + `64009` enter state; daily set to 1 at entry |
 | 64004 | autoChallenge(chapterId, oneKey) | complete+tested | VIP only when oneKey; needs best time; reply `[1,id,key,fastMs]` |
 | 64006 | finishAutoPass (finishSaoDang) | complete+tested | done `[1,id,key]`; running `[-1,id,remainMs]`; idle `[0,NO_AUTOPASS]` |
 | 64007 | accelerateAutoChallenge | complete+tested | YB `decrCheck` then `decr` (1002 when short); reply `[1,id,costYb]` |
@@ -36,7 +36,7 @@ commands; that was wrong and has been removed.
 | ID | Producer | Status | Notes |
 | -- | -------- | ------ | ----- |
 | 64003 | challengeOver / expireCheck | complete+tested | 10-elem `challengeSuccessResult` on win; `[1,chapter,3]` on expiry |
-| 64008 | applyLeaveCopy | partial | `[1]` reply ported on expire; full `SC:APPLY_CHANG_MAP` home routing needs stagecontroll (unported), role keeps its map |
+| 64008 | applyLeaveCopy | complete+tested | `[1]` on expire plus `_juqing_home_frames` return-home; victory also returns home before the `64003` success result |
 | 64009 | JuqingStageCopy.enter | complete+tested | `[restMs,mapId,chapter,killMap]` on entry only; **no** per-kill push exists in Java |
 
 ## Victory lifecycle (the 64012 staging path)
@@ -61,11 +61,13 @@ Python deliberate deviations (documented, not parity-verified):
 - Staging persists in `role_juqing.pending_award` instead of the
   in-memory `DataContainer`, so a claim survives reconnects (the wire
   protocol allows claiming later; Java would drop it).
-- No real copy instances: `isInCopy` is approximated by the active
-  attempt marker (`tiaozhan_jindu`, a field Java never reads/writes —
-  its attempt state lives in the stage object), shared-world kills
-  count toward the wanted total (`killCount >= monsterCount`
-  semantics), and expiry/cleanup run on the session scheduler.
+- `isInCopy` rides the attempt marker (`tiaozhan_jindu` plus
+  port-only `stage`/`return_map`/`return_pos`, a field Java never
+  reads/writes — its attempt state lives in the stage object).
+  Per-role copies isolate monsters/drops/AOI; kills count only inside
+  the killer's own copy (`killCount >= monsterCount` semantics), and
+  victory/expire/disconnect return home and destroy the copy via the
+  session scheduler.
 - Currency incr caps are not ported: granted amounts equal computed
   amounts (port-wide convention).
 - `64001` daily/best rows are sorted for determinism; Java HashMap

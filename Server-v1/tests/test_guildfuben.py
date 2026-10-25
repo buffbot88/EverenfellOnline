@@ -259,9 +259,13 @@ class GuildFubenTest(unittest.TestCase):
         self.unseal(asess)
         out = self.enter(asess)
         by_cmd = {c[0]: c[1] for c in out}
-        # Shared-world SC:APPLY_COPY: the role lands on map 92.
+        # Per-guild SC:APPLY_COPY: the wire map is 92 while the row
+        # keeps the offline-save position and the live stage is the copy.
         self.assertEqual(by_cmd['20000'], [1, '92', [15, 170]])
-        self.assertEqual(self.role(arid)['map_id'], '92')
+        self.assertEqual(asess._live_map(arid), '92')
+        self.assertEqual(self.role(arid)['map_id'], HOME_MAP)
+        self.assertTrue(str(asess._guildfuben_attempt[arid]['stage']).startswith(
+            'GUILDFUBEN-'))
         # Stage-enter payload carries the (empty) kill log.
         self.assertEqual(by_cmd['118006'], [1, [], 0])
         self.assertEqual(by_cmd['118003'], [1])
@@ -337,8 +341,10 @@ class GuildFubenTest(unittest.TestCase):
         self.swing(asess, self.role(arid), other, 'm_92_9')
         self.assertEqual(json.loads(
             self.store.get_guild_fuben(gid, 1)['killboss']), {})
-        # A wanted boss outside the dungeon map does not count.
+        # A wanted boss outside the dungeon copy does not count.
         self.store.update_character_state(arid, map_id=HOME_MAP)
+        self.reg.unregister(arid)
+        self.reg.register(arid, HOME_MAP, asess, x=10, y=10)
         self.swing(asess, self.role(arid), self.tpl, 'm_92_8')
         self.assertEqual(json.loads(
             self.store.get_guild_fuben(gid, 1)['killboss']), {})

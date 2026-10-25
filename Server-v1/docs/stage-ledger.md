@@ -7,12 +7,14 @@ Oracle: `dntg_start.jar` via `javap -c` — `StageControllServiceImpl`
 plus the `10003`/`20000`/`21000` login burst in
 `output/orig-stack/java-session-summary.txt`.
 
-## Status: partial — offline-save sync DONE, zuwu copies DONE, lines deferred
+## Status: copies DONE for zuwu/juqing/guildfuben; lines + peer records deferred
 
 The logout and map-move persistence now follows the Java sync instead
-of persisting every live position. Zuwu dungeon copies run as genuine
-per-role stage instances; other families still share one world map and
-line numbers remain unported (see Deferred).
+of persisting every live position. Zuwu and juqing run as genuine
+per-role stage instances, guildfuben as a per-guild shared instance;
+all three return home (`applyReturnLastStage`) and destroy the emptied
+copy. Line numbers and peer enter/leave wire records remain unported
+(see Deferred — both need original-client evidence).
 
 ## DONE: offline-save position rule
 
@@ -35,7 +37,7 @@ line numbers remain unported (see Deferred).
 - Login placement falls out of the row: `enter_world` reads the
   persisted map, so a fuben logout re-enters at the offline save.
 
-## DONE: zuwu stage copies (one family end-to-end)
+## DONE: dungeon stage copies (zuwu + juqing + guildfuben)
 
 - `StageRegistry` keys live membership by stage key; the base map stays
   the client-visible id (`map_of`/`_live_map`). Ordinary stages use the
@@ -52,40 +54,59 @@ line numbers remain unported (see Deferred).
   `expire` / `victory` / `disconnect` return there via
   `_zuwu_home_frames` (`applyReturnLastStage`) and destroy the emptied
   copy; kills count only inside the killer's own copy.
-- `tests/test_stage_instances.py` (3): registry isolation, two-copy
-  independence (stages/worlds/AOI/kills), quit-home plus cleanup.
+- Juqing mirrors it: `JUQING-<rid>-<map>` copies, `stage`/`return_map`/
+  `return_pos` ride the `tiaozhan_jindu` marker, kills gate on the
+  killer's live copy, victory/expire return home before the `64003`
+  result, and disconnect abandons the copy (marker cleared).
+- Guildfuben shares one copy per guild: `GUILDFUBEN-<gid>-<main>-<map>`
+  (the port's pre-existing stage id, now a real instance key).
+  Members join the same stage/world, kills gate on live map + live
+  copy + guild ownership, quit/expire return home, and the emptied copy
+  is destroyed; killboss/reward rows stay per guild (shared progress).
+- `tests/test_stage_instances.py` (8): registry isolation, zuwu
+  two-copy independence + quit-home, juqing two-copy independence +
+  victory-home + disconnect-abandon, guild shared-copy + two-guild
+  isolation + quit/disconnect cleanup.
 
-## Deferred (verified in bytecode, needs stage-copy/line architecture)
+## Deferred (needs original-client evidence — nothing invented)
 
-- Stage copies for the remaining families: `checkStageAndEnter`
-  creates per-family copies (`createJuQingCopy`, `createGuildFuBen`,
-  ...); juqing/guildfuben still share one world map per fuben (see
-  those ledgers). The same `create_instance`/`stage_key` path applies.
-- Guild copies will key on the existing
-  `GUILDFUBEN-<gid>-<main>-<map>` id so authorized members share one
-  copy; juqing copies will key per role like zuwu.
-- Line numbers (`getStageLine`/`incrLineNo`, 20004/20005): the port
-  has no lines; every map is line 1.
-- `hisRolePosition` / `applyReturnLastStage`: the port stores the
-  pre-copy position on the zuwu attempt (return-home verified); other
-  families still need the bus RoleState history.
+- Line numbers (`getStageLine`/`incrLineNo`, 20004 APPLY_CHANGE_LINE /
+  20005 GET_MAP_LINES / 21001 CHANGE_LINE): the port has no lines;
+  every map is line 1 and `21000` answers `[1, 1, mapType]`. No captured
+  20004/20005/21001 request or reply exists in `output/orig-stack/` or
+  the census, so the wire shapes stay unported. Blocker to implement:
+  a real-client capture of the line UI flow (request bytes + reply
+  frames for 20004/20005/21001 on a lined map).
+- Peer enter/leave wire records: the changeMap commit calls stage-side
+  leave/enter, but no two-role capture or `*Commands` constant names the
+  peer-visible record, so the port sends none rather than inventing one.
+  Blocker: a two-client capture showing the exact frame a nearby role
+  receives when another role enters/leaves its surround.
 - `encodeOfflineCopy` / `isOfflineSaveCopy` `copyInfo`: no reader or
-  writer in the port; the field stays absent.
-- Role enter/leave wire records: the changeMap commit calls
-  stage-side leave/enter, but no two-role capture or `*Commands`
-  constant names the peer-visible record, so the port sends none
-  rather than inventing one.
+  writer in the port; the field stays absent. Not a gameplay blocker:
+  the offline-save rule + pre-copy return position reproduce the
+  observable behavior (login placement) without the column.
+- `hisRolePosition` bus history: the port stores the pre-copy position
+  on each attempt (verified return-home for all three families); the
+  general bus history for arbitrary stage hops stays unported.
 - `encodeZuoQiInfo(role, logoutFlag)` and `encodeMeirenInfo`: the
   port persists zuoqi on change and pk on logout; the boolean-flag
   variants have no verified behavioral delta.
+- Expiry/teardown scheduling: Java arms per-copy timers in the stage
+  schedule manager; the port arms the same durations on the acting
+  session's `StageScheduleManager` (same delays, `tick_sessions`
+  drives per-world rounds). No behavioral delta observed.
+- Stage business-data pushes are the family payloads and are ported:
+  `64009` enter state, `108007` rest timer, `118006` kill log, plus
+  kill notices (`108008`, guild `11101` 118009/118010). No separate
+  generic business-data channel was found in the censused commands.
 
 ## Tests
 
 `tests/test_stage_sync.py` (10): map-type predicate, copy/story
 entry and steps skipping the row, alive/dead logout in each case,
 missing born config, and re-login placement at the offline save.
-`tests/test_stage_instances.py` (3) covers the zuwu copy path.
+`tests/test_stage_instances.py` (8) covers all three copy paths.
 Neighbors re-verified: teleport, change_map, movement_enter, revive,
 pvp, pickup, combat (consistency + shared), team, ground, juqing
-fuben, monster death. Guildfuben shows the same 8 failures + 1 error
-on and off this change (pre-existing, unported copy routing).
+fuben (34), zuwu (23), guildfuben (22), monster death.

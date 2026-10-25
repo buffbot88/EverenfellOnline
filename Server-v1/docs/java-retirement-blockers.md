@@ -16,6 +16,13 @@ No hard blocker remains inside the migrated scope:
   + SQLite). Ordinary maps keep the shared world; copies isolate
   monsters/drops/AI and return home on quit/expire/victory/
   disconnect (`docs/stage-ledger.md`).
+- Waypoint portals (20001 `applyWayPointTeleport`, e.g. `f0002`
+  map 0 → map 2) are served from `ChuanSongBiao.jat`: unknown ids
+  stay silent, dead/copy/level gates answer `[0, code]` (490011 /
+  490013 / 490002 / 490003 per `StageErrorCode`), same-map hops echo
+  40100, cross-map hops ride `change_map`. Proven by the live stock
+  client, which was stuck on map 0 until this reply existed
+  (`tests/test_teleport.py` WaypointTeleportTest, 7 goldens).
 - Copy timers ride the acting session's `StageScheduleManager` with
   the Java durations; a dead attempt makes the firing a no-op, and a
   process restart loses only in-memory attempts — the same as Java's

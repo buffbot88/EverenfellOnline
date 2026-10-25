@@ -80,7 +80,14 @@ CMD_CREATE_ROLE = 10002
 CMD_ENTER_WORLD = 10003
 CMD_GETTIME = 19001
 CMD_APPLY_STAGE = 20000
+CMD_WAYPOINT_TELEPORT = 20001
 CMD_CHANGE_STAGE = 21000
+# StageErrorCode cells for RoleBehaviourServiceImpl.teleport
+# (dntg_start.jar clinit values): gate replies ride 20001 as [0, code].
+TELEPORT_ERR_MIN_LEVEL = 490002
+TELEPORT_ERR_MAX_LEVEL = 490003
+TELEPORT_ERR_DEAD = 490011
+TELEPORT_ERR_IN_COPY = 490013
 CMD_MONEY = 32010
 # RoleRechargeOutputWrapper.rechargeSuccess: pushed per granted YB row
 # (online grant and login finish alike), gated on rechargeType 1/2.
@@ -1963,6 +1970,8 @@ class Session:
             log.info('conn %d: observed command %r (no handler yet)',
                      self.conn_id, cmd)
             return None
+        if cmd_num == CMD_WAYPOINT_TELEPORT:
+            return self.waypoint_teleport(msg)
         if cmd_num == CMD_APPLY_STAGE:
             # Java answers 20000 with the bare [1, mapId, [x, y]] reply
             # (StageControllOutputWrapper.applyChangeMap). The init burst
@@ -6289,6 +6298,69 @@ class Session:
         own += self._dazuo_broadcast(rid, CMD_TELEPORT, [x, y, 0, rid])
         own += self._dazuo_broadcast(rid, CMD_TOWN_REVIVE, rid)
         return tuple(own)
+
+    def waypoint_teleport(self, msg):
+        """Command 20001 C> waypointId: portal hop from ChuanSongBiao wayPoint.
+
+        RoleBehaviourAction.applyWayPointTeleport passes the id string to
+        IRoleBehaviourService.applyWayPointTeleport: unknown ids stay
+        silent, gate failures answer ['20001', [0, code]], same-map hops
+        teleport in place with a 40100 surround echo, and cross-map hops
+        ride the SC:APPLY_CHANG_MAP path (change_map here). Limit cells
+        in the shipped rows carry only minlevel; coin/item costs are
+        deducted if a row ever configures them.
+        """
+        wp_id = self.safe(msg, 1, None)
+        if not isinstance(wp_id, str) or not wp_id:
+            log.info('conn %d: waypoint teleport without id (ignored)',
+                     self.conn_id)
+            return None
+        sender, level = self._chat_sender()
+        if sender is None or self.stage_registry is None:
+            return None
+        if self.config is None:
+            return None
+        try:
+            wp = self.config.waypoint_table().get(wp_id)
+        except Exception:
+            wp = None
+        if not wp:
+            log.info('conn %d: unknown waypoint %r (silent)',
+                     self.conn_id, wp_id)
+            return None
+        roles = self.get_roles(self.authed_user or '', self.server_id or '')
+        role = _find_role(roles, sender)
+        if role is None:
+            return None
+        rid = _wire_id(role)
+        if rid in self._dead:
+            return frame(amf3_encode(['20001', [0, TELEPORT_ERR_DEAD]]))
+        try:
+            in_copy = (self.stage_registry.stage_of(rid)
+                       != self.stage_registry.map_of(rid))
+        except Exception:
+            in_copy = False
+        if in_copy:
+            return frame(amf3_encode(['20001', [0, TELEPORT_ERR_IN_COPY]]))
+        if level < int(wp.get('min_level') or 0):
+            return frame(amf3_encode(['20001',
+                                     [0, TELEPORT_ERR_MIN_LEVEL]]))
+        if wp.get('max_level') and level > int(wp['max_level']):
+            return frame(amf3_encode(['20001',
+                                     [0, TELEPORT_ERR_MAX_LEVEL]]))
+        to_map, x, y = (str(wp.get('to_map') or ''),
+                        int(wp.get('to_x') or 0),
+                        int(wp.get('to_y') or 0))
+        if not to_map:
+            log.info('conn %d: waypoint %r without destination (silent)',
+                     self.conn_id, wp_id)
+            return None
+        if to_map == str(self._live_map(rid, role) or ''):
+            self.stage_registry.set_position(rid, x, y)
+            self._stage_save_position(rid, to_map, x, y, with_map=False)
+            out = self._dazuo_broadcast(rid, CMD_TELEPORT, [x, y, 0, rid])
+            return tuple(out) if out else None
+        return self.change_map(rid, to_map, x, y)
 
     def inner_fly(self, msg):
         """Command 40101 C> [_, mapId, x, y, stageId]: same-map moves teleport and echo [x, y, 0, roleId]; other maps change map in one step (RoleBehaviourServiceImpl.innerFly).

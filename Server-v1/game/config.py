@@ -1374,6 +1374,7 @@ class GameConfig:
         self._guildfuben_boss = None
         self._hunjie = None
         self._hunjieqianghua = None
+        self._waypoint = None
         self._chongwu = None
         self._chongwu_shengji = None
         self._chongwu_tujian = None
@@ -5046,6 +5047,48 @@ class GameConfig:
             return entry['details'].get(int(tier))
         except (TypeError, ValueError):
             return None
+
+    def waypoint_table(self):
+        """ChuanSongBiao.jat wayPoint portals keyed by id, {} when absent.
+
+        Each entry mirrors WaypointTeleportConfig (loadWaypointTeleport):
+        toMap/toX/toY destination plus the minlevel/maxlevel gates from
+        the limit cell. The shipped rows carry no coin or item costs,
+        so the handler only spends when such cells exist.
+        """
+        if self._waypoint is None:
+            path = os.path.join(self.config_dir, 'sys_config',
+                                'ChuanSongBiao.jat')
+            try:
+                rows = _load(path) if os.path.isfile(path) else {}
+            except ValueError as e:
+                log.error('bad ChuanSongBiao table: %s', e)
+                rows = {}
+            table = {}
+            try:
+                items = rows.get('wayPoint') or []
+            except AttributeError:
+                items = []
+            for row in items:
+                if not isinstance(row, dict) or not row.get('id'):
+                    continue
+                try:
+                    limit = row.get('limit') or {}
+                except AttributeError:
+                    limit = {}
+                try:
+                    get = limit.get
+                except AttributeError:
+                    get = (lambda _k, _d=None: _d)
+                table[str(row.get('id'))] = {
+                    'to_map': str(row.get('toMap') or ''),
+                    'to_x': config_int(row.get('toX')),
+                    'to_y': config_int(row.get('toY')),
+                    'min_level': config_int(get('minlevel')),
+                    'max_level': config_int(get('maxlevel')),
+                }
+            self._waypoint = table
+        return self._waypoint
 
     def _chongwu_load(self, name, loader, attr):
         """Shared ChongWu table bootstrap; {} when the file is absent."""

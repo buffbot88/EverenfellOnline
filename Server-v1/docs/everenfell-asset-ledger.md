@@ -123,3 +123,28 @@ No artwork is recovered from these SWFs by this path.
 Note: `tools/` is git-ignored (`.gitignore: /tools/*`), so the Alchemy
 interpreter and avm2 parser fixes are local-only and cannot be committed
 from this repository.
+
+## gameUI resource chain (verified 2026-10-25)
+
+Resource resolution, from the locale manifests (`res/data/{tw,zhcn,kokr}_config.xml`):
+
+- `<resource name="gameui" prefix="lan-root" v="1" value="gameui{0}" />`
+- `lan-root` is `assets/tw/`, `assets/zhcn/`, or `assets/kokr/` per locale.
+- So the tw build loads `assets/tw/gameui.swf` (596,076 bytes). The
+  root `assets/gameUI.swf` (47,936 bytes) is a different file the tw
+  manifest does not resolve to.
+- zhcn loads `assets/zhcn/gameui.gz` or `gameui.mpq`; kokr loads
+  `assets/kokr/gameui.gz`.
+
+Format, verified from headers only:
+
+- None of the five gameui files has a plaintext FWS/CWS/ZWS signature.
+- `assets/kokr/gameui.gz` is NOT gzip (no 1f8b magic), NOT zlib, and NOT
+  raw deflate. Its extension is misleading. It shares the leading-bytes
+  family (`00 05`) of the other packed UI containers.
+- The gameUI payloads are in the same unresolved packed format as
+  `res/assets/*.swf`. Their decode key remains the open blocker.
+
+Not established: which external PNG or embedded symbols gameUI references,
+how the HUD is laid out, and whether hash.dat lists gameui (hash.dat inflates
+with zlib, but no gameui entry was found in the decompressed text).

@@ -5704,6 +5704,51 @@ class Session:
         # client at a black screen (it never sends 21000). See enter_world.
         return frame(amf3_encode(env))
 
+    def _ensure_role_vitals(self, role):
+        """Backfill a fresh role's missing vitals from its level row.
+
+        A newly created character carries NULL hp/mp/max vitals until its
+        first level-up persists them, so entry would skip the 12004 frame
+        and combat would read 0/0. Java seeds creation stats; mirror that
+        from ZhuJueShuXingBiao, persist, and refresh the dict in place.
+        """
+        if role is None or self.config is None:
+            return False
+        try:
+            level = int(role.get('level') or 1)
+        except (TypeError, ValueError):
+            level = 1
+        row = self.config.role_attribute_row(level)
+        if row is None:
+            return False
+        try:
+            max_hp = int(row.get('hitpoints') or 0)
+        except (TypeError, ValueError):
+            max_hp = 0
+        try:
+            max_mp = int(row.get('mana') or 0)
+        except (TypeError, ValueError):
+            max_mp = 0
+        if max_hp <= 0 or max_mp <= 0:
+            return False
+        fields = {}
+        if not role.get('max_hp'):
+            fields['max_hp'] = max_hp
+        if not role.get('max_mp'):
+            fields['max_mp'] = max_mp
+        if role.get('hp') is None:
+            fields['hp'] = int(role.get('max_hp') or max_hp)
+        if role.get('mp') is None:
+            fields['mp'] = int(role.get('max_mp') or max_mp)
+        if not fields:
+            return False
+        role.update(fields)
+        try:
+            self.save_role_state(role.get('id'), **fields)
+        except Exception:
+            log.warning('conn %d: vitals persist failed', self.conn_id)
+        return True
+
     def enter_world(self, msg):
         """Serve the role's persisted stage and basic role values."""
         role_id = str(self.safe(msg, 1, '') or '')
@@ -5725,6 +5770,7 @@ class Session:
                 return None
         log.info('conn %d: enter_world role=%r (%s)',
                  self.conn_id, role.get('name'), role_id)
+        self._ensure_role_vitals(role)
         exp = role.get('exp') if role.get('exp') is not None else 0
         # StageControllOutputWrapper.login: [face, level, exp, sex, job,
         # isChenmi, chenmiAddOnlineTime, vipLevel, recharge[day, all],
@@ -8457,6 +8503,7 @@ class Session:
         role = _find_role(roles, role_id)
         if role is None:
             return None
+        self._ensure_role_vitals(role)
         map_id = str(role.get('map_id') or '')
         if self.stage_registry is not None:
             self.stage_registry.register(_wire_id(role), map_id, self,

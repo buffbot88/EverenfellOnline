@@ -905,5 +905,56 @@ class ZuoqiReviveCaptureTest(unittest.TestCase):
             'fullNeedYxb': 200000, 'recoveryInterval': 10})
 
 
+class FreshRoleVitalsTest(unittest.TestCase):
+    """A fresh role's NULL vitals are backfilled from its level row on entry.
+
+    Live defect: EvfHero (level 1, NULL hp/mp/max) never received 12004, so
+    the client's HP/MP bars never initialized and combat read 0/0. Java
+    seeds creation stats; the entry path now mirrors that from
+    ZhuJueShuXingBiao and persists the fill."""
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        write_bytes(root, 'sys_config/MapLine.jat', amf3.encode(
+            [Obj(mapid=7, maptype=2)]))
+        write_bytes(root, 'sys_config/ZhuJueShuXingBiao.jat', amf3.encode(
+            [Obj(level=1, hitpoints=144, mana=96, needexp=100)]))
+        self.cfg = GameConfig(root)
+
+    def session(self, role):
+        saved = []
+        sess = Session(conn_id=1, check_sign=lambda *a: False,
+                       get_roles=lambda u, s: [role], server_start_ms=0,
+                       config=self.cfg,
+                       save_role_state=lambda rid, **kw: saved.append((rid, kw)))
+        sess.authed_user, sess.server_id = 'hero', 'fu1304'
+        return sess, saved
+
+    def test_entry_backfills_null_vitals_and_sends_12004(self):
+        role = {'id': 9, 'map_id': '7', 'map_x': 1, 'map_y': 2,
+                'hp': None, 'mp': None, 'max_hp': None, 'max_mp': None}
+        sess, saved = self.session(role)
+        out = sess.change_stage([21000, '9'])
+        decoded = [amf3.decode(bytes(f)[4:]) for f in out]
+        by_cmd = {d[0]: d[1] for d in decoded}
+        self.assertEqual(by_cmd['12004'], ['9', 144.0, 144.0, 96.0, 96.0])
+        self.assertEqual(
+            (role['hp'], role['mp'], role['max_hp'], role['max_mp']),
+            (144, 96, 144, 96))
+        self.assertEqual(saved, [(9, {'max_hp': 144, 'max_mp': 96,
+                                     'hp': 144, 'mp': 96})])
+
+    def test_existing_vitals_are_untouched(self):
+        role = {'id': 9, 'map_id': '7', 'map_x': 1, 'map_y': 2,
+                'hp': 200, 'mp': 50, 'max_hp': 200, 'max_mp': 50}
+        sess, saved = self.session(role)
+        out = sess.change_stage([21000, '9'])
+        decoded = [amf3.decode(bytes(f)[4:]) for f in out]
+        by_cmd = {d[0]: d[1] for d in decoded}
+        self.assertEqual(by_cmd['12004'], ['9', 200.0, 200.0, 50.0, 50.0])
+        self.assertEqual(saved, [])
+
+
 if __name__ == '__main__':
     unittest.main()

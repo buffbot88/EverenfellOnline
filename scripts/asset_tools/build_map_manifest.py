@@ -3,8 +3,10 @@
 Reads map.json from the original client tree and the tile JPEGs next to it.
 Each tile key is row*1000+col, validated by seam continuity (see the asset
 ledger). Writes websites/everenfell/src/assets/map0.json with cell positions
-and sha256s only. Tile bytes are NOT copied; the dev server serves them from
-the original folder, so no legacy bytes ship in a deployable bundle.
+and sha256s only. Tile bytes ship with the client under
+websites/everenfell/public/maps/map0/ (copied from the original folder,
+rights note in websites/everenfell/assets/README.md) and are referenced
+by relative URLs that resolve identically in dev and production.
 """
 import hashlib
 import json
@@ -49,7 +51,9 @@ def main():
                 'y': row * CELL,
                 'width': w,
                 'height': h,
-                'url': '/dev-assets/map0/' + name,
+                # Relative to the client page: public/maps/map0/ ships in
+                # dist, so dev and production resolve the same URL.
+                'url': 'maps/map0/' + name,
                 'sha256': sha256(path),
             })
     doc = {

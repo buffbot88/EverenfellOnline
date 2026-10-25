@@ -599,6 +599,11 @@ def main():
         from auth import generate_sign
         from gateway import GatewayServer
         gw_host, gw_port = a.gateway.rsplit(':', 1)
+        if gw_host not in ('127.0.0.1', 'localhost', '::1'):
+            log.warning('gateway on non-loopback %s: website-member '
+                        'verification is not bridged (see '
+                        'docs/website-accounts-s1.md); unverified links must '
+                        'not grant public access', gw_host)
         gateway = GatewayServer(gw_host, int(gw_port), sessions,
                                 g_host, int(g_port), generate_sign,
                                 a.server_id, store=store)

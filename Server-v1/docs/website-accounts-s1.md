@@ -18,10 +18,14 @@ members in against `https://www.agpstudios.org/api`:
   credential for that API, so it cannot validate those sessions
   server-side today. No bridge is built here (see 5).
 
-### 1b. Game website backend (established game session model) — LOCAL
+### 1b. Legacy game-site backend (compatibility infrastructure) — LOCAL
 
 `Server-v1/web.py` mirrors the legacy site backend (`AccountHandler.php`,
-`gamesession.php`, `VerifyCode.php`) with the Python + SQLite stack:
+`gamesession.php`, `VerifyCode.php`) with the Python + SQLite stack. This
+is legacy compatibility infrastructure for the retired Flash client and
+isolated local development — NOT the website membership service and not
+a second canonical identity. It must never be described as integrated
+with AGP Studios:
 
 - `accounts(username UNIQUE, pass_hash PBKDF2, created)`; registration
   creates ONLY this row plus a login session — never characters, roles,
@@ -35,12 +39,12 @@ members in against `https://www.agpstudios.org/api`:
   reach game databases beyond the PBKDF2 account row, and never cross
   the gateway at all.
 
-### 1c. Browser client today (to be corrected)
+### 1c. Browser client (corrected this milestone)
 
-`websites/everenfell/src/net/auth.ts` collects raw username + password
-and replays the legacy login — a duplicate member path that must go
-(see 3). It also calls `world.enter {session}` without a prior
-`auth.session`, so role select arrives empty.
+`websites/everenfell/src/net/auth.ts` used to collect raw username +
+password and replay the legacy login — that duplicate member path is
+removed (see 3). The client now rides the website session and calls
+`auth.session {server}` before `world.enter`.
 
 ## 2. S1 binding (what this milestone implements)
 
@@ -59,14 +63,17 @@ server, beginning with S1 only.
   For S1 the game account defaults to the member name in the same
   store; the row still exists so later servers can map to their own
   databases and the AGP member id has a recorded home.
-- **Session transport.** The browser proves its website session without
-  touching passwords or tokens in JS: the WebSocket upgrade handshake
-  carries the `mko_session` cookie (same host) and the gateway reads
-  the token from it server-side. `body.token` stays as an explicit
-  override for tests and non-browser tools. No account, server, or
-  character id from the browser is trusted: the gateway derives the
-  member from the validated session, the scope from the registry, and
-  the character from the owned-roles list.
+- **Session transport (authentication boundary).** The browser proves
+  its session without touching passwords or tokens in JS: the WebSocket
+  upgrade handshake carries the `mko_session` cookie (same host) and
+  the gateway reads the token from it server-side. `body.token` stays
+  as an explicit override for tests and non-browser tools. What the
+  gateway validates is the LOCAL legacy session from §1b — not an AGP
+  Studios session. `member_links.verified` is therefore 0 for every
+  link written this way. No account, server, or character id from the
+  browser is trusted: the gateway derives the member from the validated
+  session, the scope from the registry, and the character from the
+  owned-roles list.
 - **Ownership enforcement.** `world.snapshot {roleId}` is refused
   unless the role is in the session's post-login roles for that
   account + server. `player.move` acts on the session-bound role, not
@@ -88,14 +95,26 @@ gameplay row is already scoped by `(account, server_id)`, and S1 uses
 the single existing database file. Adding S2 later means a new entry
 in the registry with its own database; no shared tables.
 
-## 5. Explicit non-goals (documented stubs)
+## 5. Authentication boundary and integration blocker
 
+- The gateway validates `mko_session` (legacy local session). It does
+  NOT validate AGP Studios sessions. These are not the same identity
+  provider and must never be described as integrated.
+- Canonical identity must ultimately come from AGP Studios (§1a).
+  Before public game access, the remaining integration must: identify
+  the AGP API's authenticated-session validation contract; verify
+  member identity server-side; map the verified member to S1 and its
+  owned characters; refuse unverified links (`verified=0`) any public
+  entry; preserve the website's registration/password system; never
+  trust browser-provided ids; and confirm cookies, origins, and
+  deployment domains work with the browser/gateway layout.
+- The AGP validation contract is unavailable in this repo, so this
+  stays a clearly documented INTEGRATION BLOCKER. No authentication
+  protocol is invented here and no duplicate accounts are created.
+  The legacy `web.py` path remains development-only on loopback (the
+  server logs a warning if the gateway binds elsewhere).
 - **Cross-server play**: no inter-server networking, presence, or
   battles. The registry shape reserves it; nothing implements it.
-- **AGP server-side validation**: until the studio exposes a session
-  introspection contract the Python server may call, links whose
-  member id is asserted from the website flow stay `verified=0`.
-  Minting or validating AGP sessions is a separate integration, not
-  this milestone.
-- **Asset work stays primary**: this milestone is deliberately small
-  (registry + link table + enforcement + session-only client).
+- **Asset work stays primary**: account work stops here (registry +
+  link table + enforcement + session-only client + this boundary
+  record).

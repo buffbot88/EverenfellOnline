@@ -544,6 +544,21 @@ class HomeServerBindingTest(unittest.TestCase):
         self.assertIn('home server is S2', msg['body']['error'])
         self.assertEqual(store.deleted, ['9'])
 
+    def test_failed_cleanup_reports_orphan_for_admin(self):
+        class UncleanConflictStore(ConflictStore):
+            def delete_character(self, role_id):
+                return False
+        store = UncleanConflictStore()
+        sess, conn, _msg = self.authed(store)
+        self.make_create(sess)
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 2,
+                                         'body': {'name': 'Hero', 'job': 'C'}}))
+        msg = self.last_message(conn)
+        self.assertFalse(msg['ok'])
+        self.assertIn('home server is S2', msg['body']['error'])
+        self.assertIn('administrator', msg['body']['error'])
+        self.assertIn('9', msg['body']['error'])
+
     def test_world_enter_reports_home(self):
         store = FakeStore()
         store.homes['agp-sub'] = 'S1'

@@ -58,12 +58,10 @@ function clearCachedServer(key: string, account: string): void {
   }
 }
 
-/** Permanent device cache: set only by a successful character creation
- * (or overwritten by the authoritative backend value). */
-function homeServer(account: string): string | null {
-  return cachedServer(HOME_KEY, account);
-}
-
+/** Permanent device cache: written only from the authoritative backend
+ * value (pre-connect session resolution, world.enter confirmation, or
+ * first successful creation on the connected server). Never read back
+ * for routing — the session response decides before every connect. */
 function setHomeServer(account: string, server: string): void {
   storeServer(HOME_KEY, account, server);
 }
@@ -270,7 +268,15 @@ export class PhaserClient {
     const account = user.username || user.display_name || 'member';
     const validServer = (id: unknown): id is string =>
       typeof id === 'string' && GAME_SERVERS.some((server) => server.id === id);
-    const authoritative = validServer(user.homeServer) ? user.homeServer : null;
+    // null means the backend confirmed the account is unbound. Anything
+    // else that is not a known server means the assignment is UNKNOWN
+    // (never guess: a failed request already returned above, so a
+    // missing/malformed field must not degrade to the picker).
+    if (user.homeServer !== null && !validServer(user.homeServer)) {
+      this.setStatus('Account server status unavailable. Please try again.');
+      return;
+    }
+    const authoritative = user.homeServer;
     if (authoritative) {
       setHomeServer(account, authoritative);
       clearCachedServer(PENDING_KEY, account);

@@ -537,12 +537,21 @@ class GatewaySession:
         if bind_home and member:
             bound = bind_home(member, server)
             if bound != server:
-                delete = getattr(self.store, 'delete_character', None)
-                if delete and entry.get('id'):
-                    delete(entry['id'])
+                orphan = entry.get('id', '')
+                cleaned = False
+                try:
+                    delete = getattr(self.store, 'delete_character', None)
+                    cleaned = bool(delete and orphan and delete(orphan))
+                except Exception:
+                    cleaned = False
+                if cleaned:
+                    raise GatewayError(
+                        'home server is %s; this gateway serves %s'
+                        % (bound, server))
                 raise GatewayError(
-                    'home server is %s; this gateway serves %s'
-                    % (bound, server))
+                    'home server is %s; character %s was created here and '
+                    'needs an administrator to remove it'
+                    % (bound, orphan or '?'))
         self.roles = list(self.roles or []) + ([entry] if entry else [])
         return {'role': entry, 'roles': self.roles}
 

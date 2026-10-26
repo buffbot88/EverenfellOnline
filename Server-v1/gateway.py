@@ -414,6 +414,8 @@ class GatewaySession:
         try:
             if op == 'auth.session':
                 result = self.op_auth_session(body)
+            elif op == 'role.create':
+                result = self.op_role_create(body)
             elif op == 'world.enter':
                 result = self.op_world_enter(body)
             elif op == 'world.snapshot':
@@ -479,6 +481,44 @@ class GatewaySession:
             for r in roles
             if isinstance(r, list) and len(r) > 4]
         return {'roles': self.roles, 'server': server}
+
+    def op_role_create(self, body):
+        """Create a character via 10002; the server stays authoritative."""
+        if not self.username:
+            raise GatewayError('auth.session first')
+        name = body.get('name')
+        job = str(body.get('job') or '')
+        try:
+            sex = int(body.get('sex', 0))
+        except (TypeError, ValueError):
+            raise GatewayError('sex must be 0 or 1')
+        face = str(body.get('face') or '')
+        if not isinstance(name, str) or not name:
+            raise GatewayError('name required')
+        if job not in ('A', 'B', 'C', 'D'):
+            raise GatewayError('job must be A, B, C or D')
+        if sex not in (0, 1):
+            raise GatewayError('sex must be 0 or 1')
+        if len(self.roles or []) >= 4:
+            raise GatewayError('character slots full (4)')
+        self.link.send([10002, [self.username, name, job, sex, face,
+                                0, self.game_server_id, '']])
+        reply = self.link.wait_for('10002', timeout=5.0)
+        if not reply or len(reply) < 2 or not isinstance(reply[1], list):
+            raise GatewayError('creation refused by game server')
+        status = reply[1][0] if reply[1] else 0
+        if not status:
+            code = reply[1][1] if len(reply[1]) > 1 else 0
+            if code == 2005:
+                raise GatewayError('character slots full (4)')
+            if code == 2002:
+                raise GatewayError('name already taken')
+            raise GatewayError('illegal name (2001)')
+        role = reply[1][1] if len(reply[1]) > 1 else []
+        entry = {'id': str(role[0]), 'name': role[1], 'job': role[2],
+                 'level': role[4]} if isinstance(role, list) and len(role) > 4 else {}
+        self.roles = list(self.roles or []) + ([entry] if entry else [])
+        return {'role': entry, 'roles': self.roles}
 
     def op_world_enter(self, _body):
         if not self.username:

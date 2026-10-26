@@ -32,6 +32,7 @@ export const GAME_SERVERS: GameServerRef[] = [{ id: 'S1', name: 'S1' }];
 export const GATEWAY_OPS = [
   'auth.login',
   'auth.session',
+  'role.create',
   'world.enter',
   'world.snapshot',
   'player.move',
@@ -52,6 +53,23 @@ export interface GatewayResponse {
   ok: boolean;
   body: Record<string, unknown>;
 }
+
+/** Owned character entry (subset of the 10001 roleInfo array). */
+export interface RoleRef {
+  id: string;
+  name: string;
+  job: string;
+  level: number;
+}
+
+/** Maximum characters per account per game server (protocol MAX_ROLES_PER_ACCOUNT). */
+export const MAX_ROLES_PER_ACCOUNT = 4;
+
+/** Playable job codes (A/B/C/D). Names are not invented here: the
+ * recovered interface art carries no verified class names yet. */
+export const JOB_CODES = ['A', 'B', 'C', 'D'] as const;
+
+export type JobCode = (typeof JOB_CODES)[number];
 
 /** World snapshot: validated actors the client renders. Positions are
  *  server tiles (60x30 px), matching the Python stage registry. */

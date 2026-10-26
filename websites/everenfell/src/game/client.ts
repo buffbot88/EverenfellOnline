@@ -9,7 +9,14 @@
 import { AuthClient, canPlay, type SiteUser } from '../net/auth';
 import { Gateway } from '../net/gateway';
 import type { ActorSnapshot, WorldSnapshot } from '../net/protocol';
-import { GAME_SERVERS } from '../net/protocol';
+import {
+  GAME_SERVERS,
+  JOB_CODES,
+  MAX_ROLES_PER_ACCOUNT,
+  type RoleRef,
+} from '../net/protocol';
+import { CREATE_KEY } from './scenes/CharacterCreateScene';
+import { SELECT_KEY } from './scenes/CharacterSelectScene';
 import { Camera } from '../world/camera';
 import { Input } from '../world/input';
 import { WindowManager } from '../ui/windows';
@@ -194,9 +201,12 @@ export class PhaserClient {
       const ticket = await this.auth.ticket(serverId);
       await this.gateway.request('auth.session', { ticket, server: serverId });
       const entered = (await this.gateway.request('world.enter', {})) as {
-        roles?: { id: string; name: string }[];
+        roles?: RoleRef[];
       };
-      this.renderSelect(entered.roles ?? []);
+      const roles = entered.roles ?? [];
+      // Original entry behavior: no characters -> creation, else selection.
+      if (roles.length === 0) this.renderCreate(roles);
+      else this.renderSelect(roles);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign in failed.';
       // The gateway only accepts sessions it issued itself; until a
@@ -210,28 +220,168 @@ export class PhaserClient {
     }
   }
 
-  private renderSelect(roles: { id: string; name: string }[]): void {
+  /** Character selection: owned roles plus empty slots up to the cap. */
+  private renderSelect(roles: RoleRef[]): void {
     this.clearViews();
+    this.showScene(SELECT_KEY, { roles });
+    const select = this.scene(SELECT_KEY);
+    select?.events.once('roleselect', (picked: { id: string }) => {
+      void this.enterWorld(picked.id);
+    });
+    select?.events.once('gocreate', () => {
+      if (roles.length < MAX_ROLES_PER_ACCOUNT) this.renderCreate(roles);
+    });
     const panel = document.createElement('div');
     panel.className = 'ev-view ev-select';
     const title = document.createElement('h1');
     title.textContent = 'Choose your hero';
     panel.appendChild(title);
-    if (roles.length === 0) {
-      const empty = document.createElement('p');
-      empty.textContent = 'No heroes yet — creation arrives with the next milestone.';
-      panel.appendChild(empty);
-    }
+    const sub = document.createElement('p');
+    sub.textContent = `${roles.length}/${MAX_ROLES_PER_ACCOUNT} slots used. Art: recovered create-ui bitmaps.`;
+    panel.appendChild(sub);
     for (const role of roles) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = role.name;
+      button.textContent = `${role.name} (Job ${role.job} · Lv ${role.level})`;
       button.addEventListener('click', () => {
         void this.enterWorld(role.id);
       });
       panel.appendChild(button);
     }
+    if (roles.length < MAX_ROLES_PER_ACCOUNT) {
+      const create = document.createElement('button');
+      create.type = 'button';
+      create.textContent = 'Create character';
+      create.addEventListener('click', () => this.renderCreate(roles));
+      panel.appendChild(create);
+    } else {
+      const full = document.createElement('p');
+      full.textContent = 'Slots full (4/4).';
+      panel.appendChild(full);
+    }
     this.options.uiMount.appendChild(panel);
+    this.setStatus('Select a character to enter the world.');
+  }
+
+  /** Character creation: job art in Phaser, name entry in the panel. */
+  private renderCreate(existing: RoleRef[]): void {
+    this.clearViews();
+    let jobIndex = 0;
+    this.showScene(CREATE_KEY, { selected: jobIndex });
+    const scene = this.scene(CREATE_KEY);
+    const panel = document.createElement('div');
+    panel.className = 'ev-view ev-create';
+    const title = document.createElement('h1');
+    title.textContent = 'Create character';
+    panel.appendChild(title);
+    const note = document.createElement('p');
+    note.textContent =
+      `Slot ${existing.length + 1}/${MAX_ROLES_PER_ACCOUNT}. ` +
+      'Names use Chinese characters (backend rule); nothing is created until the server accepts it.';
+    panel.appendChild(note);
+    const jobRow = document.createElement('div');
+    const jobButtons: HTMLButtonElement[] = [];
+    const highlight = (index: number): void => {
+      jobIndex = index;
+      jobButtons.forEach((button, i) => {
+        button.disabled = i === index;
+      });
+    };
+    JOB_CODES.forEach((job, i) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = `Job ${job}`;
+      button.addEventListener('click', () => {
+        this.showScene(CREATE_KEY, { selected: i });
+        highlight(i);
+      });
+      jobButtons.push(button);
+      jobRow.appendChild(button);
+    });
+    highlight(0);
+    panel.appendChild(jobRow);
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.placeholder = 'Character name';
+    name.setAttribute('aria-label', 'Character name');
+    panel.appendChild(name);
+    const error = document.createElement('p');
+    error.className = 'ev-error';
+    panel.appendChild(error);
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.textContent = 'Create';
+    submit.addEventListener('click', () => {
+      error.textContent = '';
+      void this.createCharacter(name.value.trim(), JOB_CODES[jobIndex], existing, error, submit);
+    });
+    panel.appendChild(submit);
+    if (existing.length > 0) {
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = 'Back to selection';
+      back.addEventListener('click', () => this.renderSelect(existing));
+      panel.appendChild(back);
+    }
+    this.options.uiMount.appendChild(panel);
+    scene?.events.on('jobselect', (picked: { index: number }) => {
+      highlight(picked.index);
+    });
+    this.setStatus('Choose a job portrait, enter a name, then Create.');
+  }
+
+  private async createCharacter(
+    name: string,
+    job: string,
+    existing: RoleRef[],
+    errorEl: HTMLElement,
+    submit: HTMLButtonElement,
+  ): Promise<void> {
+    if (!name) {
+      errorEl.textContent = 'Enter a name first.';
+      return;
+    }
+    submit.disabled = true;
+    this.setStatus('Creating character…');
+    try {
+      const created = (await this.gateway.request('role.create', {
+        name,
+        job,
+        sex: 0,
+        face: '',
+      })) as { roles?: RoleRef[] };
+      const roles = created.roles ?? [...existing];
+      this.renderSelect(roles);
+    } catch (err) {
+      errorEl.textContent = err instanceof Error ? err.message : 'Creation failed.';
+      this.setStatus('Creation refused by the server.');
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  private showScene(key: string, data?: Record<string, unknown>): void {
+    if (!this.game) return;
+    this.game.scene.stop('world');
+    if (this.game.scene.isActive(key)) this.game.scene.stop(key);
+    this.game.scene.start(key, data);
+  }
+
+  /** Return to the map scene after selection/creation screens. */
+  private restartWorld(): void {
+    if (!this.game) return;
+    for (const key of [SELECT_KEY, CREATE_KEY]) {
+      if (this.game.scene.isActive(key)) this.game.scene.stop(key);
+    }
+    if (this.game.scene.isActive('world')) this.game.scene.stop('world');
+    this.game.scene.start('world');
+  }
+
+  private scene(key: string): { events: Phaser.Events.EventEmitter } | null {
+    const scene = this.game?.scene.getScene(key) as unknown as {
+      events: Phaser.Events.EventEmitter;
+    } | null;
+    return scene ?? null;
   }
 
   private async enterWorld(roleId: string): Promise<void> {
@@ -242,6 +392,9 @@ export class PhaserClient {
       })) as unknown as WorldSnapshot;
       this.selfId = roleId;
       this.clearViews();
+      this.restartWorld();
+      await this.waitForMap();
+      this.worldScene()?.bindActorCamera(this.camera);
       this.applySnapshot(snapshot);
       this.gateway.onPush('actor.moved', (body) => {
         const id = String(body['id'] ?? '');

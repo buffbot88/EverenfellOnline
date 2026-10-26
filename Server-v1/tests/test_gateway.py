@@ -358,5 +358,77 @@ class ServerBindingTest(unittest.TestCase):
         self.assertEqual(sess.role_id, '7')
 
 
+class RoleCreateDispatchTest(unittest.TestCase):
+    """role.create forwards 10002; the server stays authoritative."""
+
+    def session(self, roles=()):
+        conn = FakeConn()
+        sess = GatewaySession(conn, '127.0.0.1', 8008,
+                              make_sign=lambda u, t: 'sig',
+                              store=FakeStore())
+        sess.link = FakeLink(roles)
+        return sess, conn
+
+    def last_message(self, conn):
+        raw = bytes(conn.sent)
+        messages = []
+        while raw:
+            assert raw[0] == 0x81
+            length = raw[1]
+            pos = 2
+            if length == 126:
+                length = struct.unpack('>H', raw[2:4])[0]
+                pos = 4
+            elif length == 127:
+                length = struct.unpack('>Q', raw[2:10])[0]
+                pos = 10
+            messages.append(json.loads(bytes(raw[pos:pos + length]).decode()))
+            raw = raw[pos + length:]
+        return messages[-1]
+
+    def test_create_requires_login_first(self):
+        sess, conn = self.session()
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 1,
+                                         'body': {'name': 'X', 'job': 'A'}}))
+        self.assertIn('auth.session first',
+                      self.last_message(conn)['body']['error'])
+
+    def test_create_rejects_bad_job(self):
+        sess, conn = self.session()
+        sess.username = 'hero'
+        sess.roles = []
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 1,
+                                         'body': {'name': 'X', 'job': 'Z'}}))
+        self.assertIn('job must be',
+                      self.last_message(conn)['body']['error'])
+
+    def test_create_forwards_10002_and_caches_role(self):
+        sess, conn = self.session()
+        sess.username = 'hero'
+        sess.roles = []
+        sess.game_server_id = 'fu1304'
+        created = [['10002', [1, ['9', 'Hero', 'C', 0, 1, None, '']]]]
+        sess.link.queue = created
+        orig = sess.link.wait_for
+        sess.link.wait_for = lambda cmd, timeout=5.0: created[0] \
+            if str(cmd) == '10002' else orig(cmd, timeout)
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 2,
+                                         'body': {'name': 'Hero', 'job': 'C'}}))
+        msg = self.last_message(conn)
+        self.assertTrue(msg['ok'])
+        self.assertEqual(msg['body']['role']['id'], '9')
+        sent = [c for c in sess.link.sent if c[0] == 10002][0]
+        self.assertEqual(sent[1][:4], ['hero', 'Hero', 'C', 0])
+
+    def test_create_surfaces_full_slots(self):
+        sess, conn = self.session()
+        sess.username = 'hero'
+        sess.roles = [{'id': str(i)} for i in range(4)]
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 1,
+                                         'body': {'name': 'X', 'job': 'A'}}))
+        self.assertIn('slots full',
+                      self.last_message(conn)['body']['error'])
+
+
 if __name__ == '__main__':
     unittest.main()

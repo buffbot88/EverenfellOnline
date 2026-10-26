@@ -16,7 +16,7 @@ export function createPhaserGame(parent: HTMLElement): Phaser.Game {
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
-    backgroundColor: '#0a141d',
+    backgroundColor: '#000000',
     scale: {
       mode: Phaser.Scale.RESIZE,
       parent,
@@ -33,5 +33,10 @@ export function createPhaserGame(parent: HTMLElement): Phaser.Game {
       UIScene,
     ],
   };
-  return new Phaser.Game(config);
+  const game = new Phaser.Game(config);
+  if (import.meta.env.DEV) {
+    // Test hook: lets interaction checks drive scenes without a backend.
+    (window as unknown as { __evfGame?: Phaser.Game }).__evfGame = game;
+  }
+  return game;
 }

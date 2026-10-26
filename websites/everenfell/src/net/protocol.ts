@@ -65,9 +65,26 @@ export interface RoleRef {
 /** Maximum characters per account per game server (protocol MAX_ROLES_PER_ACCOUNT). */
 export const MAX_ROLES_PER_ACCOUNT = 4;
 
-/** Playable job codes (A/B/C/D). Names are not invented here: the
- * recovered interface art carries no verified class names yet. */
+/** Playable job codes (A/B/C/D). Class names are recovered, not
+ * invented: the create-ui ribbon bitmaps render them as art, and
+ * SymbolClass containment fixes the mapping (sprite 38/A -> bitmap 35,
+ * 23/B -> 21, 31/C -> 28, 11/D -> 5). */
 export const JOB_CODES = ['A', 'B', 'C', 'D'] as const;
+
+export const JOB_NAMES: Record<JobCode, string> = {
+  A: 'Spirit Monkey',
+  B: 'Nine Tails',
+  C: 'Bull Demon',
+  D: 'Rakshasa',
+};
+
+/** Display name for a job code; unknown codes pass through unchanged. */
+export function jobName(job: string): string {
+  if ((JOB_CODES as readonly string[]).includes(job)) {
+    return JOB_NAMES[job as JobCode];
+  }
+  return job;
+}
 
 export type JobCode = (typeof JOB_CODES)[number];
 

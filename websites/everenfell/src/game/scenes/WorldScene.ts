@@ -86,7 +86,7 @@ export class WorldScene extends Phaser.Scene {
     });
 
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#0a141d');
+    cam.setBackgroundColor('#000000');
     cam.setBounds(0, 0, MAP_W, MAP_H);
     cam.setZoom(START_ZOOM);
     // Start at the map's centre in world pixels; the camera keeps that

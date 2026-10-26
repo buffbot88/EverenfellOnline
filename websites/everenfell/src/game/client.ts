@@ -13,6 +13,7 @@ import {
   GAME_SERVERS,
   JOB_CODES,
   MAX_ROLES_PER_ACCOUNT,
+  jobName,
   type RoleRef,
 } from '../net/protocol';
 import { CREATE_KEY } from './scenes/CharacterCreateScene';
@@ -54,10 +55,21 @@ export class PhaserClient {
     options.uiMount.appendChild(this.statusEl);
   }
 
-  /** Boot Phaser and render Map 0. Never touches session or gateway. */
+  /** Boot Phaser. Map tiles load on world entry, not on select/create. */
   async start(): Promise<void> {
-    this.setStatus('Loading recovered Map 0…');
     this.game = createPhaserGame(this.options.mount);
+    const scene = new URLSearchParams(window.location.search).get('scene');
+    if (scene === 'select' || scene === 'create') {
+      // Character screens are self-describing; no status line.
+      this.setStatusVisible(false);
+      this.input.attach(this.game.canvas);
+      this.input.onMoveIntent(({ dx, dy }) => {
+        void this.sendMove(dx, dy);
+      });
+      return;
+    }
+    this.setStatusVisible(true);
+    this.setStatus('Loading recovered Map 0…');
     await this.waitForMap();
     const world = this.worldScene();
     world?.bindActorCamera(this.camera);
@@ -112,6 +124,10 @@ export class PhaserClient {
 
   private setStatus(text: string): void {
     this.statusEl.textContent = text;
+  }
+
+  private setStatusVisible(visible: boolean): void {
+    this.statusEl.style.display = visible ? '' : 'none';
   }
 
   private renderLogin(): void {
@@ -246,7 +262,7 @@ export class PhaserClient {
     for (const role of roles) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = `${role.name} (Job ${role.job} · Lv ${role.level})`;
+      button.textContent = `${role.name} (${jobName(role.job)} · Lv ${role.level})`;
       button.addEventListener('click', () => {
         sound.click();
         void this.enterWorld(role.id);
@@ -268,7 +284,7 @@ export class PhaserClient {
       panel.appendChild(full);
     }
     this.options.uiMount.appendChild(panel);
-    this.setStatus('Select a character to enter the world.');
+    this.setStatusVisible(false);
   }
 
   /** Character creation: job art in Phaser, name entry in the panel. */
@@ -298,7 +314,7 @@ export class PhaserClient {
     JOB_CODES.forEach((job, i) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = `Job ${job}`;
+      button.textContent = `${jobName(job)} (${job})`;
       button.addEventListener('click', () => {
         sound.tab();
         this.showScene(CREATE_KEY, { selected: i });
@@ -341,7 +357,7 @@ export class PhaserClient {
       sound.tab();
       highlight(picked.index);
     });
-    this.setStatus('Choose a job portrait, enter a name, then Create.');
+    this.setStatusVisible(false);
   }
 
   private async createCharacter(
@@ -399,6 +415,7 @@ export class PhaserClient {
   }
 
   private async enterWorld(roleId: string): Promise<void> {
+    this.setStatusVisible(true);
     this.setStatus('Entering world…');
     try {
       const snapshot = (await this.gateway.request('world.snapshot', {

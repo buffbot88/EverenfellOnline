@@ -1,0 +1,1355 @@
+{
+ "source": "mem-000006eeae18-1c3192dd9965.swf",
+ "shapes": [
+  {
+   "cid": 2,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    171.0,
+    0.0,
+    171.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 1,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 6,
+   "tag": 22,
+   "bounds_px": [
+    27.0,
+    150.0,
+    120.0,
+    200.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 5,
+     "tx_px": 27.0,
+     "ty_px": 163.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 10,
+   "tag": 2,
+   "bounds_px": [
+    13.0,
+    157.0,
+    11.0,
+    154.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 9,
+     "tx_px": 13.0,
+     "ty_px": 11.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 13,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    935.0,
+    0.0,
+    512.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 12,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 15,
+   "tag": 2,
+   "bounds_px": [
+    450.0,
+    563.0,
+    24.0,
+    51.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 14,
+     "tx_px": 450.0,
+     "ty_px": 24.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 17,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    171.0,
+    0.0,
+    171.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 16,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 19,
+   "tag": 2,
+   "bounds_px": [
+    120.0,
+    150.0,
+    120.0,
+    150.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 4,
+     "tx_px": 120.0,
+     "ty_px": 120.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 22,
+   "tag": 2,
+   "bounds_px": [
+    27.0,
+    128.0,
+    163.0,
+    200.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 21,
+     "tx_px": 27.0,
+     "ty_px": 163.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 25,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    171.0,
+    0.0,
+    171.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 24,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 29,
+   "tag": 22,
+   "bounds_px": [
+    27.0,
+    150.0,
+    120.0,
+    200.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 28,
+     "tx_px": 27.0,
+     "ty_px": 163.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 33,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    171.0,
+    0.0,
+    171.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 32,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 36,
+   "tag": 22,
+   "bounds_px": [
+    27.0,
+    150.0,
+    120.0,
+    200.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 35,
+     "tx_px": 27.0,
+     "ty_px": 163.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 41,
+   "tag": 22,
+   "bounds_px": [
+    279.0,
+    602.0,
+    377.0,
+    417.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 40,
+     "tx_px": 279.0,
+     "ty_px": 388.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 43,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    26.0,
+    0.0,
+    28.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 42,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 45,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    26.0,
+    0.0,
+    28.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 44,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 47,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    26.0,
+    0.0,
+    28.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 46,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 51,
+   "tag": 2,
+   "bounds_px": [
+    -66.0,
+    66.0,
+    -48.0,
+    47.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 50,
+     "tx_px": -66.0,
+     "ty_px": -48.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 54,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    225.0,
+    0.0,
+    68.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 53,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 56,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    225.0,
+    0.0,
+    68.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 55,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 58,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    225.0,
+    0.0,
+    68.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 57,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  },
+  {
+   "cid": 62,
+   "tag": 2,
+   "bounds_px": [
+    450.0,
+    563.0,
+    23.0,
+    50.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 61,
+     "tx_px": 450.0,
+     "ty_px": 23.0
+    }
+   ],
+   "notes": [
+    "fill refs undefined bitmap 65535 (ignored)"
+   ]
+  },
+  {
+   "cid": 64,
+   "tag": 2,
+   "bounds_px": [
+    0.0,
+    171.0,
+    0.0,
+    171.0
+   ],
+   "bitmap_fills": [
+    {
+     "bitmap": 63,
+     "tx_px": 0.0,
+     "ty_px": 0.0
+    }
+   ]
+  }
+ ],
+ "edittexts": [
+  {
+   "cid": 8,
+   "bounds_px": [
+    -2.0,
+    169.0,
+    -2.0,
+    45.0
+   ],
+   "flags": [
+    "0xed",
+    "0x32"
+   ],
+   "font_height_px": 13.0,
+   "color": [
+    236,
+    229,
+    203,
+    255
+   ],
+   "variable": "",
+   "initial_text": "<p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">熊熊焰燃燒我心</font></p><p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">芭蕉風吹盡世愁</font></p>"
+  },
+  {
+   "cid": 20,
+   "bounds_px": [
+    -2.0,
+    169.0,
+    -2.0,
+    45.0
+   ],
+   "flags": [
+    "0xed",
+    "0x32"
+   ],
+   "font_height_px": 13.0,
+   "color": [
+    236,
+    229,
+    203,
+    255
+   ],
+   "variable": "",
+   "initial_text": "<p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">有情最是無情人</font></p><p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">滾滾紅塵冷豔容</font></p>"
+  },
+  {
+   "cid": 30,
+   "bounds_px": [
+    -2.0,
+    169.0,
+    -2.0,
+    45.0
+   ],
+   "flags": [
+    "0xed",
+    "0x32"
+   ],
+   "font_height_px": 13.0,
+   "color": [
+    236,
+    229,
+    203,
+    255
+   ],
+   "variable": "",
+   "initial_text": "<p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">天地血染楓林紅</font></p><p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">只為魔族千萬魂</font></p>"
+  },
+  {
+   "cid": 37,
+   "bounds_px": [
+    -2.0,
+    169.0,
+    -2.0,
+    45.0
+   ],
+   "flags": [
+    "0xed",
+    "0x32"
+   ],
+   "font_height_px": 13.0,
+   "color": [
+    236,
+    229,
+    203,
+    255
+   ],
+   "variable": "",
+   "initial_text": "<p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">敢問天地誰主宰</font></p><p align=\"center\"><font face=\"SimSun\" size=\"13\" color=\"#ece5cb\" letterSpacing=\"0.000000\" kerning=\"1\">滅佛覆天由我來</font></p>"
+  },
+  {
+   "cid": 49,
+   "bounds_px": [
+    -2.0,
+    180.0,
+    -2.0,
+    17.0
+   ],
+   "flags": [
+    "0x8d",
+    "0x30"
+   ],
+   "font_height_px": 15.0,
+   "color": [
+    239,
+    226,
+    202,
+    255
+   ],
+   "variable": "",
+   "initial_text": "等 級"
+  }
+ ],
+ "sprites": [
+  {
+   "cid": 3,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 2,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 11,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 1,
+      "char": 3,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "name": "bg",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 5,
+      "char": 6,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 70,
+      "flags": "0x26",
+      "ext_flags": "0x01",
+      "depth": 6,
+      "char": 8,
+      "matrix": {
+       "translate": [
+        2.0,
+        205.0
+       ]
+      },
+      "name": "txt_txt",
+      "trailing_hex": "0102000000ff0000030000000300000521",
+      "notes": [
+       "trailing 17 bytes"
+      ]
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 3,
+      "char": 10,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 18,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 17,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 23,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 1,
+      "char": 18,
+      "matrix": {
+       "translate": [
+        -4.0,
+        0.0
+       ]
+      },
+      "name": "bg",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 3,
+      "char": 19,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 70,
+      "flags": "0x26",
+      "ext_flags": "0x01",
+      "depth": 4,
+      "char": 20,
+      "matrix": {
+       "translate": [
+        2.0,
+        205.0
+       ]
+      },
+      "name": "txt_txt",
+      "trailing_hex": "0102000000ff0000030000000300000521",
+      "notes": [
+       "trailing 17 bytes"
+      ]
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 5,
+      "char": 22,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 6,
+      "char": 10,
+      "matrix": {
+       "translate": [
+        -4.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 26,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 25,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 31,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 1,
+      "char": 26,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "name": "bg",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 5,
+      "char": 29,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 70,
+      "flags": "0x26",
+      "ext_flags": "0x01",
+      "depth": 6,
+      "char": 30,
+      "matrix": {
+       "translate": [
+        2.0,
+        205.0
+       ]
+      },
+      "name": "txt_txt",
+      "trailing_hex": "0102000000ff0000030000000300000521",
+      "notes": [
+       "trailing 17 bytes"
+      ]
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 3,
+      "char": 10,
+      "matrix": {
+       "translate": [
+        -1.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 34,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 33,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 38,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 1,
+      "char": 34,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "name": "bg",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 5,
+      "char": 36,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 70,
+      "flags": "0x26",
+      "ext_flags": "0x01",
+      "depth": 6,
+      "char": 37,
+      "matrix": {
+       "translate": [
+        2.0,
+        202.0
+       ]
+      },
+      "name": "txt_txt",
+      "trailing_hex": "0102000000ff0000030000000300000521",
+      "notes": [
+       "trailing 17 bytes"
+      ]
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 3,
+      "char": 10,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 48,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 43,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x03",
+      "depth": 1,
+      "modify": "2d00400085060301"
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x03",
+      "depth": 1,
+      "modify": "2f00400000007f09"
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 52,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 51,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 59,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 54,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x03",
+      "depth": 1,
+      "modify": "3800400085060301"
+     }
+    ],
+    [
+     {
+      "tag": 26,
+      "flags": "0x03",
+      "depth": 1,
+      "modify": "3a0040000000ff09"
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 60,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 15,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 2,
+      "char": 23,
+      "matrix": {
+       "translate": [
+        300.0,
+        100.0
+       ]
+      },
+      "name": "B",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 9,
+      "char": 31,
+      "matrix": {
+       "translate": [
+        516.05,
+        100.0
+       ]
+      },
+      "name": "C",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 16,
+      "char": 38,
+      "matrix": {
+       "translate": [
+        90.0,
+        100.0
+       ]
+      },
+      "name": "A",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 23,
+      "char": 11,
+      "matrix": {
+       "translate": [
+        713.95,
+        100.0
+       ]
+      },
+      "name": "D",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 31,
+      "char": 41,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 32,
+      "char": 48,
+      "matrix": {
+       "translate": [
+        570.05,
+        383.0
+       ]
+      },
+      "name": "btn_random",
+      "notes": []
+     },
+     {
+      "tag": 70,
+      "flags": "0x26",
+      "ext_flags": "0x01",
+      "depth": 34,
+      "char": 49,
+      "matrix": {
+       "translate": [
+        387.0,
+        392.0
+       ]
+      },
+      "name": "txt_name",
+      "trailing_hex": "0102000000ff0000030000000300000521",
+      "notes": [
+       "trailing 17 bytes"
+      ]
+     },
+     {
+      "tag": 70,
+      "flags": "0x24",
+      "ext_flags": "0x08",
+      "depth": 35,
+      "name": "tg.shared.cm.ybutton",
+      "trailing_hex": "1e4dd119e062746e5f6261636b00",
+      "notes": [
+       "char bit set but id 26484 not defined here (imported?)",
+       "trailing 14 bytes"
+      ]
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 36,
+      "char": 52,
+      "matrix": {
+       "translate": [
+        257.0,
+        74.0
+       ]
+      },
+      "name": "selectmc",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 38,
+      "char": 59,
+      "matrix": {
+       "translate": [
+        375.0,
+        432.0
+       ]
+      },
+      "name": "btn_start",
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 65,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 64,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 66,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 62,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 2,
+      "char": 59,
+      "matrix": {
+       "translate": [
+        375.0,
+        432.0
+       ]
+      },
+      "name": "btn_start",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 4,
+      "char": 65,
+      "matrix": {
+       "translate": [
+        98.0,
+        100.0
+       ]
+      },
+      "name": "b1",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 6,
+      "char": 65,
+      "matrix": {
+       "translate": [
+        296.0,
+        100.0
+       ]
+      },
+      "name": "b2",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 8,
+      "char": 65,
+      "matrix": {
+       "translate": [
+        516.0,
+        100.0
+       ]
+      },
+      "name": "b3",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 10,
+      "char": 65,
+      "matrix": {
+       "translate": [
+        714.0,
+        100.0
+       ]
+      },
+      "name": "b4",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 12,
+      "char": 52,
+      "matrix": {
+       "translate": [
+        274.5,
+        58.95
+       ]
+      },
+      "name": "selectmc",
+      "notes": []
+     }
+    ]
+   ]
+  },
+  {
+   "cid": 67,
+   "frames": [
+    [
+     {
+      "tag": 26,
+      "flags": "0x06",
+      "depth": 1,
+      "char": 13,
+      "matrix": {
+       "translate": [
+        0.0,
+        0.0
+       ]
+      },
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 2,
+      "char": 60,
+      "matrix": {
+       "translate": [
+        15.0,
+        -10.0
+       ]
+      },
+      "name": "dele_create",
+      "notes": []
+     },
+     {
+      "tag": 26,
+      "flags": "0x26",
+      "depth": 41,
+      "char": 66,
+      "matrix": {
+       "translate": [
+        14.0,
+        -7.95
+       ]
+      },
+      "name": "dele_select",
+      "notes": []
+     }
+    ]
+   ]
+  }
+ ],
+ "symbolclass": [
+  {
+   "cid": 67,
+   "name": "ui.asyncpanel.createUI"
+  },
+  {
+   "cid": 38,
+   "name": "ui.shared.create.A"
+  },
+  {
+   "cid": 31,
+   "name": "ui.shared.create.C"
+  },
+  {
+   "cid": 23,
+   "name": "ui.shared.create.B"
+  },
+  {
+   "cid": 11,
+   "name": "ui.shared.create.D"
+  }
+ ],
+ "abc_strings": [
+  "DisplayObject",
+  "DisplayObjectContainer",
+  "EventDispatcher",
+  "InteractiveObject",
+  "MovieClip",
+  "Object",
+  "Sprite",
+  "TextField",
+  "createUI",
+  "dele_create",
+  "dele_select",
+  "flash.display",
+  "flash.events",
+  "flash.text",
+  "txt_txt",
+  "ui.asyncpanel",
+  "ui.asyncpanel:createUI",
+  "ui.shared.create",
+  "ui.shared.create:A",
+  "ui.shared.create:B",
+  "ui.shared.create:C",
+  "ui.shared.create:D"
+ ]
+}

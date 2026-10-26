@@ -16,7 +16,8 @@ import {
   jobName,
   type RoleRef,
 } from '../net/protocol';
-import { CREATE_KEY } from './scenes/CharacterCreateScene';
+import { CREATE_GEOM, CREATE_KEY } from './scenes/CharacterCreateScene';
+import { letterbox } from './stage';
 import { SELECT_KEY } from './scenes/CharacterSelectScene';
 import { Camera } from '../world/camera';
 import { Input } from '../world/input';
@@ -44,6 +45,7 @@ export class PhaserClient {
   private statusEl: HTMLElement;
   private selfId: string | null = null;
   private selfTile = { x: 0, y: 0 };
+  private nameOverlay: HTMLInputElement | null = null;
 
   constructor(private readonly options: ClientOptions) {
     this.windows = new WindowManager(options.uiMount);
@@ -137,6 +139,30 @@ export class PhaserClient {
 
   private clearViews(): void {
     this.options.uiMount.querySelectorAll('.ev-view').forEach((node) => node.remove());
+    this.nameOverlay?.remove();
+    this.nameOverlay = null;
+    window.removeEventListener('resize', this.repositionOverlay);
+  }
+
+  private repositionOverlay = (): void => {
+    this.positionNameOverlay();
+  };
+
+  /** Place the HTML name field over the box art (Phaser has no text input). */
+  private positionNameOverlay(): void {
+    const overlay = this.nameOverlay;
+    const canvas = this.game?.canvas;
+    if (!overlay || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ui = this.options.uiMount.getBoundingClientRect();
+    const { s, ox, oy } = letterbox(rect.width, rect.height);
+    if (!(s > 0)) return;
+    const f = CREATE_GEOM.NAME_FIELD;
+    overlay.style.left = `${rect.left - ui.left + ox + (CREATE_GEOM.PANEL_X + f.x) * s}px`;
+    overlay.style.top = `${rect.top - ui.top + oy + (CREATE_GEOM.PANEL_Y + f.y) * s}px`;
+    overlay.style.width = `${f.w * s}px`;
+    overlay.style.height = `${f.h * s}px`;
+    overlay.style.fontSize = `${Math.max(10, Math.round(15 * s))}px`;
   }
 
   private async checkWebsiteSession(): Promise<void> {
@@ -239,15 +265,22 @@ export class PhaserClient {
   }
 
   /** Character selection: owned roles plus empty slots up to the cap. */
-  private renderSelect(roles: RoleRef[]): void {
+  private renderSelect(roles: RoleRef[], selected?: string): void {
     this.clearViews();
-    this.showScene(SELECT_KEY, { roles });
+    this.showScene(SELECT_KEY, { roles, selected });
     const select = this.scene(SELECT_KEY);
-    select?.events.once('roleselect', (picked: { id: string }) => {
+    select?.events.off('roleselect');
+    select?.events.on('roleselect', (picked: { id: string }) => {
+      sound.click();
+      this.renderSelect(roles, picked.id);
+    });
+    select?.events.off('startworld');
+    select?.events.on('startworld', (picked: { id: string }) => {
       sound.click();
       void this.enterWorld(picked.id);
     });
-    select?.events.once('gocreate', () => {
+    select?.events.off('gocreate');
+    select?.events.on('gocreate', () => {
       sound.click();
       if (roles.length < MAX_ROLES_PER_ACCOUNT) this.renderCreate(roles);
     });
@@ -287,7 +320,7 @@ export class PhaserClient {
     this.setStatusVisible(false);
   }
 
-  /** Character creation: job art in Phaser, name entry in the panel. */
+  /** Character creation: job art in Phaser, name field overlaid on the box. */
   private renderCreate(existing: RoleRef[]): void {
     this.clearViews();
     let jobIndex = 0;
@@ -303,45 +336,15 @@ export class PhaserClient {
       `Slot ${existing.length + 1}/${MAX_ROLES_PER_ACCOUNT}. ` +
       'Names use Chinese characters (backend rule); nothing is created until the server accepts it.';
     panel.appendChild(note);
-    const jobRow = document.createElement('div');
-    const jobButtons: HTMLButtonElement[] = [];
+    // No DOM job buttons: the Phaser portraits are the class picker.
+    // (A leftover button row used to sit here — removed as debug UI.)
     const highlight = (index: number): void => {
       jobIndex = index;
-      jobButtons.forEach((button, i) => {
-        button.disabled = i === index;
-      });
     };
-    JOB_CODES.forEach((job, i) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = `${jobName(job)} (${job})`;
-      button.addEventListener('click', () => {
-        sound.tab();
-        this.showScene(CREATE_KEY, { selected: i });
-        highlight(i);
-      });
-      jobButtons.push(button);
-      jobRow.appendChild(button);
-    });
     highlight(0);
-    panel.appendChild(jobRow);
-    const name = document.createElement('input');
-    name.type = 'text';
-    name.placeholder = 'Character name';
-    name.setAttribute('aria-label', 'Character name');
-    panel.appendChild(name);
     const error = document.createElement('p');
     error.className = 'ev-error';
     panel.appendChild(error);
-    const submit = document.createElement('button');
-    submit.type = 'button';
-    submit.textContent = 'Create';
-    submit.addEventListener('click', () => {
-      error.textContent = '';
-      sound.click();
-      void this.createCharacter(name.value.trim(), JOB_CODES[jobIndex], existing, error, submit);
-    });
-    panel.appendChild(submit);
     if (existing.length > 0) {
       const back = document.createElement('button');
       back.type = 'button';
@@ -353,9 +356,45 @@ export class PhaserClient {
       panel.appendChild(back);
     }
     this.options.uiMount.appendChild(panel);
+    // Name field floats over the box art (Phaser has no text input).
+    const field = document.createElement('input');
+    field.type = 'text';
+    field.className = 'ev-name-overlay';
+    field.placeholder = 'Name';
+    field.setAttribute('aria-label', 'Character name');
+    field.maxLength = 14;
+    field.autocomplete = 'off';
+    field.spellcheck = false;
+    Object.assign(field.style, {
+      position: 'absolute',
+      background: 'transparent',
+      border: 'none',
+      outline: 'none',
+      color: '#f2e6c8',
+      fontFamily: 'Georgia, "SimSun", serif',
+      textAlign: 'center',
+      padding: '0',
+    });
+    field.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        sound.click();
+        void this.createCharacter(field.value.trim(), JOB_CODES[jobIndex], existing, error);
+      }
+    });
+    this.options.uiMount.appendChild(field);
+    this.nameOverlay = field;
+    this.positionNameOverlay();
+    window.addEventListener('resize', this.repositionOverlay);
+    scene?.events.off('jobselect');
     scene?.events.on('jobselect', (picked: { index: number }) => {
       sound.tab();
       highlight(picked.index);
+    });
+    scene?.events.off('createstart');
+    scene?.events.on('createstart', () => {
+      sound.click();
+      void this.createCharacter(field.value.trim(), JOB_CODES[jobIndex], existing, error);
     });
     this.setStatusVisible(false);
   }
@@ -365,28 +404,31 @@ export class PhaserClient {
     job: string,
     existing: RoleRef[],
     errorEl: HTMLElement,
-    submit: HTMLButtonElement,
   ): Promise<void> {
     if (!name) {
       errorEl.textContent = 'Enter a name first.';
       return;
     }
-    submit.disabled = true;
-    this.setStatus('Creating character…');
+    if (this.nameOverlay) this.nameOverlay.disabled = true;
+    errorEl.textContent = 'Creating character…';
     try {
       const created = (await this.gateway.request('role.create', {
         name,
         job,
         sex: 0,
         face: '',
-      })) as { roles?: RoleRef[] };
-      const roles = created.roles ?? [...existing];
-      this.renderSelect(roles);
+      })) as { role?: RoleRef; roles?: RoleRef[] };
+      errorEl.textContent = '';
+      // START GAME goes straight into the world with the new character.
+      if (created.role?.id) {
+        await this.enterWorld(created.role.id);
+        return;
+      }
+      this.renderSelect(created.roles ?? [...existing]);
     } catch (err) {
       errorEl.textContent = err instanceof Error ? err.message : 'Creation failed.';
-      this.setStatus('Creation refused by the server.');
     } finally {
-      submit.disabled = false;
+      if (this.nameOverlay) this.nameOverlay.disabled = false;
     }
   }
 

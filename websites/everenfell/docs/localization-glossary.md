@@ -21,7 +21,7 @@ abilities. Correct any row and its bitmap re-renders from
 | 9 | 天地血染楓林紅 / 只為魔族千萬魂 | A towering warrior of raw strength and iron will. / Nothing can stand in his path. | approved (refined) |
 | 10 | 熊熊焰燃燒我心 / 芭蕉風吹盡世愁 | A fierce warrior wreathed in hellfire. / Her fury leaves only ashes behind. | approved (refined) |
 | 11 | 角色名稱 | NAME | approved |
-| 12 | 選定 | SELECTED | approved |
+| 12 | 選定 | Creation (create stamp) / SELECTION (select stamp) | approved |
 | 13 | 開始遊戲 | START GAME | approved |
 | 14 | 角色创建 | CREATE | approved |
 | 15 | 等 級 | — (initial text, not rendered) | skipped |

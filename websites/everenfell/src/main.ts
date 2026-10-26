@@ -41,6 +41,10 @@ const client = new PhaserClient({
   gatewayUrl,
   serverId: params.get('server') ?? undefined,
 });
+if (import.meta.env.DEV) {
+  // Test hook: lets interaction checks drive the client without a backend.
+  (window as unknown as { __evfClient?: PhaserClient }).__evfClient = client;
+}
 
 function showGate(message: string, signIn = false): void {
   const panel = document.createElement('div');

@@ -32,12 +32,25 @@ depth 3 inside the selected class sprite — Phaser draws selectmc after
 the ring, matching exactly. The overlap is original behavior (depth
 order, no masks involved), not a layering bug. No nudge.
 
-Functional verification 2026-10-26 (dev-only `__evfGame` hook in
-`createPhaserGame.ts`): synthetic pointer click on portrait B →
-`createJob` registry reads 1, scene restarts, ring + SELECTED render on
-Nine Tails, refined C/D mottos live. Name entry → `role.create` → world
-entry still needs the running Python stack (gateway + game server); dice
-and start states 55/57 remain unwired/unverified by design.
+Functional verification 2026-10-26 (dev-only `__evfGame`/`__evfClient`
+hooks): synthetic pointer click on portrait B → `createJob` registry
+reads 1, ring follows; START GAME click with overlay name "TestHero" →
+`createstart` → `role.create` attempted (fails "gateway not connected"
+with no backend, as expected — wiring proven to the gateway boundary).
+
+Round 2 (user-directed): gender symbols Male/Female/Male/Female on
+A/B/C/D (bitmap 27 male confirmed purple ♂, bitmap 4 teal ♀; only B's
+placement is authored, the rest follow the game's pattern); stamp
+re-rendered as page-specific words — "Creation" on create (bitmap 50),
+"SELECTION" on select (new bitmap 50b-selection.png, same border art)
+— and follows the selected slot on both screens; dice art removed (no
+random names supplied); name field is an HTML overlay positioned over
+the box art via exported CREATE_GEOM (Phaser has no text input), Enter
+or START GAME submits; creation success goes straight into the world
+(`enterWorld` with the new role id); select screen tracks a selected
+role and START GAME enters with it. Start states 55/57 stay untouched
+(role unverified). Name entry → world entry end-to-end still needs the
+running Python stack.
 
 ## Baked-text bitmaps (must be redrawn with English)
 

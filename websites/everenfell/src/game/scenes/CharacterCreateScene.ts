@@ -5,48 +5,55 @@
  * placement. Authored Flash stage is 935x512 (shape 13 bounds); sprite 60
  * (dele_create, at panel offset +15,-10 in sprite 67) places class tabs
  * A/B/C/D at (90/300/516.05/713.95,100), the title strip (shape 15 ->
- * bitmap 14) at (450,24), selectmc (shape 51 -> bitmap 50, CENTERED
- * 132x95 art) at (257,74), the name label (shape 41 -> bitmap 40) at
- * (279,388), dice (sprite 48 -> bitmap 42) at (570.05,383), txt_name at
- * (387,392), and btn_start (sprite 59 -> bitmap 53) at (375,432).
- * Each class sprite carries its portrait, icon ribbon
+ * bitmap 14) at (450,24), the name label (shape 41 -> bitmap 40) at
+ * (279,388), txt_name at (387,392), and btn_start (sprite 59 -> bitmap
+ * 53) at (375,432). Each class sprite carries its portrait, icon ribbon
  * (A=35, B=21, C=28, D=5) at local (27,163), motto edittext at local
- * (2,205), and a frame-2 highlight ring (shape 10 -> bitmap 9). Class B
- * additionally shows the female symbol (shape 19 -> bitmap 4) at local
- * (120,120); the male symbol (bitmap 27) is unplaced anywhere in the
- * module, so there is no reconstructed gender toggle and sex stays 0.
+ * (2,205), and a frame-2 highlight ring (shape 10 -> bitmap 9).
  *
- * Deliberate approximations (see docs/character-audit.md): the name
- * input box (bitmap 39) is code-attached in the original, so its art is
- * drawn at the box position inferred from shape-41 bounds (right/bottom
- * edges align: (373,377)) while the functional field stays in the DOM
- * panel; dice/start skins are decorative because their press behavior
- * lives in the imported tg.shared.cm.ybutton context (character 26484,
- * not defined in this module; no ImportAssets2 tag present); the "等 級"
- * initial text of txt_name is not rendered (live field, purpose unclear).
+ * Product decisions layered on the reconstruction (see
+ * docs/create-ui-localization.md): gender symbols render Male, Female,
+ * Male, Female across A/B/C/D (bitmap 27 male, bitmap 4 female — only
+ * B's placement is authored, the rest follow the game's own pattern);
+ * the stamp (bitmap 50, now reading "Creation") follows the selected
+ * slot instead of its fixed selectmc position; the random-name dice is
+ * not rendered (no random names supplied); the name field is an HTML
+ * overlay on the box art (CREATE_GEOM below gives the client its rect);
+ * START GAME is clickable and creates the character straight into the
+ * world. The "等 級" initial text of txt_name is not rendered.
  */
 import Phaser from 'phaser';
+import { letterbox, STAGE_H, STAGE_W } from '../stage';
 
 export const CREATE_KEY = 'create';
 
 /** Flash stage size (backdrop shape 13 bounds). */
-const FLASH_W = 935;
-const FLASH_H = 512;
+const FLASH_W = STAGE_W;
+const FLASH_H = STAGE_H;
 
 /** Panel offset of dele_create (sprite 60) inside createUI (sprite 67). */
 const PANEL_X = 15;
 const PANEL_Y = -10;
 
+/** Geometry the client needs to overlay the HTML name field on the box. */
+export const CREATE_GEOM = {
+  FLASH_W,
+  FLASH_H,
+  PANEL_X,
+  PANEL_Y,
+  NAME_FIELD: { x: 387, y: 392, w: 182, h: 19 },
+} as const;
+
 /** Class tabs in screen order: job, slot origin, portrait/ribbon art. */
 const SLOTS = [
-  { job: 'A', x: 90, y: 100, portrait: 32, ribbon: 35, ringDx: 0, bgDx: 0 },
-  { job: 'B', x: 300, y: 100, portrait: 16, ribbon: 21, ringDx: -4, bgDx: -4 },
-  { job: 'C', x: 516.05, y: 100, portrait: 24, ribbon: 28, ringDx: -1, bgDx: 0 },
-  { job: 'D', x: 713.95, y: 100, portrait: 1, ribbon: 5, ringDx: 0, bgDx: 0 },
+  { job: 'A', x: 90, y: 100, portrait: 32, ribbon: 35, ringDx: 0, bgDx: 0, gender: 27 },
+  { job: 'B', x: 300, y: 100, portrait: 16, ribbon: 21, ringDx: -4, bgDx: -4, gender: 4 },
+  { job: 'C', x: 516.05, y: 100, portrait: 24, ribbon: 28, ringDx: -1, bgDx: 0, gender: 27 },
+  { job: 'D', x: 713.95, y: 100, portrait: 1, ribbon: 5, ringDx: 0, bgDx: 0, gender: 4 },
 ] as const;
 
-/** Motto lines (layout JSON edittexts 37/20/30/8; draft English from
- * the localization glossary, pending approval). */
+/** Motto lines (layout JSON edittexts 37/20/30/8; approved English from
+ * the localization glossary — flavor text, not gameplay promises). */
 const MOTTOS: Record<string, [string, string]> = {
   A: ['A fearless trickster born of stone and storm.', 'Too swift to catch, too bold to cage.'],
   B: ['Grace and guile in the shape of a fox.', 'Her beauty charms; her bite kills.'],
@@ -65,8 +72,8 @@ function img(id: number, kind: string): string {
 const BITMAP_KIND: Record<number, string> = {
   1: 'jpeg3', 4: 'lossless2', 5: 'jpeg3', 9: 'jpeg3', 12: 'jpeg3',
   14: 'lossless2', 16: 'jpeg3', 21: 'jpeg3', 24: 'jpeg3', 28: 'jpeg3',
-  32: 'jpeg3', 35: 'jpeg3', 39: 'jpeg3', 40: 'lossless2', 42: 'jpeg3',
-  50: 'jpeg3', 53: 'jpeg3',
+  32: 'jpeg3', 35: 'jpeg3', 39: 'jpeg3', 40: 'lossless2',
+  50: 'jpeg3', 53: 'jpeg3', 27: 'lossless2',
 };
 
 export class CharacterCreateScene extends Phaser.Scene {
@@ -75,7 +82,7 @@ export class CharacterCreateScene extends Phaser.Scene {
   }
 
   preload(): void {
-    const ids = new Set<number>([12, 14, 9, 40, 39, 42, 50, 53, 4]);
+    const ids = new Set<number>([12, 14, 9, 40, 39, 50, 53, 4, 27]);
     for (const slot of SLOTS) {
       ids.add(slot.portrait);
       ids.add(slot.ribbon);
@@ -90,10 +97,8 @@ export class CharacterCreateScene extends Phaser.Scene {
     const viewW = this.scale.width;
     const viewH = this.scale.height;
     this.cameras.main.setBackgroundColor('#000000');
-    const s = Math.min(viewW / FLASH_W, viewH / FLASH_H);
+    const { s, ox, oy } = letterbox(viewW, viewH);
     if (!(s > 0)) return;
-    const ox = (viewW - FLASH_W * s) / 2;
-    const oy = (viewH - FLASH_H * s) / 2;
     const X = (x: number): number => ox + (PANEL_X + x) * s;
     const Y = (y: number): number => oy + (PANEL_Y + y) * s;
     /** Stage-space (pre-panel-offset) placement, e.g. the backdrop. */
@@ -141,13 +146,14 @@ export class CharacterCreateScene extends Phaser.Scene {
       }
       // Icon ribbon (shape 6/22/29/36 -> bitmap at local (27,163)).
       art(`cu-${slot.ribbon}`, slot.x + 27, slot.y + 163);
-      // Female symbol is authored only on class B (shape 19 at (120,120)).
-      if (slot.job === 'B') art('cu-4', slot.x + 120, slot.y + 120);
-      // Motto zone at local (2,205), 171px wide SimSun #ece5cb. English
-      // lines run far longer than the 7-glyph Chinese originals, so the
-      // blurb wraps inside its own column instead of bleeding into the
-      // neighboring class. Georgia suits the Latin glyphs; CJK fallback
-      // stays for any untranslated string.
+      // Gender symbols: Male, Female, Male, Female across A/B/C/D at the
+      // local offset authored for B (shape 19 at (120,120)).
+      art(`cu-${slot.gender}`, slot.x + 120, slot.y + 120);
+      // Motto zone at local (2,205), 171px wide #ece5cb. English lines run
+      // far longer than the 7-glyph Chinese originals, so the blurb wraps
+      // inside its own column instead of bleeding into the neighboring
+      // class. Georgia suits the Latin glyphs; CJK fallback stays for any
+      // untranslated string.
       const motto = MOTTOS[slot.job];
       const blurb = Array.isArray(motto) ? motto.join('\n') : '';
       this.add
@@ -164,24 +170,33 @@ export class CharacterCreateScene extends Phaser.Scene {
       if (i === selected) art('cu-9', slot.x + slot.ringDx + 13, slot.y + 11);
     });
 
-    // selectmc confirm art (shape 51, centered) at (257,74).
+    // "Creation" stamp follows the selected slot, centered on its
+    // top-left corner (replaces the fixed selectmc position).
+    const sel = SLOTS[selected] ?? SLOTS[0];
     if (need('cu-50')) {
-      this.add.image(X(257), Y(74), 'cu-50').setOrigin(0.5, 0.5).setScale(s);
+      this.add
+        .image(X(sel.x), Y(sel.y), 'cu-50')
+        .setOrigin(0.5, 0.5)
+        .setScale(s);
     }
     // Name label art (shape 41 -> bitmap 40 at (279,388)).
     art('cu-40', 279, 388);
     // Name input box art (bitmap 39, code-attached; position inferred
-    // from shape-41 bounds, see module docstring). Functional input
-    // stays in the DOM panel below the canvas.
+    // from shape-41 bounds). The functional field is an HTML overlay
+    // (see CREATE_GEOM); the dice is intentionally not rendered.
     art('cu-39', 373, 377);
-    // Random-name dice (bitmap 42 at (570.05,383)). States 44/46 are
-    // unplaced in the module and the word list is unrecovered, so the
-    // dice is rendered without a handler rather than faking a feature.
-    art('cu-42', 570.05, 383);
-    // Start-game skin (sprite 59 -> bitmap 53 at (375,432)). Press
-    // behavior lives in the imported ybutton context; the DOM Create
-    // button performs creation.
-    art('cu-53', 375, 432);
+    // START GAME (sprite 59 -> bitmap 53 at (375,432)): clickable, creates
+    // the character straight into the world via 'createstart'.
+    if (need('cu-53')) {
+      const start = this.add
+        .image(X(375), Y(432), 'cu-53')
+        .setOrigin(0, 0)
+        .setScale(s)
+        .setInteractive({ useHandCursor: true });
+      start.on('pointerover', () => start.setTint(0xfff2cc));
+      start.on('pointerout', () => start.clearTint());
+      start.on('pointerdown', () => this.events.emit('createstart', {}));
+    }
 
     if (missing.length > 0) {
       this.add

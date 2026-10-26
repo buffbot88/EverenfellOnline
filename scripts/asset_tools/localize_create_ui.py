@@ -184,16 +184,23 @@ for out_name, word in (('50-jpeg3.png', 'Creation'),
     r, g, b = arr[..., 0].astype(int), arr[..., 1].astype(int), \
         arr[..., 2].astype(int)
     interior = np.zeros(arr.shape[:2], bool)
-    interior[22:70, 28:104] = True
+    interior[15:80, 15:117] = True
     mask = interior & (r > 100) & (g > 45) & (r > b + 20)
     mask = dilate(mask, 5)
-    ys, xs = np.nonzero(mask)
-    cy, cx = int(ys.mean()), int(xs.mean())
     fixed = inpaint(arr, mask, iters=600)
     base = Image.fromarray(fixed)
-    fnt, _ = fit_font(GEO, word, 100, 30, start=34)
-    t = gradient_text(word, fnt, (255, 225, 130), (255, 130, 30),
-                      (255, 120, 20), 3)
+    # Smooth the smoky interior so old-glyph blotches and soot streaks
+    # cannot show through the new word; border flames stay crisp.
+    smooth_zone = Image.new('L', base.size, 0)
+    dz = ImageDraw.Draw(smooth_zone)
+    dz.rounded_rectangle([18, 18, 114, 77], radius=10, fill=255)
+    soft = base.filter(ImageFilter.GaussianBlur(6))
+    base.paste(soft, (0, 0), smooth_zone.filter(
+        ImageFilter.GaussianBlur(4)))
+    cx, cy = 68, 48
+    fnt, _ = fit_font(GEO, word, 88, 30, start=34)
+    t = gradient_text(word, fnt, (255, 228, 140), (255, 135, 35),
+                      (255, 130, 25), 4)
     t = t.rotate(15, expand=True, resample=Image.BICUBIC)
     layer = Image.new('RGBA', base.size, (0, 0, 0, 0))
     layer.alpha_composite(t, (cx - t.width // 2, cy - t.height // 2))

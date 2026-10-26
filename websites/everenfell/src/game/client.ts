@@ -18,6 +18,7 @@ import {
 } from '../net/protocol';
 import { CREATE_GEOM, CREATE_KEY } from './scenes/CharacterCreateScene';
 import { letterbox } from './stage';
+
 import { SELECT_KEY } from './scenes/CharacterSelectScene';
 import { Camera } from '../world/camera';
 import { Input } from '../world/input';
@@ -25,6 +26,57 @@ import { WindowManager } from '../ui/windows';
 import { createPhaserGame } from './createPhaserGame';
 import { sound } from './sound';
 import { WORLD_KEY, WorldScene } from './scenes/WorldScene';
+
+/** Device-local home-server cache (per AGP account). Convenience only:
+ * skips the one-time picker on known devices. The backend owns the real
+ * assignment and verifies every request (docs/account-flow.md). */
+const HOME_KEY = 'evf-home-server';
+const PENDING_KEY = 'evf-home-server-pending';
+
+function cachedServer(key: string, account: string): string | null {
+  try {
+    const value = window.localStorage.getItem(`${key}:${account}`);
+    return value && GAME_SERVERS.some((server) => server.id === value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeServer(key: string, account: string, server: string): void {
+  try {
+    window.localStorage.setItem(`${key}:${account}`, server);
+  } catch {
+    // Private mode: the cache lasts for this session only.
+  }
+}
+
+function clearCachedServer(key: string, account: string): void {
+  try {
+    window.localStorage.removeItem(`${key}:${account}`);
+  } catch {
+    // Private mode: nothing persisted.
+  }
+}
+
+/** Permanent device cache: set only by a successful character creation
+ * (or overwritten by the authoritative backend value). */
+function homeServer(account: string): string | null {
+  return cachedServer(HOME_KEY, account);
+}
+
+function setHomeServer(account: string, server: string): void {
+  storeServer(HOME_KEY, account, server);
+}
+
+/** Provisional choice: remembered so the picker can offer it again, but
+ * freely changeable until the first character is created. */
+function pendingServer(account: string): string | null {
+  return cachedServer(PENDING_KEY, account);
+}
+
+function setPendingServer(account: string, server: string): void {
+  storeServer(PENDING_KEY, account, server);
+}
 
 export type ViewState = 'loading' | 'select' | 'world';
 
@@ -46,6 +98,9 @@ export class PhaserClient {
   private selfId: string | null = null;
   private selfTile = { x: 0, y: 0 };
   private nameOverlay: HTMLInputElement | null = null;
+  /** Verified AGP account + connected game server for this session. */
+  private accountId: string | null = null;
+  private gameServer: string | null = null;
 
   constructor(private readonly options: ClientOptions) {
     this.windows = new WindowManager(options.uiMount);
@@ -206,18 +261,37 @@ export class PhaserClient {
       this.setStatus('Signed out. Map remains inspectable.');
       return;
     }
-    const serverId = this.options.serverId;
-    if (serverId && GAME_SERVERS.some((server) => server.id === serverId)) {
-      await this.login(serverId);
+    // One AGP account, one home server. The authoritative assignment lives
+    // server-side (see docs/account-flow.md). Locally there are two
+    // states: a permanent cache (first creation succeeded) that skips the
+    // picker, and a provisional choice (server picked, nothing created)
+    // that only pre-selects it. Neither is trusted for access — the
+    // gateway verifies every request.
+    const account = user.username || user.display_name || 'member';
+    const home = homeServer(account);
+    if (home && GAME_SERVERS.some((server) => server.id === home)) {
+      await this.login(home, account);
       return;
     }
+    const requested = this.options.serverId;
+    if (requested && GAME_SERVERS.some((server) => server.id === requested)) {
+      await this.login(requested, account);
+      return;
+    }
+    // First-time onboarding: the only server picker in the client. It is
+    // reached until a permanent home server exists, never linked from the
+    // navbar. A provisional earlier choice is pre-selected but changeable.
     const panel = document.createElement('div');
     panel.className = 'ev-view ev-login';
     const title = document.createElement('h1');
     title.textContent = 'Everenfell';
     panel.appendChild(title);
+    const note = document.createElement('p');
+    note.textContent =
+      'Choose your home server. You can change your mind until your first character is created — after that it is permanent.';
+    panel.appendChild(note);
     const label = document.createElement('label');
-    label.textContent = 'Server';
+    label.textContent = 'Home server';
     const select = document.createElement('select');
     for (const server of GAME_SERVERS) {
       const option = document.createElement('option');
@@ -225,20 +299,28 @@ export class PhaserClient {
       option.textContent = server.name;
       select.appendChild(option);
     }
+    const pending = pendingServer(account);
+    if (pending) select.value = pending;
     label.appendChild(select);
     panel.appendChild(label);
     const enter = document.createElement('button');
     enter.type = 'button';
-    enter.textContent = 'Enter world';
+    enter.textContent = 'Continue';
     enter.addEventListener('click', () => {
-      void this.login(select.value);
+      void this.login(select.value, account);
     });
     panel.appendChild(enter);
     this.options.uiMount.appendChild(panel);
-    this.setStatus('Website account connected. Choose a server.');
+    this.setStatus('Welcome. Choose your home server.');
   }
 
-  private async login(serverId: string): Promise<void> {
+  private async login(serverId: string, account: string): Promise<void> {
+    this.accountId = account;
+    this.gameServer = serverId;
+    // Provisional only: choosing a server binds nothing. The permanent
+    // cache is written on first successful creation (or overwritten by
+    // the authoritative backend value below).
+    setPendingServer(account, serverId);
     this.setStatus('Connecting…');
     try {
       await this.gateway.connect();
@@ -246,7 +328,14 @@ export class PhaserClient {
       await this.gateway.request('auth.session', { ticket, server: serverId });
       const entered = (await this.gateway.request('world.enter', {})) as {
         roles?: RoleRef[];
+        homeServer?: string;
       };
+      // Backend assignment always wins over any local cache (including
+      // after an administrative home-server change).
+      if (entered.homeServer && GAME_SERVERS.some((server) => server.id === entered.homeServer)) {
+        setHomeServer(account, entered.homeServer);
+        clearCachedServer(PENDING_KEY, account);
+      }
       const roles = entered.roles ?? [];
       // Original entry behavior: no characters -> creation, else selection.
       if (roles.length === 0) this.renderCreate(roles);
@@ -419,6 +508,13 @@ export class PhaserClient {
         face: '',
       })) as { role?: RoleRef; roles?: RoleRef[] };
       errorEl.textContent = '';
+      // First successful creation commits the permanent home server
+      // (device cache; the authoritative binding is enforced by the
+      // backend) and clears the provisional choice.
+      if (this.accountId && this.gameServer) {
+        setHomeServer(this.accountId, this.gameServer);
+        clearCachedServer(PENDING_KEY, this.accountId);
+      }
       // START GAME goes straight into the world with the new character.
       if (created.role?.id) {
         await this.enterWorld(created.role.id);

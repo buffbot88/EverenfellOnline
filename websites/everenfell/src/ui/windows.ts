@@ -26,6 +26,7 @@ const DEFS: WindowDef[] = [
 export class WindowManager {
   private root: HTMLElement;
   private open = new Set<WindowId>();
+  private panelSound: (opened: boolean) => void = () => {};
 
   constructor(mount: HTMLElement) {
     this.root = document.createElement('div');
@@ -33,9 +34,19 @@ export class WindowManager {
     mount.appendChild(this.root);
   }
 
+  /** Optional UI sound hook (wired by the shell; silent by default). */
+  onToggle(sound: (opened: boolean) => void): void {
+    this.panelSound = sound;
+  }
+
   toggle(id: WindowId): void {
-    if (this.open.has(id)) this.close(id);
-    else this.openWindow(id);
+    if (this.open.has(id)) {
+      this.close(id);
+      this.panelSound(false);
+    } else {
+      this.openWindow(id);
+      this.panelSound(true);
+    }
   }
 
   openWindow(id: WindowId): void {

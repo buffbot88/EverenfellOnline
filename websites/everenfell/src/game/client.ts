@@ -21,6 +21,7 @@ import { Camera } from '../world/camera';
 import { Input } from '../world/input';
 import { WindowManager } from '../ui/windows';
 import { createPhaserGame } from './createPhaserGame';
+import { sound } from './sound';
 import { WORLD_KEY, WorldScene } from './scenes/WorldScene';
 
 export type ViewState = 'loading' | 'select' | 'world';
@@ -45,6 +46,7 @@ export class PhaserClient {
 
   constructor(private readonly options: ClientOptions) {
     this.windows = new WindowManager(options.uiMount);
+    this.windows.onToggle((opened) => sound.panel(opened));
     this.gateway = new Gateway({ url: options.gatewayUrl });
     this.auth = new AuthClient();
     this.statusEl = document.createElement('p');
@@ -226,9 +228,11 @@ export class PhaserClient {
     this.showScene(SELECT_KEY, { roles });
     const select = this.scene(SELECT_KEY);
     select?.events.once('roleselect', (picked: { id: string }) => {
+      sound.click();
       void this.enterWorld(picked.id);
     });
     select?.events.once('gocreate', () => {
+      sound.click();
       if (roles.length < MAX_ROLES_PER_ACCOUNT) this.renderCreate(roles);
     });
     const panel = document.createElement('div');
@@ -244,6 +248,7 @@ export class PhaserClient {
       button.type = 'button';
       button.textContent = `${role.name} (Job ${role.job} · Lv ${role.level})`;
       button.addEventListener('click', () => {
+        sound.click();
         void this.enterWorld(role.id);
       });
       panel.appendChild(button);
@@ -252,7 +257,10 @@ export class PhaserClient {
       const create = document.createElement('button');
       create.type = 'button';
       create.textContent = 'Create character';
-      create.addEventListener('click', () => this.renderCreate(roles));
+      create.addEventListener('click', () => {
+        sound.click();
+        this.renderCreate(roles);
+      });
       panel.appendChild(create);
     } else {
       const full = document.createElement('p');
@@ -292,6 +300,7 @@ export class PhaserClient {
       button.type = 'button';
       button.textContent = `Job ${job}`;
       button.addEventListener('click', () => {
+        sound.tab();
         this.showScene(CREATE_KEY, { selected: i });
         highlight(i);
       });
@@ -313,6 +322,7 @@ export class PhaserClient {
     submit.textContent = 'Create';
     submit.addEventListener('click', () => {
       error.textContent = '';
+      sound.click();
       void this.createCharacter(name.value.trim(), JOB_CODES[jobIndex], existing, error, submit);
     });
     panel.appendChild(submit);
@@ -320,11 +330,15 @@ export class PhaserClient {
       const back = document.createElement('button');
       back.type = 'button';
       back.textContent = 'Back to selection';
-      back.addEventListener('click', () => this.renderSelect(existing));
+      back.addEventListener('click', () => {
+        sound.close();
+        this.renderSelect(existing);
+      });
       panel.appendChild(back);
     }
     this.options.uiMount.appendChild(panel);
     scene?.events.on('jobselect', (picked: { index: number }) => {
+      sound.tab();
       highlight(picked.index);
     });
     this.setStatus('Choose a job portrait, enter a name, then Create.');
@@ -457,7 +471,9 @@ export class PhaserClient {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = label;
-      button.addEventListener('click', () => this.windows.toggle(id));
+      button.addEventListener('click', () => {
+        this.windows.toggle(id);
+      });
       bar.appendChild(button);
     }
     this.options.uiMount.appendChild(bar);

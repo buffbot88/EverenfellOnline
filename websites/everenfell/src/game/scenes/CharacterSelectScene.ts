@@ -1,10 +1,13 @@
 /** Character selection: owned roles from world.enter plus empty slots.
  *
- * Roles arrive as {id, name, job, level}; slot cap is 4 (protocol
- * MAX_ROLES_PER_ACCOUNT). Portraits reuse the create-ui job bitmaps by
- * job index (A=0..D=3); unknown jobs get a labeled box. Empty slots are
- * outlined boxes, never fake characters. Entry keeps flowing through
- * world.snapshot so ownership stays server-enforced.
+ * Bitmap semantics decoded from the create-ui contact sheet: 61 is the
+ * selection-screen title art, 63 is the create-screen entry badge,
+ * 1/16/24/32 are the class portraits (by job index A=0..D=3). Roles
+ * arrive as {id, name, job, level}; slot cap is 4 (protocol
+ * MAX_ROLES_PER_ACCOUNT). Empty slots are outlined boxes plus the 63
+ * badge, never fake characters. Entry keeps flowing through
+ * world.snapshot so ownership stays server-enforced. Positions are
+ * manual until the DefineSprite timelines are re-driven (see audit).
  */
 import Phaser from 'phaser';
 import { MAX_ROLES_PER_ACCOUNT, type RoleRef } from '../../net/protocol';
@@ -35,6 +38,14 @@ export class CharacterSelectScene extends Phaser.Scene {
         assetUrl(`ui/create-ui/images/${id}-jpeg3.png`),
       );
     });
+    this.load.image(
+      'select-title',
+      assetUrl('ui/create-ui/images/61-lossless2.png'),
+    );
+    this.load.image(
+      'select-create-badge',
+      assetUrl('ui/create-ui/images/63-jpeg3.png'),
+    );
   }
 
   create(data: { roles?: RoleRef[] } = {}): void {
@@ -42,11 +53,14 @@ export class CharacterSelectScene extends Phaser.Scene {
     const cx = this.scale.width / 2;
     this.cameras.main.setBackgroundColor('#0a141d');
 
+    if (this.textures.exists('select-title')) {
+      this.add.image(cx, 48, 'select-title');
+    }
     this.add
-      .text(cx, 48, 'Select character', { fontSize: '18px', color: '#f0e2c0' })
+      .text(cx, 84, 'Select character', { fontSize: '18px', color: '#f0e2c0' })
       .setOrigin(0.5);
 
-    const rowY = (i: number): number => 140 + i * 110;
+    const rowY = (i: number): number => 150 + i * 110;
     roles.slice(0, MAX_ROLES_PER_ACCOUNT).forEach((role, i) => {
       const y = rowY(i);
       const key = JOB_PORTRAIT[role.job];
@@ -88,13 +102,18 @@ export class CharacterSelectScene extends Phaser.Scene {
         .rectangle(cx, y, 460, 92)
         .setStrokeStyle(1, 0x2c3f52, 0.6)
         .setInteractive({ useHandCursor: true });
+      if (this.textures.exists('select-create-badge')) {
+        this.add.image(cx - 220, y, 'select-create-badge').setScale(0.4);
+      }
       this.add
-        .text(cx, y, empty > 0 && roles.length < MAX_ROLES_PER_ACCOUNT ? 'Empty slot — create' : 'Empty slot', {
+        .text(cx - 100, y, 'Empty slot — create', {
           fontSize: '13px',
           color: '#8a97a3',
         })
-        .setOrigin(0.5);
-      slot.on('pointerdown', () => this.events.emit('gocreate', {}));
+        .setOrigin(0, 0.5);
+      slot.on('pointerdown', () => {
+        this.events.emit('gocreate', {});
+      });
     }
 
     if (roles.length >= MAX_ROLES_PER_ACCOUNT) {
@@ -107,10 +126,12 @@ export class CharacterSelectScene extends Phaser.Scene {
     }
 
     this.add
-      .text(cx, rowY(MAX_ROLES_PER_ACCOUNT) + 34, 'Art: recovered create-ui bitmaps. Layout follows the module; timeline effects pending decode.', {
-        fontSize: '11px',
-        color: '#5c6b78',
-      })
+      .text(
+        cx,
+        rowY(MAX_ROLES_PER_ACCOUNT) + 34,
+        'Art: recovered create-ui bitmaps. Layout manual until sprite timelines are re-driven.',
+        { fontSize: '11px', color: '#5c6b78' },
+      )
       .setOrigin(0.5);
   }
 }

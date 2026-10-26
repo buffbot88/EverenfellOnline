@@ -16,6 +16,10 @@
       #sitebar .brand { font-weight: 800; letter-spacing: .1em; white-space: nowrap; }
       #sitebar .brand b { color: #f1c25b; }
       #sitebar-account { margin-left: auto; white-space: nowrap; }
+      #sitebar-mute { background: none; border: 1px solid #96c3d729; border-radius: 6px;
+        color: #b6c7cd; font-size: 14px; line-height: 1; padding: 4px 8px; cursor: pointer; }
+      #sitebar-mute:hover { color: #f6d16b; border-color: #f6d16b66; }
+      #sitebar-mute[aria-pressed="true"] { opacity: 0.55; }
       #app { position: fixed; inset: 44px 0 0 0; }
       #app canvas { display: block; }
       #ui { position: fixed; inset: 44px 0 0 0; pointer-events: none; }
@@ -27,6 +31,7 @@
       <a class="brand" href="/"><b>AGP</b> STUDIOS</a>
       <a href="/">Home</a>
       <a href="/servers/">Servers</a>
+      <button id="sitebar-mute" type="button" aria-pressed="false" aria-label="Mute sound">🔊</button>
       <span id="sitebar-account"><a href="/auth/login">Sign in</a></span>
     </header>
     <div id="app"></div>

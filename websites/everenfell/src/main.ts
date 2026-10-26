@@ -1,5 +1,6 @@
 /** Everenfell entry point: verified alpha users load protected Map 0 and S1. */
 import { PhaserClient } from './game/client';
+import { sound } from './game/sound';
 import { AuthClient, canPlay, type SiteUser } from './net/auth';
 import { resolveMode } from './mode';
 
@@ -7,6 +8,27 @@ const mount = document.querySelector<HTMLElement>('#app');
 const uiMount = document.querySelector<HTMLElement>('#ui');
 
 if (!mount || !uiMount) throw new Error('missing #app or #ui mount');
+
+/** Navbar mute toggle: original UI sounds on/off, persisted. */
+function wireMuteButton(): void {
+  const button = document.querySelector<HTMLButtonElement>('#sitebar-mute');
+  if (!button) return;
+  const render = (muted: boolean): void => {
+    button.textContent = muted ? '🔇' : '🔊';
+    button.setAttribute('aria-pressed', String(muted));
+    button.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+  };
+  render(sound.isMuted);
+  sound.onMuteChange(render);
+  button.addEventListener('click', () => {
+    sound.unlock();
+    sound.setMuted(!sound.isMuted);
+    if (!sound.isMuted) sound.click();
+  });
+  window.addEventListener('pointerdown', () => sound.unlock(), { once: true });
+}
+
+wireMuteButton();
 
 const params = new URLSearchParams(window.location.search);
 const mode = resolveMode(window.location.search, window.location.hostname);

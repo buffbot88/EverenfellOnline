@@ -30,9 +30,34 @@
       "entry": "skills/ui-ux-pro-max/SKILL.md",
       "source": "github:nextlevelbuilder/ui-ux-pro-max-skill subtree .claude/skills/ui-ux-pro-max",
       "use": "UI/UX design intelligence: use when designing, building, reviewing, or fixing anything visual or interactive. Skip for pure backend, API, database, or infra work."
+    },
+    "pullstack": {
+      "path": "skills/pullstack",
+      "entry": "skills/pullstack/SKILL.md",
+      "source": "github:VenTheZone/pullstack skills/pullstack (MIT)",
+      "use": "Port features from another repo or packaged app: compare, rank TAKE list, wait for user pick, then plan and build. Upstream is read-only, dissected in a subagent."
+    },
+    "pullstack-check": {
+      "path": "skills/pullstack-check",
+      "entry": "skills/pullstack-check/SKILL.md",
+      "source": "github:VenTheZone/pullstack skills/pullstack-check (MIT)",
+      "use": "Check whether a branch copied code from upstream X: verbatim matches, licence route, attribution."
+    },
+    "pullstack-update": {
+      "path": "skills/pullstack-update",
+      "entry": "skills/pullstack-update/SKILL.md",
+      "source": "github:VenTheZone/pullstack skills/pullstack-update (MIT)",
+      "use": "X shipped a new version since the port: report only what changed since the recorded SHA."
+    },
+    "pullstack-help": {
+      "path": "skills/pullstack-help",
+      "entry": "skills/pullstack-help/SKILL.md",
+      "source": "github:VenTheZone/pullstack skills/pullstack-help (MIT)",
+      "use": "One-screen pullstack reference card: skills, targets, licence routes, needs. Show it, run nothing."
     }
   },
   "coUse": {
-    "ui-work": "For UI tasks, load brain context first (brain-page), then apply skills/ui-ux-pro-max/SKILL.md: record the chosen design system back to the Brain."
+    "ui-work": "For UI tasks, load brain context first (brain-page), then apply skills/ui-ux-pro-max/SKILL.md: record the chosen design system back to the Brain.",
+    "port-work": "For port-from-upstream tasks, load brain context first (brain-page), then apply skills/pullstack/SKILL.md: licence verdict before features, dissect in a subagent, user picks before planning; record the port decision back to the Brain."
   }
 }

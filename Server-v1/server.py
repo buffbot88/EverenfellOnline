@@ -373,7 +373,12 @@ def main():
     tcpd.daemon_threads = True
     tcpd.sessions = {}
     tcpd.sessions_lock = threading.Lock()
-    tcpd.check_sign = staticmethod(check_sign)
+    # Assign the plain function (callable on every Python). `staticmethod(...)`
+    # wraps it in a descriptor object that is only callable in Python 3.10+;
+    # the live interpreter is 3.9, so the wrapper made every 10001 login crash
+    # with "'staticmethod' object is not callable" and the gateway rejected all
+    # valid tickets upstream.
+    tcpd.check_sign = check_sign
     tcpd.get_roles = lambda u, s: [
         dict(r)
         for r in store.list_roles(u, s)]
@@ -599,12 +604,10 @@ def main():
         from auth import generate_sign
         from gateway import GatewayServer
         gw_host, gw_port = a.gateway.rsplit(':', 1)
-        if gw_host not in ('127.0.0.1', 'localhost', '::1'):
-            log.warning('gateway on non-loopback %s: website-member '
-                        'verification is not bridged (see '
-                        'docs/website-accounts-s1.md); unverified links must '
-                        'not grant public access', gw_host)
-        gateway = GatewayServer(gw_host, int(gw_port), sessions,
+        local_hosts = ('127.0.0.1', 'localhost', '::1')
+        if any(host not in local_hosts for host in (gw_host, g_host, w_host)):
+            raise SystemExit('web, game, and gateway listeners must bind to loopback when the browser gateway is enabled')
+        gateway = GatewayServer(gw_host, int(gw_port),
                                 g_host, int(g_port), generate_sign,
                                 a.server_id, store=store)
         threading.Thread(target=gateway.serve_forever, daemon=True).start()

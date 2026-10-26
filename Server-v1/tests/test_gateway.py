@@ -13,7 +13,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from gateway import (GatewayError, GatewaySession, WsFrameReader,  # noqa: E402
-                     SERVERS, handshake_cookies, monster_actors,
+                     SERVERS, monster_actors,
                      npc_actors, ws_accept_key, ws_encode_text,
                      ws_handshake_response)
 
@@ -51,14 +51,6 @@ class FakeConn:
         pass
 
 
-class FakeSessions:
-    def __init__(self, users):
-        self.users = users
-
-    def get(self, token):
-        return self.users.get(token)
-
-
 class WsCodecTest(unittest.TestCase):
     def test_rfc6455_accept_vector(self):
         self.assertEqual(ws_accept_key('dGhlIHNhbXBsZSBub25jZQ=='),
@@ -66,11 +58,17 @@ class WsCodecTest(unittest.TestCase):
 
     def test_handshake_response(self):
         req = ('GET /everenfell HTTP/1.1\r\n'
+               'Upgrade: websocket\r\n'
+               'Connection: Upgrade\r\n'
+               'Sec-WebSocket-Version: 13\r\n'
+               'Origin: https://everenfell.agpstudios.org\r\n'
                'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n')
         res = ws_handshake_response(req).decode()
         self.assertIn('101 Switching Protocols', res)
         self.assertIn('s3pPLMBiTxaQ9kYGzzhZRbK+xOo=', res)
         self.assertIsNone(ws_handshake_response('GET / HTTP/1.1\r\n\r\n'))
+        self.assertIsNone(ws_handshake_response(req.replace(
+            'https://everenfell.agpstudios.org', 'https://evil.example')))
 
     def test_server_text_frame(self):
         raw = ws_encode_text('hi')
@@ -134,10 +132,9 @@ class ActorMappingTest(unittest.TestCase):
 
 
 class SessionDispatchTest(unittest.TestCase):
-    def session(self, users=None):
+    def session(self):
         conn = FakeConn()
-        sess = GatewaySession(conn, FakeSessions(users or {}),
-                              '127.0.0.1', 8008,
+        sess = GatewaySession(conn, '127.0.0.1', 8008,
                               make_sign=lambda u, t: 'sig')
         return sess, conn
 
@@ -162,16 +159,16 @@ class SessionDispatchTest(unittest.TestCase):
         sess._handle_request('{not json')
         self.assertEqual(bytes(conn.sent), b'')
 
-    def test_auth_session_rejects_unknown_token(self):
+    def test_auth_session_requires_ticket(self):
         sess, conn = self.session()
         sess._handle_request(json.dumps({'op': 'auth.session', 'seq': 1,
-                                         'body': {'token': 'nope'}}))
+                                         'body': {'ticket': 'nope'}}))
         msg = self.last_message(conn)
         self.assertFalse(msg['ok'])
-        self.assertIn('invalid session', msg['body']['error'])
+        self.assertIn('ticket', msg['body']['error'])
 
     def test_move_requires_snapshot_first(self):
-        sess, conn = self.session({'tok': {'username': 'hero'}})
+        sess, conn = self.session()
         sess.username = 'hero'
         sess._handle_request(json.dumps({'op': 'player.move', 'seq': 3,
                                          'body': {'x': 9, 'y': 150}}))
@@ -236,19 +233,34 @@ class FakeLink:
 class FakeStore:
     def __init__(self):
         self.bindings = {}
+        self.tickets = {}
 
-    def ensure_server_binding(self, member, server_id, game_account):
-        self.bindings.setdefault((member, server_id), game_account)
-        return self.bindings[(member, server_id)]
+    def add_ticket(self, token, **values):
+        ticket = {'jti': 'test-jti', 'sub': 'agp-sub', 'role': 'Admin',
+                  'entitled': 1, 'game': 'everenfell', 'server': 'S1',
+                  'game_server_id': 'fu1304', 'audience': 'everenfell-gateway',
+                  'expires': 4102444800, 'used': 0}
+        ticket.update(values)
+        self.tickets[token] = ticket
+
+    def consume_gateway_ticket(self, token, now=None):
+        return self.tickets.pop(token, None)
+
+    def ensure_server_binding(self, member, server_id, game_account, verified=False):
+        key = (member, server_id)
+        if key in self.bindings:
+            account, was_verified = self.bindings[key]
+            return account if not verified or was_verified else None
+        self.bindings[key] = (game_account, bool(verified))
+        return game_account
 
 
 class ServerBindingTest(unittest.TestCase):
-    def session(self, users=None, store=None, roles=()):
+    def session(self, store=None, roles=()):
         conn = FakeConn()
-        sess = GatewaySession(conn, FakeSessions(users or {}),
-                              '127.0.0.1', 8008,
+        sess = GatewaySession(conn, '127.0.0.1', 8008,
                               make_sign=lambda u, t: 'sig',
-                              store=store)
+                              store=store or FakeStore())
         sess.link = FakeLink(roles)
         return sess, conn
 
@@ -277,41 +289,50 @@ class ServerBindingTest(unittest.TestCase):
     def test_registry_lists_s1_only(self):
         self.assertEqual(SERVERS, {'S1': 'fu1304'})
 
-    def test_handshake_cookie_parsing(self):
-        req = ('GET /everenfell HTTP/1.1\r\n'
-               'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
-               'Cookie: mko_session=tok123; other=x\r\n\r\n')
-        self.assertEqual(handshake_cookies(req)['mko_session'], 'tok123')
-        self.assertEqual(handshake_cookies('GET / HTTP/1.1\r\n\r\n'), {})
-
-    def test_unknown_server_refused(self):
-        sess, conn = self.session({'tok': {'username': 'hero'}})
-        msg = self.auth(sess, conn, {'token': 'tok', 'server': 'S2'})
-        self.assertFalse(msg['ok'])
-        self.assertIn('unknown server', msg['body']['error'])
-
-    def test_auth_session_uses_handshake_cookie(self):
-        roles = [['7', 'Hero', 'A', 0, 1]]
-        sess, conn = self.session({'tok': {'username': 'hero'}},
-                                    store=FakeStore(), roles=roles)
-        sess.handshake_token = 'tok'
-        msg = self.auth(sess, conn, {'server': 'S1'})
-        self.assertTrue(msg['ok'])
-        self.assertEqual(msg['body']['member'], 'hero')
-        self.assertEqual(msg['body']['server'], 'S1')
-        login = [c for c in sess.link.sent if c[0] == 10001][0]
-        self.assertEqual(login[1][0], 'hero')
-        self.assertEqual(login[1][2], 'fu1304')
-
-    def test_binding_written_lazily_on_first_entry(self):
+    def test_ticket_bound_to_s1_entitlement_and_gateway(self):
         store = FakeStore()
-        roles = [['7', 'Hero', 'A', 0, 1]]
-        sess, conn = self.session({'tok': {'username': 'hero'}},
-                                    store=store, roles=roles)
-        self.assertEqual(store.bindings, {})
-        msg = self.auth(sess, conn, {'token': 'tok', 'server': 'S1'})
+        store.add_ticket('ticket', sub='member-sub')
+        sess, conn = self.session(store, [['7', 'Hero', 'A', 0, 1]])
+        msg = self.auth(sess, conn, {'ticket': 'ticket', 'server': 'S1'})
         self.assertTrue(msg['ok'])
-        self.assertEqual(store.bindings, {('hero', 'fu1304'): 'hero'})
+        self.assertEqual(msg['body']['server'], 'S1')
+        self.assertNotIn('member', msg['body'])
+        login = [c for c in sess.link.sent if c[0] == 10001][0]
+        self.assertTrue(login[1][0].startswith('agp_'))
+        self.assertEqual(login[1][2], 'fu1304')
+        binding = store.bindings[('member-sub', 'fu1304')]
+        self.assertTrue(binding[1])
+
+    def test_reused_ticket_is_rejected(self):
+        store = FakeStore()
+        store.add_ticket('once')
+        sess, conn = self.session(store)
+        self.assertTrue(self.auth(sess, conn, {'ticket': 'once'})['ok'])
+        replay, replay_conn = self.session(store)
+        msg = self.auth(replay, replay_conn, {'ticket': 'once'})
+        self.assertFalse(msg['ok'])
+        self.assertIn('invalid or expired', msg['body']['error'])
+
+    def test_non_admin_or_wrong_audience_ticket_is_rejected(self):
+        for fields in ({'role': 'Member'}, {'entitled': 0},
+                       {'audience': 'another-gateway'}):
+            store = FakeStore()
+            store.add_ticket('bad', **fields)
+            sess, conn = self.session(store)
+            msg = self.auth(sess, conn, {'ticket': 'bad'})
+            self.assertFalse(msg['ok'])
+            self.assertEqual(store.bindings, {})
+
+    def test_unverified_legacy_binding_is_never_adopted(self):
+        store = FakeStore()
+        store.bindings[('agp-sub', 'fu1304')] = ('legacy-account', False)
+        store.add_ticket('ticket')
+        sess, conn = self.session(store)
+        msg = self.auth(sess, conn, {'ticket': 'ticket'})
+        self.assertFalse(msg['ok'])
+        self.assertIn('legacy game account', msg['body']['error'])
+        self.assertEqual(store.bindings[('agp-sub', 'fu1304')],
+                         ('legacy-account', False))
 
     def test_snapshot_rejects_unowned_character(self):
         sess, conn = self.session()
@@ -325,10 +346,10 @@ class ServerBindingTest(unittest.TestCase):
         self.assertIsNone(sess.role_id)
 
     def test_snapshot_accepts_owned_character(self):
-        roles = [['7', 'Hero', 'A', 0, 1]]
-        sess, conn = self.session({'tok': {'username': 'hero'}},
-                                    roles=roles)
-        self.auth(sess, conn, {'token': 'tok', 'server': 'S1'})
+        store = FakeStore()
+        store.add_ticket('ticket')
+        sess, conn = self.session(store, [['7', 'Hero', 'A', 0, 1]])
+        self.auth(sess, conn, {'ticket': 'ticket'})
         sess._handle_request(json.dumps({'op': 'world.snapshot', 'seq': 5,
                                          'body': {'roleId': '7'}}))
         msg = self.last_message(conn)

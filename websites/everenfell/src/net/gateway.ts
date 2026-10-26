@@ -128,7 +128,9 @@ export class Gateway {
       if (!pending) return;
       this.pending.delete(msg.seq);
       if (msg.ok) pending.resolve(msg.body);
-      else pending.reject(new Error(`gateway refused ${msg.op}`));
+      else pending.reject(new Error(
+        typeof msg.body?.['error'] === 'string' ? msg.body['error'] : `gateway refused ${msg.op}`,
+      ));
       return;
     }
     this.pushes.get(msg.op)?.forEach((handler) => {

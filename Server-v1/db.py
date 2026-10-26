@@ -1,4 +1,5 @@
 """SQLite persistence for accounts, characters, sessions, and game state."""
+import hashlib
 import json
 import math
 import os
@@ -31,6 +32,39 @@ CREATE TABLE IF NOT EXISTS member_links (
   verified INTEGER DEFAULT 0,
   created INTEGER NOT NULL,
   PRIMARY KEY(member, server_id)
+);
+CREATE TABLE IF NOT EXISTS oidc_transactions (
+  state_hash TEXT PRIMARY KEY,
+  verifier TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  expires INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agp_sessions (
+  token_hash TEXT PRIMARY KEY,
+  sub TEXT NOT NULL,
+  username TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL,
+  everenfell_s1 INTEGER NOT NULL,
+  csrf_hash TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  expires INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agp_sessions_expiry ON agp_sessions(expires);
+CREATE TABLE IF NOT EXISTS gateway_tickets (
+  token_hash TEXT PRIMARY KEY,
+  jti TEXT NOT NULL UNIQUE,
+  sub TEXT NOT NULL,
+  role TEXT NOT NULL,
+  entitled INTEGER NOT NULL,
+  game TEXT NOT NULL,
+  server TEXT NOT NULL,
+  game_server_id TEXT NOT NULL,
+  audience TEXT NOT NULL,
+  expires INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS role_settings (
   role_id INTEGER PRIMARY KEY,
@@ -1171,29 +1205,139 @@ class Store:
                 (token,)).fetchone()
             return dict(row) if row else None
 
+    @staticmethod
+    def _token_hash(token):
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def create_oidc_transaction(self, state, verifier, nonce, expires):
+        now = int(time.time())
+        with self.lock:
+            self.db.execute('DELETE FROM oidc_transactions WHERE expires<=?', (now,))
+            self.db.execute(
+                'INSERT INTO oidc_transactions(state_hash,verifier,nonce,expires) VALUES(?,?,?,?)',
+                (self._token_hash(state), verifier, nonce, expires))
+            self.db.commit()
+
+    def consume_oidc_transaction(self, state, now=None):
+        now = int(time.time()) if now is None else int(now)
+        state_hash = self._token_hash(state)
+        with self.lock:
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                row = self.db.execute(
+                    'SELECT verifier,nonce,expires FROM oidc_transactions WHERE state_hash=?',
+                    (state_hash,)).fetchone()
+                if not row or row['expires'] <= now:
+                    self.db.execute('DELETE FROM oidc_transactions WHERE state_hash=?',
+                                    (state_hash,))
+                    self.db.commit()
+                    return None
+                self.db.execute('DELETE FROM oidc_transactions WHERE state_hash=?',
+                                (state_hash,))
+                self.db.commit()
+                return dict(row)
+            except Exception:
+                self.db.rollback()
+                raise
+
+    def create_agp_session(self, token, csrf, identity, expires, now=None):
+        now = int(time.time()) if now is None else int(now)
+        with self.lock:
+            self.db.execute('DELETE FROM agp_sessions WHERE expires<=?', (now,))
+            self.db.execute(
+                'INSERT INTO agp_sessions(token_hash,sub,username,display_name,email,role,'
+                'everenfell_s1,csrf_hash,created,expires) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                (self._token_hash(token), identity['sub'], identity['username'],
+                 identity['display_name'], identity.get('email', ''), identity['role'],
+                 int(identity['everenfell_s1']), self._token_hash(csrf), now, int(expires)))
+            self.db.commit()
+
+    def get_agp_session(self, token, now=None):
+        if not token:
+            return None
+        now = int(time.time()) if now is None else int(now)
+        with self.lock:
+            row = self.db.execute(
+                'SELECT sub,username,display_name,email,role,everenfell_s1,csrf_hash,expires '
+                'FROM agp_sessions WHERE token_hash=? AND expires>?',
+                (self._token_hash(token), now)).fetchone()
+            return dict(row) if row else None
+
+    def delete_agp_session(self, token):
+        with self.lock:
+            self.db.execute('DELETE FROM agp_sessions WHERE token_hash=?',
+                            (self._token_hash(token),))
+            self.db.commit()
+
+    def create_gateway_ticket(self, token, jti, identity, server, game_server_id,
+                              audience, expires, now=None):
+        now = int(time.time()) if now is None else int(now)
+        with self.lock:
+            self.db.execute('DELETE FROM gateway_tickets WHERE expires<=?', (now,))
+            self.db.execute(
+                'INSERT INTO gateway_tickets(token_hash,jti,sub,role,entitled,game,server,'
+                'game_server_id,audience,expires,created) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (self._token_hash(token), jti, identity['sub'], identity['role'],
+                 int(identity['everenfell_s1']), 'everenfell', server, game_server_id,
+                 audience, int(expires), now))
+            self.db.commit()
+
+    def consume_gateway_ticket(self, token, now=None):
+        if not token:
+            return None
+        now = int(time.time()) if now is None else int(now)
+        token_hash = self._token_hash(token)
+        with self.lock:
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                row = self.db.execute(
+                    'SELECT jti,sub,role,entitled,game,server,game_server_id,audience,expires,used '
+                    'FROM gateway_tickets WHERE token_hash=?',
+                    (token_hash,)).fetchone()
+                if not row or row['used'] or row['expires'] <= now:
+                    self.db.rollback()
+                    return None
+                changed = self.db.execute(
+                    'UPDATE gateway_tickets SET used=1 WHERE token_hash=? AND used=0',
+                    (token_hash,)).rowcount
+                if changed != 1:
+                    self.db.rollback()
+                    return None
+                self.db.commit()
+                return dict(row)
+            except Exception:
+                self.db.rollback()
+                raise
+
     def get_account(self, username):
         with self.lock:
             row = self.db.execute(
                 'SELECT * FROM accounts WHERE username=?', (username,)).fetchone()
             return dict(row) if row else None
 
-    def ensure_server_binding(self, member, server_id, game_account):
-        """Record the member -> game account link for a server (lazy).
-
-        Called on first successful game entry only; returns the stored
-        game account. Existing rows are kept as-is (first link wins).
-        """
+    def ensure_server_binding(self, member, server_id, game_account, verified=False):
+        """Create the lazy per-server binding; verified links never adopt legacy rows."""
         with self.lock:
-            self.db.execute(
-                'INSERT OR IGNORE INTO member_links(member, server_id,'
-                ' game_account, created) VALUES(?,?,?,?)',
-                (member, server_id, game_account, int(time.time())))
-            self.db.commit()
             row = self.db.execute(
-                'SELECT game_account FROM member_links'
+                'SELECT game_account,verified FROM member_links'
                 ' WHERE member=? AND server_id=?',
                 (member, server_id)).fetchone()
-            return row['game_account'] if row else game_account
+            if row:
+                if verified and not row['verified']:
+                    return None
+                return row['game_account']
+            self.db.execute(
+                'INSERT OR IGNORE INTO member_links(member,server_id,game_account,verified,created) '
+                'VALUES(?,?,?,?,?)',
+                (member, server_id, game_account, int(bool(verified)), int(time.time())))
+            self.db.commit()
+            row = self.db.execute(
+                'SELECT game_account,verified FROM member_links'
+                ' WHERE member=? AND server_id=?',
+                (member, server_id)).fetchone()
+            if not row or (verified and not row['verified']):
+                return None
+            return row['game_account']
 
     def get_server_binding(self, member, server_id):
         with self.lock:

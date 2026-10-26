@@ -1,52 +1,21 @@
 # Everenfell browser client
 
-Browser-native 2.5D MMORPG foundation (TypeScript + PixiJS), running
-against the frozen Python + SQLite server. This shell establishes
-identity, login/select/world views, camera, input, the actor layer, the
-window manager, the versioned asset pipeline, and the gateway adapter.
-Gameplay logic stays on the server; the client renders validated state.
+Phaser renders the recovered Map 0 tiles; the Python server owns gameplay and admission.
 
-## Develop
-
-Requirements: Node 18+. No Godot runtime, no Flash.
+## Local development
 
 ```sh
 cd websites/everenfell
 npm install
-npm run dev        # http://localhost:5173
-npm run typecheck  # strict tsc
-npm run build      # production bundle in dist/
+npm run dev
+npm run typecheck
+npm run build
 ```
 
-Dev proxy: `/legacy-api/*` forwards to the Python web API on
-`127.0.0.1:8080` (see `vite.config.ts`). The gateway URL defaults to
-`ws://127.0.0.1:8091/everenfell` and can be overridden with
-`?gateway=ws://host:port/path` (and `?api=` for the web API).
+Vite serves source assets from `assets/` for local development and proxies `/api` and `/everenfell` to the loopback Python services. This local source path is not included in `dist/`.
 
-## Gateway contract (Mission 5)
+## Alpha access
 
-`src/net/protocol.ts` is the contract. The gateway translates the
-server's authoritative TCP/AMF3 packets to JSON envelopes
-`{ op, seq, body }` with `{ op, seq, ok, body }` replies and seq-0
-pushes. Smallest loop: `auth.session -> world.enter ->
-world.snapshot -> player.move / actor.moved`. Identity rides the
-website session cookie (no passwords in the client); the gateway
-enforces server scope and character ownership (see
-Server-v1/docs/website-accounts-s1.md).
+Sign-in redirects to AGP Studios at `/auth/login`. The Python backend establishes a host-only HttpOnly session; the browser requests a short-lived ticket from `/api/game/ticket` before connecting to `/everenfell` over WSS. Map and original UI files load only through `/protected-assets/`, which checks the same session and S1 entitlement on every request.
 
-## Assets
-
-`src/assets/manifest.ts` + `cache.ts`: versioned JSON manifest, Cache
-Storage with network fallback. Only rights-cleared or independently
-original files may ship under `public/assets` (see
-`Server-v1/docs/everenfell-asset-ledger.md`). Placeholder tints stand
-in until recovered/replacement art lands with matching anchors.
-
-## Conventions
-
-- Views are thin; `net/` owns transport, `world/` owns rendering,
-  `ui/` owns panels. No gameplay rules in TypeScript.
-- Positions are server tiles (60x30 px); the camera projection is
-  explicit in `world/camera.ts` and will track the recovered 2.5D
-  projection once sprite anchors land.
-- Focused checks only: `npm run typecheck` and `npm run build`.
+`vite.config.ts` disables public-directory copying. Keep original assets under `assets/`; never deploy them as anonymous static files.

@@ -1,70 +1,71 @@
-/** Everenfell entry point: Phaser renders recovered Map 0 on every load.
-
-The map renders with no session and no gateway (local rendering mode).
-When `?server=<id>` is present, the client also checks the website
-session and connects the Python gateway for signed-in players. Gateway
-or session failures are reported in the UI and never stop the renderer.
-*/
+/** Everenfell entry point: verified alpha users load protected Map 0 and S1. */
 import { PhaserClient } from './game/client';
-import { AuthClient } from './net/auth';
+import { AuthClient, canPlay, type SiteUser } from './net/auth';
 import { resolveMode } from './mode';
 
 const mount = document.querySelector<HTMLElement>('#app');
 const uiMount = document.querySelector<HTMLElement>('#ui');
 
-if (!mount || !uiMount) {
-  throw new Error('missing #app or #ui mount');
-}
+if (!mount || !uiMount) throw new Error('missing #app or #ui mount');
 
 const params = new URLSearchParams(window.location.search);
 const mode = resolveMode(window.location.search, window.location.hostname);
-
-// Slim site bar account state (decorative; the auth boundary lives server-side).
-try {
-  const account = document.querySelector('#sitebar-account');
-  if (account) {
-    void new AuthClient()
-      .session()
-      .then((user) => {
-        const name = user?.display_name || user?.username || '';
-        account.textContent = name !== '' ? `Signed in (${name})` : '';
-        if (name === '') {
-          const link = document.createElement('a');
-          link.href = 'https://www.agpstudios.org/';
-          link.textContent = 'Sign in';
-          account.appendChild(link);
-        }
-      })
-      .catch(() => {});
-  }
-} catch {
-  // Site bar stays on its static sign-in link; never blocks the client.
-}
-
+const auth = new AuthClient();
+const gatewayUrl =
+  `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/everenfell`;
 const client = new PhaserClient({
   mount,
   uiMount,
-  gatewayUrl: params.get('gateway') ?? 'ws://127.0.0.1:8091/everenfell',
-  websiteUrl: params.get('website') ?? 'https://www.agpstudios.org/',
+  gatewayUrl,
   serverId: params.get('server') ?? undefined,
 });
 
-client
-  .start()
-  .then(() => {
-    // A server id means the visitor came from server selection: run the
-    // website-session gate and connect the gateway when signed in.
-    // Plain loads (and ?mode=play) start gameplay too; the map renders
-    // either way and signed-out visitors keep map inspection.
-    if (params.get('server') !== null || mode === 'play') {
-      client.startGameplay();
+function showGate(message: string, signIn = false): void {
+  const panel = document.createElement('div');
+  panel.className = 'ev-view ev-login';
+  const title = document.createElement('h1');
+  title.textContent = 'Everenfell';
+  const note = document.createElement('p');
+  note.textContent = message;
+  panel.append(title, note);
+  if (signIn) {
+    const link = document.createElement('a');
+    link.href = '/auth/login';
+    link.textContent = 'Sign in with AGP Studios';
+    panel.appendChild(link);
+  }
+  uiMount!.appendChild(panel);
+}
+
+async function boot(): Promise<void> {
+  if (!import.meta.env.DEV) {
+    let user: SiteUser | null;
+    try {
+      user = await auth.session();
+    } catch {
+      showGate('Everenfell access could not be verified. Please try again.');
+      return;
     }
-  })
-  .catch((err: unknown) => {
-    // Boot failures must surface, never leave a black canvas.
-    const message = err instanceof Error ? err.message : String(err);
-    const banner = document.createElement('p');
-    banner.className = 'ev-status ev-fatal';
-    banner.textContent = `Everenfell failed to start: ${message}`;
-    uiMount.appendChild(banner);
-  });
+    const account = document.querySelector('#sitebar-account');
+    if (user && account) account.textContent = `Signed in (${user.display_name || user.username})`;
+    if (!canPlay(user)) {
+      showGate(
+        user
+          ? 'Only AGP administrators explicitly entitled to S1 may enter during alpha.'
+          : 'Sign in with your AGP Studios account to continue.',
+        !user,
+      );
+      return;
+    }
+  }
+
+  await client.start();
+  if (params.has('server') || mode === 'play') client.startGameplay();
+}
+
+void boot().catch((err: unknown) => {
+  const banner = document.createElement('p');
+  banner.className = 'ev-status ev-fatal';
+  banner.textContent = `Everenfell failed to start: ${err instanceof Error ? err.message : String(err)}`;
+  uiMount.appendChild(banner);
+});

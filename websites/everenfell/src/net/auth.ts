@@ -1,34 +1,18 @@
-/** Website session client: the game reuses the AGP Studios member session.
- *
- * Identity comes from the existing website membership system
- * (https://www.agpstudios.org/api/auth/session), never from a second
- * login system and never from the retired PHP-compatible gamesession.php
- * endpoint (see Server-v1/docs/website-accounts-s1.md). The browser
- * session cookie is HttpOnly and is never read by JavaScript.
- *
- * This proves *website identity* only. Gameplay authorization is decided
- * independently by the Python gateway handshake server-side; a
- * browser-supplied role or account id is never accepted as proof there.
- * Until server-side AGP verification exists, S1 gameplay stays closed
- * and this client only gates the UI (map stays inspectable).
- */
+/** AGP identity and gameplay admission use the same-origin Python APIs. */
 
 export interface SiteUser {
   username: string;
   display_name?: string;
   email?: string;
   role?: string;
+  everenfell_s1?: boolean;
+  can_play?: boolean;
 }
 
-const AGP_SESSION_URL = 'https://www.agpstudios.org/api/auth/session';
-
-/** Mirrors the website's own play gate: maintenance allows admins only. */
 export function canPlay(user: SiteUser | null): boolean {
-  if (!user) return false;
-  return typeof user.role === 'string' && user.role.toLowerCase() === 'admin';
+  return user?.can_play === true;
 }
 
-/** Raised when the session endpoint answers unexpectedly. */
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -36,21 +20,23 @@ export class ApiError extends Error {
   }
 }
 
+function csrfToken(): string {
+  const cookie = document.cookie.split('; ').find((item) => item.startsWith('evf_csrf='));
+  return decodeURIComponent(cookie?.slice('evf_csrf='.length) ?? '');
+}
+
 export class AuthClient {
-  /** Current website user, or null when signed out (HTTP 401 / not authenticated). */
   async session(): Promise<SiteUser | null> {
     let res: Response;
     try {
-      res = await fetch(AGP_SESSION_URL, { credentials: 'include' });
+      res = await fetch('/api/auth/session', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
     } catch {
-      throw new ApiError('website unavailable', 0);
+      throw new ApiError('Everenfell session service unavailable', 0);
     }
-    if (res.status === 401) {
-      return null;
-    }
-    if (!res.ok) {
-      throw new ApiError(`session refused (http ${res.status})`, res.status);
-    }
+    if (!res.ok) throw new ApiError(`session refused (http ${res.status})`, res.status);
     let body: { authenticated?: boolean; user?: SiteUser };
     try {
       body = (await res.json()) as { authenticated?: boolean; user?: SiteUser };
@@ -58,5 +44,23 @@ export class AuthClient {
       throw new ApiError('session endpoint returned malformed JSON', res.status);
     }
     return body.authenticated && body.user ? body.user : null;
+  }
+
+  async ticket(server: string): Promise<string> {
+    const res = await fetch('/api/game/ticket', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken(),
+      },
+      body: JSON.stringify({ server }),
+    });
+    if (!res.ok) throw new ApiError(`S1 access refused (http ${res.status})`, res.status);
+    const body = (await res.json()) as { ticket?: unknown };
+    if (typeof body.ticket !== 'string' || !body.ticket) {
+      throw new ApiError('ticket endpoint returned malformed JSON', res.status);
+    }
+    return body.ticket;
   }
 }

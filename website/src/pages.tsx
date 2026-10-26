@@ -25,7 +25,7 @@ export function HomePage() {
             <button
               className="button secondary"
               type="button"
-              onClick={() => openDialog('login')}
+              onClick={openDialog}
             >
               Sign in to your account
             </button>
@@ -36,7 +36,7 @@ export function HomePage() {
           {ready &&
             user &&
             !canPlay(user) &&
-            'Everenfell is under maintenance; only admins can play right now.'}
+            'Everenfell alpha access is limited to explicitly entitled administrators.'}
         </p>
       </section>
     </main>
@@ -75,10 +75,10 @@ export function ServersPage() {
         <p className="message" role="status" aria-live="polite">
           {failed && 'Please try again later.'}
           {user && !playable && !failed &&
-            'Everenfell is under maintenance; only admins can play right now.'}
+            'Everenfell alpha access is limited to explicitly entitled administrators.'}
           {!user && !failed && (
-            <a className="back" href="https://www.agpstudios.org/">
-              Sign in at AGP Studios
+            <a className="back" href="/auth/login">
+              Sign in with AGP Studios
             </a>
           )}
         </p>

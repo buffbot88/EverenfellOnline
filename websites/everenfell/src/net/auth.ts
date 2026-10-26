@@ -7,6 +7,8 @@ export interface SiteUser {
   role?: string;
   everenfell_s1?: boolean;
   can_play?: boolean;
+  /** Authoritative home server from the website session (null = unbound). */
+  homeServer?: string | null;
 }
 
 export function canPlay(user: SiteUser | null): boolean {

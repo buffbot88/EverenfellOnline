@@ -146,6 +146,41 @@ class OidcWebFlowTest(unittest.TestCase):
         })
         self.assertEqual(status, 403)
 
+    def test_session_reports_home_server_and_ticket_honors_binding(self):
+        token, csrf = 'bound-session', 'bound-csrf'
+        self.store.create_agp_session(token, csrf, {
+            'sub': 'agp-bound', 'username': 'bound', 'display_name': 'Bound',
+            'email': '', 'role': 'Admin', 'everenfell_s1': True,
+        }, int(time.time()) + 3600)
+        cookie = f'{web.AGP_SESSION_COOKIE}={token}; {web.AGP_CSRF_COOKIE}={csrf}'
+        status, _, raw = self.request('GET', '/api/auth/session',
+                                      headers={'Cookie': cookie})
+        self.assertEqual(status, 200)
+        self.assertIsNone(json.loads(raw)['user']['homeServer'])
+        self.assertEqual(self.store.bind_home_server('agp-bound', 'S1'), 'S1')
+        status, _, raw = self.request('GET', '/api/auth/session',
+                                      headers={'Cookie': cookie})
+        self.assertEqual(json.loads(raw)['user']['homeServer'], 'S1')
+        ticket_headers = {'Cookie': cookie, 'Origin': 'http://' + self.base,
+                          'X-CSRF-Token': csrf}
+        status, _, _ = self.request('POST', '/api/game/ticket', {'server': 'S1'},
+                                    ticket_headers)
+        self.assertEqual(status, 200)
+        # Simultaneous creation elsewhere wins the race: a later bind to
+        # the same member never overwrites, and tickets for S1 stop.
+        self.assertEqual(self.store.bind_home_server('agp-bound', 'S2'), 'S1')
+        with self.store.lock:
+            self.store.db.execute("UPDATE home_servers SET server='S2'"
+                                  " WHERE member='agp-bound'")
+            self.store.db.commit()
+        status, _, raw = self.request('GET', '/api/auth/session',
+                                      headers={'Cookie': cookie})
+        self.assertEqual(json.loads(raw)['user']['homeServer'], 'S2')
+        status, _, body = self.request('POST', '/api/game/ticket', {'server': 'S1'},
+                                       ticket_headers)
+        self.assertEqual(status, 403)
+        self.assertIn('home server is S2', body.decode())
+
     def test_state_cookie_mismatch_does_not_create_session(self):
         state = 'state-' + 'x' * 24
         self.store.create_oidc_transaction(state, 'verifier', 'nonce', int(time.time()) + 600)

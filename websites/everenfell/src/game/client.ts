@@ -262,22 +262,24 @@ export class PhaserClient {
       return;
     }
     // One AGP account, one home server. The authoritative assignment lives
-    // server-side (see docs/account-flow.md). Locally there are two
-    // states: a permanent cache (first creation succeeded) that skips the
-    // picker, and a provisional choice (server picked, nothing created)
-    // that only pre-selects it. Neither is trusted for access — the
-    // gateway verifies every request.
+    // server-side (see docs/account-flow.md) and is resolved BEFORE any
+    // gateway connection: the session response carries it, and backend
+    // data always wins over local caches. A stale cache or ?server= URL
+    // can never drive a connection to the wrong gateway. Neither cache is
+    // trusted for access — the gateway verifies every request.
     const account = user.username || user.display_name || 'member';
-    const home = homeServer(account);
-    if (home && GAME_SERVERS.some((server) => server.id === home)) {
-      await this.login(home, account);
+    const validServer = (id: unknown): id is string =>
+      typeof id === 'string' && GAME_SERVERS.some((server) => server.id === id);
+    const authoritative = validServer(user.homeServer) ? user.homeServer : null;
+    if (authoritative) {
+      setHomeServer(account, authoritative);
+      clearCachedServer(PENDING_KEY, account);
+      await this.login(authoritative, account);
       return;
     }
-    const requested = this.options.serverId;
-    if (requested && GAME_SERVERS.some((server) => server.id === requested)) {
-      await this.login(requested, account);
-      return;
-    }
+    // Unbound account: a permanent cache here is stale (backend says no
+    // binding), so drop it instead of connecting somewhere wrong.
+    clearCachedServer(HOME_KEY, account);
     // First-time onboarding: the only server picker in the client. It is
     // reached until a permanent home server exists, never linked from the
     // navbar. A provisional earlier choice is pre-selected but changeable.
@@ -299,8 +301,12 @@ export class PhaserClient {
       option.textContent = server.name;
       select.appendChild(option);
     }
+    // Pre-select: provisional choice first, then a ?server= hint, then
+    // the first entry. Selection is never an auto-connect.
     const pending = pendingServer(account);
+    const hinted = this.options.serverId;
     if (pending) select.value = pending;
+    else if (validServer(hinted)) select.value = hinted;
     label.appendChild(select);
     panel.appendChild(label);
     const enter = document.createElement('button');

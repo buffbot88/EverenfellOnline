@@ -168,6 +168,8 @@ class Handler(BaseHTTPRequestHandler):
                 ('username', 'display_name', 'email', 'role')}
         user['everenfell_s1'] = bool(session['everenfell_s1'])
         user['can_play'] = can_play(session)
+        user['homeServer'] = self.server.store.get_home_server(
+            session.get('sub'))
         return self._send(200, json.dumps({'authenticated': True, 'user': user}),
                           'application/json', {'Cache-Control': 'no-store'})
 
@@ -261,6 +263,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, 'unknown server', 'text/plain')
         if not can_play(session):
             return self._send(403, 'Everenfell access required', 'text/plain')
+        bound = self.server.store.get_home_server(session.get('sub'))
+        if bound is not None and bound != 'S1':
+            return self._send(403, 'home server is %s; this gateway serves S1'
+                              % bound, 'text/plain')
         token = secrets.token_urlsafe(32)
         expires = int(time.time()) + 30
         self.server.store.create_gateway_ticket(

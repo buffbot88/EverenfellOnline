@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS member_links (
   created INTEGER NOT NULL,
   PRIMARY KEY(member, server_id)
 );
+-- Authoritative home-server assignment (see
+-- websites/everenfell/docs/account-flow.md). Exactly one row per AGP
+-- member: the server its first successful character creation bound.
+-- Lives in this shared account store (not any gameplay database) so it
+-- resolves before a particular game server is selected.
+CREATE TABLE IF NOT EXISTS home_servers (
+  member TEXT PRIMARY KEY,
+  server TEXT NOT NULL,
+  bound_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS oidc_transactions (
   state_hash TEXT PRIMARY KEY,
   verifier TEXT NOT NULL,
@@ -1345,6 +1355,48 @@ class Store:
                 'SELECT * FROM member_links WHERE member=? AND server_id=?',
                 (member, server_id)).fetchone()
             return dict(row) if row else None
+
+    def get_home_server(self, member):
+        """Authoritative home server id for an AGP member, or None if unbound."""
+        if not member:
+            return None
+        with self.lock:
+            row = self.db.execute(
+                'SELECT server FROM home_servers WHERE member=?',
+                (member,)).fetchone()
+            return row['server'] if row else None
+
+    def bind_home_server(self, member, server):
+        """Atomically bind member->server on first success; returns the bound server.
+
+        INSERT OR IGNORE inside one transaction: concurrent first
+        creations race to a single winner, and every later call observes
+        the same row. Never overwrites an existing binding.
+        """
+        with self.lock:
+            self.db.execute('BEGIN IMMEDIATE')
+            try:
+                self.db.execute(
+                    'INSERT OR IGNORE INTO home_servers(member,server,bound_at)'
+                    ' VALUES(?,?,?)',
+                    (member, server, int(time.time())))
+                row = self.db.execute(
+                    'SELECT server FROM home_servers WHERE member=?',
+                    (member,)).fetchone()
+                self.db.commit()
+                return row['server'] if row else None
+            except Exception:
+                self.db.rollback()
+                raise
+
+    def delete_character(self, role_id):
+        """Remove a just-created character row (lost-bind race cleanup)."""
+        with self.lock:
+            cur = self.db.execute(
+                'DELETE FROM characters WHERE CAST(id AS TEXT)=?',
+                (str(role_id),))
+            self.db.commit()
+            return cur.rowcount == 1
 
     def close(self):
         with self.lock:

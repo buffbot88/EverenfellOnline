@@ -5,6 +5,10 @@ navigation. The Servers link is gone from the Everenfell navbar; the only
 picker in the client appears once for first-time players and is never
 linked anywhere.
 
+Ownership: Freebuff Desktop implements all of this locally (React,
+Phaser, Python, SQLite, tests). Orion performs no feature work — it
+pulls approved GitHub changes to the VPS on instruction.
+
 ## Client flow (implemented)
 
 Two distinct local states per AGP account (both device-local hints,
@@ -17,44 +21,48 @@ never proof of assignment):
 | First character created | `evf-home-server:<account>` (pending cleared) | Auto-connect, skip picker |
 | Authoritative value received | overwrites permanent cache, clears pending | Backend always wins (e.g. after an admin change) |
 
-Superseded rules (kept for history):
+Resolution order in `checkWebsiteSession` (before any gateway
+connection):
 
-- Signed-in AGP member with a cached home server → auto-connects to it.
-  A `?server=` URL parameter can never override the cache.
-- No cache → one-time "Choose your home server" picker (internal step).
-  First successful character creation re-affirms the cache.
+1. Signed in + session reports a bound `homeServer` → adopt it
+   (overwrite caches) and auto-connect. A `?server=` URL parameter can
+   never override this.
+2. Signed in + unbound (`homeServer: null`) → drop any stale permanent
+   cache and show the picker. The provisional choice (or a `?server=`
+   hint) only pre-selects the dropdown — it never auto-connects.
+3. Backend unreachable (session fetch fails) → connection error, never a
+   guess from stale cache.
+
 - Four character slots on the assigned server, any class combination
   (slot cap already enforced by `role.create` / protocol 10002).
-- Deleting all characters changes nothing: the cache (and, once
-  implemented, the server assignment) remains.
+- Deleting all characters changes nothing: the cache and the server
+  assignment remain.
 
 All localStorage entries here are per-device convenience caches only.
 They grant nothing: the gateway verifies every request, and the
 authoritative assignment lives server-side.
 
-## Backend contract (Orion — Python side)
+## Backend (implemented, Freebuff — Python side)
 
-The client deliberately does NOT implement assignment; it needs this
-contract from the backend, enforced atomically:
+Assignment lives in the shared account store (`home_servers` table in
+`Server-v1/db.py`), not in any gameplay database, so it resolves before
+a particular game server is selected and stays correct when S2/S3
+arrive with their own databases.
 
-1. Store the home server against the verified AGP identity in
-   Everenfell's account data (not browser storage) so it follows the
-   player across devices.
-2. Bind on first successful character creation — not on server click.
-   Abandoning creation must leave the account unbound. The check and
-   the insert must be atomic (one transaction around the 10002 success)
-   so two simultaneous creation requests cannot bind different servers.
-3. Enforce on every character operation, not just entry: `role.create`,
-   ticket issuance, `auth.session`, and `world.enter` all resolve the
-   assigned server and reject cross-server requests. A direct creation
-   request to another server must fail even outside the client flow.
-4. Distinguish bound from unbound in session responses: `world.enter`
-   should return the authoritative `homeServer` (and ideally a `bound`
-   flag) so a stale browser cache — including after an administrative
-   home-server change — is overwritten by the backend value. The
-   client already adopts `homeServer` when present.
-5. Deleting all characters keeps the assignment; changing it requires
+1. `Store.get_home_server(member)` → bound server id or `None`.
+   `Store.bind_home_server(member, server)` → binds atomically
+   (`INSERT OR IGNORE` in one transaction: concurrent first creations
+   race to a single winner) and returns the winning server. Never
+   overwrites. `Store.delete_character(role_id)` removes a
+   just-created row for lost-race cleanup.
+2. Binding moment: `op_role_create` pre-checks the member's binding and
+   refuses cross-server creation; after a successful 10002 it binds,
+   and a lost race deletes the orphan character and reports which home
+   server won.
+3. Enforcement on every character path: `role.create` pre-check,
+   `/api/game/ticket` issuance (403 when bound elsewhere),
+   `auth.session` and `world.enter` both return authoritative
+   `homeServer`, and `/api/auth/session` carries `homeServer`
+   (null = unbound) so the client routes before connecting.
+4. Deleting all characters keeps the assignment; changing it requires
    an explicit authorized administrative process.
-6. Until this lands, S1 stays the only reachable server and the client
-   cache is best-effort. Coordinate through GitHub; do not duplicate
-   the logic client-side beyond the cache above.

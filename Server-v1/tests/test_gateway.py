@@ -144,8 +144,15 @@ class SessionDispatchTest(unittest.TestCase):
         while raw:
             assert raw[0] == 0x81
             length = raw[1]
-            messages.append(json.loads(bytes(raw[2:2 + length]).decode()))
-            raw = raw[2 + length:]
+            pos = 2
+            if length == 126:
+                length = struct.unpack('>H', raw[2:4])[0]
+                pos = 4
+            elif length == 127:
+                length = struct.unpack('>Q', raw[2:10])[0]
+                pos = 10
+            messages.append(json.loads(bytes(raw[pos:pos + length]).decode()))
+            raw = raw[pos + length:]
         return messages[-1]
 
     def test_unknown_op_refused(self):
@@ -234,6 +241,8 @@ class FakeStore:
     def __init__(self):
         self.bindings = {}
         self.tickets = {}
+        self.homes = {}
+        self.deleted = []
 
     def add_ticket(self, token, **values):
         ticket = {'jti': 'test-jti', 'sub': 'agp-sub', 'role': 'Admin',
@@ -253,6 +262,16 @@ class FakeStore:
             return account if not verified or was_verified else None
         self.bindings[key] = (game_account, bool(verified))
         return game_account
+
+    def get_home_server(self, member):
+        return self.homes.get(member)
+
+    def bind_home_server(self, member, server):
+        return self.homes.setdefault(member, server)
+
+    def delete_character(self, role_id):
+        self.deleted.append(str(role_id))
+        return True
 
 
 class ServerBindingTest(unittest.TestCase):
@@ -428,6 +447,111 @@ class RoleCreateDispatchTest(unittest.TestCase):
                                          'body': {'name': 'X', 'job': 'A'}}))
         self.assertIn('slots full',
                       self.last_message(conn)['body']['error'])
+
+
+class ConflictStore(FakeStore):
+    """Loses every bind race: simulates a simultaneous creation elsewhere."""
+
+    def bind_home_server(self, member, server):
+        self.homes.setdefault(member, 'S2')
+        return self.homes[member]
+
+
+class HomeServerBindingTest(unittest.TestCase):
+    """Home server: bound atomically on first creation, enforced after."""
+
+    def session(self, store=None, roles=()):
+        conn = FakeConn()
+        sess = GatewaySession(conn, '127.0.0.1', 8008,
+                              make_sign=lambda u, t: 'sig',
+                              store=store or FakeStore())
+        sess.link = FakeLink(roles)
+        return sess, conn
+
+    def last_message(self, conn):
+        raw = bytes(conn.sent)
+        messages = []
+        while raw:
+            assert raw[0] == 0x81
+            length = raw[1]
+            pos = 2
+            if length == 126:
+                length = struct.unpack('>H', raw[2:4])[0]
+                pos = 4
+            elif length == 127:
+                length = struct.unpack('>Q', raw[2:10])[0]
+                pos = 10
+            messages.append(json.loads(bytes(raw[pos:pos + length]).decode()))
+            raw = raw[pos + length:]
+        return messages[-1]
+
+    def authed(self, store, roles=()):
+        store.add_ticket('ticket')
+        sess, conn = self.session(store, roles)
+        sess._handle_request(json.dumps({'op': 'auth.session', 'seq': 1,
+                                         'body': {'ticket': 'ticket'}}))
+        msg = self.last_message(conn)
+        self.assertTrue(msg['ok'])
+        return sess, conn, msg
+
+    def make_create(self, sess):
+        created = [['10002', [1, ['9', 'Hero', 'C', 0, 1, None, '']]]]
+        orig = sess.link.wait_for
+        sess.link.wait_for = lambda cmd, timeout=5.0: created[0] \
+            if str(cmd) == '10002' else orig(cmd, timeout)
+
+    def test_auth_session_reports_unbound(self):
+        _sess, conn, msg = self.authed(FakeStore())
+        self.assertIsNone(msg['body']['homeServer'])
+
+    def test_auth_session_reports_bound(self):
+        store = FakeStore()
+        store.homes['agp-sub'] = 'S1'
+        _sess, conn, msg = self.authed(store)
+        self.assertEqual(msg['body']['homeServer'], 'S1')
+
+    def test_first_create_binds_home(self):
+        store = FakeStore()
+        sess, conn, _msg = self.authed(store)
+        self.make_create(sess)
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 2,
+                                         'body': {'name': 'Hero', 'job': 'C'}}))
+        msg = self.last_message(conn)
+        self.assertTrue(msg['ok'])
+        self.assertEqual(msg['body']['role']['id'], '9')
+        self.assertEqual(store.homes, {'agp-sub': 'S1'})
+
+    def test_create_refused_when_bound_elsewhere(self):
+        store = FakeStore()
+        store.homes['agp-sub'] = 'S2'
+        sess, conn, _msg = self.authed(store)
+        self.make_create(sess)
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 2,
+                                         'body': {'name': 'Hero', 'job': 'C'}}))
+        msg = self.last_message(conn)
+        self.assertFalse(msg['ok'])
+        self.assertIn('home server is S2', msg['body']['error'])
+        self.assertEqual([c for c in sess.link.sent if c[0] == 10002], [])
+
+    def test_lost_race_deletes_orphan_and_reports_winner(self):
+        store = ConflictStore()
+        sess, conn, _msg = self.authed(store)
+        self.make_create(sess)
+        sess._handle_request(json.dumps({'op': 'role.create', 'seq': 2,
+                                         'body': {'name': 'Hero', 'job': 'C'}}))
+        msg = self.last_message(conn)
+        self.assertFalse(msg['ok'])
+        self.assertIn('home server is S2', msg['body']['error'])
+        self.assertEqual(store.deleted, ['9'])
+
+    def test_world_enter_reports_home(self):
+        store = FakeStore()
+        store.homes['agp-sub'] = 'S1'
+        sess, conn, _msg = self.authed(store)
+        sess._handle_request(json.dumps({'op': 'world.enter', 'seq': 2}))
+        msg = self.last_message(conn)
+        self.assertTrue(msg['ok'])
+        self.assertEqual(msg['body']['homeServer'], 'S1')
 
 
 if __name__ == '__main__':

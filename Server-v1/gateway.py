@@ -465,6 +465,7 @@ class GatewaySession:
         self.member = member
         self.username = game_account
         self.game_server_id = game_server_id
+        self.browser_server = server
         self.link.connect(self.game_host, self.game_port)
         stamp = str(int(time.time()))
         sign = self.make_sign(self.username, stamp)
@@ -480,7 +481,9 @@ class GatewaySession:
              'level': r[4]}
             for r in roles
             if isinstance(r, list) and len(r) > 4]
-        return {'roles': self.roles, 'server': server}
+        get_home = getattr(self.store, 'get_home_server', None)
+        return {'roles': self.roles, 'server': server,
+                'homeServer': get_home(member) if get_home else None}
 
     def op_role_create(self, body):
         """Create a character via 10002; the server stays authoritative."""
@@ -501,6 +504,20 @@ class GatewaySession:
             raise GatewayError('sex must be 0 or 1')
         if len(self.roles or []) >= 4:
             raise GatewayError('character slots full (4)')
+        server = getattr(self, 'browser_server', None)
+        if server is None:
+            server = next((browser_id for browser_id, game_id
+                           in self.servers.items()
+                           if game_id == self.game_server_id), 'S1')
+        get_home = getattr(self.store, 'get_home_server', None)
+        bind_home = getattr(self.store, 'bind_home_server', None)
+        member = getattr(self, 'member', None)
+        if get_home and member:
+            bound = get_home(member)
+            if bound is not None and bound != server:
+                raise GatewayError(
+                    'home server is %s; this gateway serves %s'
+                    % (bound, server))
         self.link.send([10002, [self.username, name, job, sex, face,
                                 0, self.game_server_id, '']])
         reply = self.link.wait_for('10002', timeout=5.0)
@@ -517,13 +534,24 @@ class GatewaySession:
         role = reply[1][1] if len(reply[1]) > 1 else []
         entry = {'id': str(role[0]), 'name': role[1], 'job': role[2],
                  'level': role[4]} if isinstance(role, list) and len(role) > 4 else {}
+        if bind_home and member:
+            bound = bind_home(member, server)
+            if bound != server:
+                delete = getattr(self.store, 'delete_character', None)
+                if delete and entry.get('id'):
+                    delete(entry['id'])
+                raise GatewayError(
+                    'home server is %s; this gateway serves %s'
+                    % (bound, server))
         self.roles = list(self.roles or []) + ([entry] if entry else [])
         return {'role': entry, 'roles': self.roles}
 
     def op_world_enter(self, _body):
         if not self.username:
             raise GatewayError('auth.session first')
-        return {'roles': getattr(self, 'roles', [])}
+        get_home = getattr(self.store, 'get_home_server', None)
+        return {'roles': getattr(self, 'roles', []),
+                'homeServer': get_home(self.member) if get_home else None}
 
     def _collect_snapshot(self, role_id, wait_s):
         self.link.send([10003, role_id])

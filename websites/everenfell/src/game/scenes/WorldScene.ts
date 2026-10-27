@@ -18,8 +18,6 @@ import { MAP_H, MAP_TILES, MAP_W, mapTileUrl, tileKey, type MapTile } from '../m
 
 export const WORLD_KEY = 'world';
 
-const MIN_ZOOM = 0.35;
-const MAX_ZOOM = 2;
 const START_ZOOM = 1;
 /** Extra ring of tiles loaded beyond the viewport to hide pan seams. */
 const MARGIN_PX = 512;
@@ -38,9 +36,11 @@ declare global {
 }
 
 const KIND_TINT: Record<ActorSnapshot['kind'], number> = {
-  player: 0x4fc3f7,
-  mob: 0xef5350,
-  npc: 0x9ccf65,
+  // Muted stand-ins until source-grounded sprites land (no cyan).
+  // Player uses the same dark silhouette as the anchor marker.
+  player: 0x2a2f36,
+  mob: 0x8f3a3a,
+  npc: 0x5a7351,
 };
 
 interface ActorNode {
@@ -248,11 +248,16 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createPlayerMarker(): void {
-    const g = this.add.graphics();
-    g.fillStyle(0x4fc3f7, 1);
-    g.fillRect(-8, -8, 16, 16);
-    this.marker = this.add.ellipse(0, 0, 22, 10, 0x000000, 0.35);
-    this.player = this.add.container(MAP_W / 2, MAP_H / 2, [this.marker, g]);
+    // No cyan placeholder: neutral ground ring + dark silhouette until the
+    // source-grounded class sprite pipeline lands (see
+    // docs/swf-phaser-manifest.md §2). The ring echoes the Flash green
+    // selection circle; the silhouette marks the player anchor only.
+    this.marker = this.add.ellipse(0, 0, 26, 12);
+    this.marker.setStrokeStyle(2, 0x39d353, 0.9);
+    this.marker.setFillStyle(0x000000, 0.25);
+    const body = this.add.rectangle(0, -18, 16, 36, 0x1a1d22, 1);
+    body.setOrigin(0.5, 1);
+    this.player = this.add.container(MAP_W / 2, MAP_H / 2, [this.marker, body]);
     this.player.setDepth(1e9);
   }
 
@@ -292,51 +297,15 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  /** Drag to pan; wheel zooms around the cursor; arrows pan. */
-  private enablePanZoom(cam: Phaser.Cameras.Scene2D.Camera): void {
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      dragging = true;
-      lastX = pointer.x;
-      lastY = pointer.y;
-    });
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!dragging || !pointer.isDown) return;
-      cam.scrollX -= (pointer.x - lastX) / cam.zoom;
-      cam.scrollY -= (pointer.y - lastY) / cam.zoom;
-      lastX = pointer.x;
-      lastY = pointer.y;
-    });
-    this.input.on('pointerup', () => {
-      dragging = false;
-    });
-    this.input.on(
-      'wheel',
-      (_p: Phaser.Input.Pointer, _t: unknown[], _dx: number, dy: number) => {
-        const pointer = this.input.activePointer;
-        const factor = dy < 0 ? 1.1 : 1 / 1.1;
-        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, cam.zoom * factor));
-        const before = cam.getWorldPoint(pointer.x, pointer.y);
-        cam.setZoom(next);
-        const after = cam.getWorldPoint(pointer.x, pointer.y);
-        cam.scrollX += before.x - after.x;
-        cam.scrollY += before.y - after.y;
-        if (window.__evfMapStatus) window.__evfMapStatus.zoom = next;
-        this.loadVisibleTiles();
-      },
-    );
+  /** Fixed camera: follows the player only. No wheel zoom, no drag pan,
+   * no arrow-key pan — movement is server-validated tile steps. */
+  private enablePanZoom(_cam: Phaser.Cameras.Scene2D.Camera): void {
+    // Intentionally empty: the camera is positioned by followTile() /
+    // positionActors() and must stay locked on the player anchor.
   }
 
-  private enableKeys(cam: Phaser.Cameras.Scene2D.Camera): void {
-    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
-      const step = 80 / cam.zoom;
-      if (event.code === 'ArrowLeft') cam.scrollX -= step;
-      if (event.code === 'ArrowRight') cam.scrollX += step;
-      if (event.code === 'ArrowUp') cam.scrollY -= step;
-      if (event.code === 'ArrowDown') cam.scrollY += step;
-      if (event.code.startsWith('Arrow')) this.loadVisibleTiles();
-    });
+  private enableKeys(_cam: Phaser.Cameras.Scene2D.Camera): void {
+    // Intentionally empty: keyboard input moves the character through
+    // the gateway (player.move), never the camera directly.
   }
 }

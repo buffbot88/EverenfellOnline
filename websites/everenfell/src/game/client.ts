@@ -590,7 +590,7 @@ export class PhaserClient {
         }
       });
       this.renderWorldChrome();
-      this.setStatus('Use WASD/arrows to move. B/S/Q open panels.');
+      this.setStatusVisible(false);
       window.addEventListener('keydown', this.panelKeys);
     } catch (err) {
       this.setStatus(err instanceof Error ? err.message : 'World entry failed.');
@@ -628,21 +628,8 @@ export class PhaserClient {
   }
 
   private renderWorldChrome(): void {
-    const bar = document.createElement('div');
-    bar.className = 'ev-view ev-bar';
-    for (const [label, id] of [
-      ['Bag (B)', 'bag'],
-      ['Skills (S)', 'skills'],
-      ['Quests (Q)', 'quests'],
-    ] as const) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', () => {
-        this.windows.toggle(id);
-      });
-      bar.appendChild(button);
-    }
-    this.options.uiMount.appendChild(bar);
+    // Placeholder Bag/Skills/Quests bar removed: it is modern generic UI,
+    // not recovered Flash art. Keyboard shortcuts (B/S/Q) still toggle
+    // the windows; the authentic menu row lands with the HUD milestone.
   }
 }

@@ -18,9 +18,9 @@ import swf_inventory as s  # noqa: E402
 import audit_hud as A  # noqa: E402
 from decode_create_ui import parse_shape  # noqa: E402
 
-FOCUS = ['ui.StateBar', 'ui.MiniMap', 'ui.panel.TaskTrack', 'ui.ChatSkin',
-         'ui.ZDLView', 'ui.HpBar', 'ui.HeroBar', 'ui.panel.maiyao',
-         'ui.BloodShape', 'ui.panel.Target']
+FOCUS = ['ui.StateBar', 'ui.panel.roleheadskin', 'ui.MiniMap',
+         'ui.panel.TaskTrack', 'ui.ChatSkin', 'ui.ZDLView', 'ui.HpBar',
+         'ui.HeroBar', 'ui.panel.maiyao', 'ui.BloodShape', 'ui.panel.Target']
 
 
 def resolve_module(module, path):

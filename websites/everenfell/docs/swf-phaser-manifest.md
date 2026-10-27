@@ -105,7 +105,7 @@ Bitmap IDs are per-dump character IDs (gameui vs hud-chat differ).
 | `ui.HpBar` | none — vector-only shapes 572/436 | – | same shared bar sprite as HeroBar |
 | `ui.BloodShape` | none — vector-only shape 274 | – | orb/liquid mask is vector |
 | `ui.panel.maiyao` | 444 (frame) | 446/447/448/449 | `tg.shared.cm.ybutton` + `CloseButton` imported (tg.swf host, encrypted) |
-| `ui.StateBar` | 166 | 160/162/164/170 | 3× char-26484 imports (tg host) |
+| `ui.StateBar` | 166 | 160/162/164/170 | CORRECTION: full dump shows moneyBar/goldBar/bindgoldBar/moneygold at x=0/78/156/232 — the **currency bar row**, not the portrait panel. Portrait cluster = `ui.panel.roleheadskin` (below) |
 | `ui.MiniMap` | 522–611 (14) | 525/528/613 | 3 imported refs |
 | `ui.panel.TaskTrack` | 64–112 (11) | 110/111 | vector shape 63 + 2 imports |
 | `ui.ChatSkin` | 67–766 (14; 67/70/77/84/87 shared with TaskTrack) | 723/742/764/768 | 3 imported refs |
@@ -118,19 +118,44 @@ flash-render capture, not from exported PNGs. ZDLView is the cheapest
 first reconstruction (2 bitmaps, zero gaps). All `tg.shared.*` imports
 resolve through the encrypted tg.swf loader context and stay undecoded.
 
-## 5. Phase B progress (2026-10-28)
+## 5. Full-frame decoder pass (2026-10-28, `dump_hud_frames.py`)
+
+`output/hud-frames.json` keeps the complete placement record per row:
+flags, full matrix, instance name, class name, trailing bytes. Findings:
+
+- **Portrait cluster found: `ui.panel.roleheadskin` (cid 313).**
+  moneyBar-style row is StateBar; the actual top-left cluster is
+  roleheadskin: shape 213 → bitmap 212 (361×131 frame), `czbtn` (儲值,
+  214), `vipbtn` (221 + `viplevel` digit bitmaps 223/224/245),
+  `qiangBtn` (253), event icon buttons + labels, `tf0/tf1` texts, `pk`,
+  **`zdl` (reuses sprite 302 — the combat banner lives here)**,
+  `buffBtn`. 15 bitmap leaves, 7 edittexts. The portrait photo is
+  code-attached (createUI pattern), still to wire to role data.
+- **Standalone ZDLView dropped from UIScene FOCUS** — already renders
+  inside roleheadskin; drawing both double-draws the banner.
+- **MiniMap toggle pairs**: `btn_playerOff`/`btn_player` and
+  `btn_yinyueoff`/`btn_yinyue` share positions — visibility-toggled
+  states. Phaser must render one and toggle when behavior lands.
+- **No morph shapes in focus sprites, no DefineSound, no frame
+  labels** — animation/masking is ActionScript-driven, outside SWFs.
+  One ~identity scale in ChatSkin; no rotations. Full matrices are on
+  record in `hud-frames.json`.
+- Shared-controls kit decoded: Button/CloseButton (4 frames each),
+  ScrollBar (decArraw/assArraw/track/thumb/barzs), ComboBox, TabNavi —
+  `tg.shared.ui.StateBar` is also a currency bar, not a portrait panel.
+
+## 6. Phase B progress (2026-10-28)
 
 - `scripts/asset_tools/build_hud_layout.py` →
   `websites/everenfell/src/assets/hud-layout.json` (per-component art
   leaves with PNG paths, sizes, authored offsets).
-- `src/game/scenes/UIScene.ts` renders six components from the layout:
-  StateBar (1 art + 16 gaps), ZDLView (2, gap-free), Target (4),
-  ChatSkin (14), TaskTrack (34), MiniMap (14). Intra-component
-  positions are authored Flash-px; screen anchors are documented
-  approximations (global placement is code-positioned in the original).
+- `src/game/scenes/UIScene.ts` renders from the layout: roleheadskin
+  (15 art, top-left), StateBar currency row below it, Target,
+  ChatSkin, TaskTrack, MiniMap. Intra-component positions are authored
+  Flash-px; screen anchors stay documented approximations.
 - HeroBar/HpBar/BloodShape stay unrendered (vector-only, zero art).
-- Status: implemented, awaiting visual verification (no Node in this
-  shell — build + `?scene=world` screenshot still to run).
+- Status: implemented, typechecked + built on Alpha, awaiting visual
+  verification (live screenshot vs reference still to run).
 
 ## 6. Phase B entry criteria
 1. Map gameui/hud-chat bitmaps to target regions 1/2/10/11 (portrait, orbs,

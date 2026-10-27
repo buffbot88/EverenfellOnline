@@ -730,6 +730,245 @@
     170
    ]
   },
+  "ui.panel.roleheadskin": {
+   "module": "hud-chat",
+   "cid": 313,
+   "art": [
+    {
+     "bitmap": 212,
+     "png": "ui/hud-chat/images/212-jpeg3.png",
+     "w": 361,
+     "h": 131,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 214,
+     "png": "ui/hud-chat/images/214-jpeg3.png",
+     "w": 52,
+     "h": 23,
+     "x": 288.0,
+     "y": 38.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d2:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 221,
+     "png": "ui/hud-chat/images/221-jpeg3.png",
+     "w": 52,
+     "h": 23,
+     "x": 236.0,
+     "y": 38.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d4:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 224,
+     "png": "ui/hud-chat/images/224-jpeg3.png",
+     "w": 9,
+     "h": 14,
+     "x": 249.0,
+     "y": 42.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d4:?",
+      "d2:?",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 223,
+     "png": "ui/hud-chat/images/223-jpeg3.png",
+     "w": 13,
+     "h": 15,
+     "x": 249.0,
+     "y": 42.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d4:?",
+      "d2:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 245,
+     "png": "ui/hud-chat/images/245-jpeg3.png",
+     "w": 30,
+     "h": 15,
+     "x": 249.0,
+     "y": 42.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d4:?",
+      "d2:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 253,
+     "png": "ui/hud-chat/images/253-jpeg3.png",
+     "w": 26,
+     "h": 26,
+     "x": 131.0,
+     "y": 65.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d7:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 260,
+     "png": "ui/hud-chat/images/260-jpeg3.png",
+     "w": 55,
+     "h": 55,
+     "x": 391.0,
+     "y": 37.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d9:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 268,
+     "png": "ui/hud-chat/images/268-jpeg3.png",
+     "w": 44,
+     "h": 50,
+     "x": 394.0,
+     "y": 30.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d12:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 270,
+     "png": "ui/hud-chat/images/270-lossless.png",
+     "w": 52,
+     "h": 19,
+     "x": 394.0,
+     "y": 77.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d12:?",
+      "d2:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 280,
+     "png": "ui/hud-chat/images/280-jpeg3.png",
+     "w": 55,
+     "h": 61,
+     "x": 456.0,
+     "y": 37.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d18:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 289,
+     "png": "ui/hud-chat/images/289-jpeg3.png",
+     "w": 29,
+     "h": 29,
+     "x": 0.0,
+     "y": 63.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d22:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 300,
+     "png": "ui/hud-chat/images/300-jpeg3.png",
+     "w": 44,
+     "h": 18,
+     "x": 156.0,
+     "y": 68.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d24:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 134,
+     "png": "ui/hud-chat/images/134-jpeg3.png",
+     "w": 29,
+     "h": 29,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d26:?"
+     ]
+    },
+    {
+     "bitmap": 305,
+     "png": "ui/hud-chat/images/305-jpeg3.png",
+     "w": 67,
+     "h": 26,
+     "x": 44.0,
+     "y": 104.0,
+     "path": [
+      "ui.panel.roleheadskin",
+      "d28:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    262,
+    "imported ref ?",
+    "imported ref ?",
+    272,
+    "imported ref ?",
+    "imported ref ?",
+    278,
+    282,
+    "imported ref ?",
+    "imported ref ?",
+    288,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    304,
+    307,
+    "imported ref ?",
+    "imported ref ?"
+   ]
+  },
   "ui.MiniMap": {
    "module": "hud-chat",
    "cid": 615,

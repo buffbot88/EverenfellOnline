@@ -13,7 +13,6 @@ import {
   GAME_SERVERS,
   JOB_CODES,
   MAX_ROLES_PER_ACCOUNT,
-  jobName,
   type RoleRef,
 } from '../net/protocol';
 import { setSuppressWorld } from './scenes/LoadingScene';
@@ -420,39 +419,9 @@ export class PhaserClient {
       sound.click();
       if (roles.length < MAX_ROLES_PER_ACCOUNT) this.renderCreate(roles);
     });
-    const panel = document.createElement('div');
-    panel.className = 'ev-view ev-select';
-    const title = document.createElement('h1');
-    title.textContent = 'Choose your hero';
-    panel.appendChild(title);
-    const sub = document.createElement('p');
-    sub.textContent = `${roles.length}/${MAX_ROLES_PER_ACCOUNT} slots used. Art: recovered create-ui bitmaps.`;
-    panel.appendChild(sub);
-    for (const role of roles) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = `${role.name} (${jobName(role.job)} · Lv ${role.level})`;
-      button.addEventListener('click', () => {
-        sound.click();
-        void this.enterWorld(role.id);
-      });
-      panel.appendChild(button);
-    }
-    if (roles.length < MAX_ROLES_PER_ACCOUNT) {
-      const create = document.createElement('button');
-      create.type = 'button';
-      create.textContent = 'Create character';
-      create.addEventListener('click', () => {
-        sound.click();
-        this.renderCreate(roles);
-      });
-      panel.appendChild(create);
-    } else {
-      const full = document.createElement('p');
-      full.textContent = 'Slots full (4/4).';
-      panel.appendChild(full);
-    }
-    this.options.uiMount.appendChild(panel);
+    // No DOM role list: the Phaser select scene renders owned roles in
+    // badge slots and emits roleselect/startworld/gocreate. DOM buttons
+    // here would duplicate it with unstyled placeholders.
     this.setStatusVisible(false);
   }
 

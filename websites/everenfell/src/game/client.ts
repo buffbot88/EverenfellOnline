@@ -16,7 +16,9 @@ import {
   jobName,
   type RoleRef,
 } from '../net/protocol';
+import { setSuppressWorld } from './scenes/LoadingScene';
 import { CREATE_GEOM, CREATE_KEY } from './scenes/CharacterCreateScene';
+import { UI_KEY } from './scenes/UIScene';
 import { letterbox } from './stage';
 
 import { SELECT_KEY } from './scenes/CharacterSelectScene';
@@ -83,6 +85,10 @@ export interface ClientOptions {
   uiMount: HTMLElement;
   gatewayUrl: string;
   serverId?: string;
+  /** True when startGameplay() will run (server flow or ?mode=play).
+   * Only then are gameplay scenes suppressed at boot; otherwise the
+   * client is a map-inspection renderer with no character screens. */
+  gameplay?: boolean;
 }
 
 export class PhaserClient {
@@ -110,12 +116,29 @@ export class PhaserClient {
     options.uiMount.appendChild(this.statusEl);
   }
 
-  /** Boot Phaser. Map tiles load on world entry, not on select/create. */
+  /** Boot Phaser. On the gameplay path, gameplay scenes never own the
+   * display before START GAME: LoadingScene auto-starts the world, so it
+   * (and the HUD) is stopped immediately and character screens own the
+   * canvas until a successful world.snapshot. Map-inspect mode keeps the
+   * legacy direct-to-map rendering (no character screens exist there). */
   async start(): Promise<void> {
+    // Must run before construction: LoadingScene reads it during boot.
+    // Stopping scenes after construction races their boot and loses.
+    setSuppressWorld(this.options.gameplay === true);
     this.game = createPhaserGame(this.options.mount);
     const scene = new URLSearchParams(window.location.search).get('scene');
     if (scene === 'select' || scene === 'create') {
       // Character screens are self-describing; no status line.
+      this.setStatusVisible(false);
+      this.input.attach(this.game.canvas);
+      this.input.onMoveIntent(({ dx, dy }) => {
+        void this.sendMove(dx, dy);
+      });
+      return;
+    }
+    if (this.options.gameplay) {
+      // World/UI never started (holding scene owns the canvas); nothing
+      // to stop. Character screens take over from renderLogin().
       this.setStatusVisible(false);
       this.input.attach(this.game.canvas);
       this.input.onMoveIntent(({ dx, dy }) => {
@@ -133,6 +156,16 @@ export class PhaserClient {
     this.input.onMoveIntent(({ dx, dy }) => {
       void this.sendMove(dx, dy);
     });
+  }
+
+  /** World + HUD must never render behind/over character screens.
+   * Stopping is idempotent; call before any character-screen display
+   * and on world-entry failure. */
+  private stopGameplayScenes(): void {
+    if (!this.game) return;
+    for (const key of [WORLD_KEY, UI_KEY]) {
+      if (this.game.scene.isActive(key)) this.game.scene.stop(key);
+    }
   }
 
   /** Gameplay path: website session gate, then the Python gateway. */
@@ -187,6 +220,8 @@ export class PhaserClient {
 
   private renderLogin(): void {
     this.clearViews();
+    // Login/picker/selection display without gameplay behind them.
+    this.stopGameplayScenes();
     void this.checkWebsiteSession();
   }
 
@@ -542,19 +577,20 @@ export class PhaserClient {
 
   private showScene(key: string, data?: Record<string, unknown>): void {
     if (!this.game) return;
-    this.game.scene.stop('world');
+    // Character screens own the display: gameplay scenes stay stopped.
+    this.stopGameplayScenes();
     if (this.game.scene.isActive(key)) this.game.scene.stop(key);
     this.game.scene.start(key, data);
   }
 
-  /** Return to the map scene after selection/creation screens. */
+  /** Start the map scene for world entry (HUD launches separately below). */
   private restartWorld(): void {
     if (!this.game) return;
     for (const key of [SELECT_KEY, CREATE_KEY]) {
       if (this.game.scene.isActive(key)) this.game.scene.stop(key);
     }
-    if (this.game.scene.isActive('world')) this.game.scene.stop('world');
-    this.game.scene.start('world');
+    this.stopGameplayScenes();
+    this.game.scene.start(WORLD_KEY);
   }
 
   private scene(key: string): { events: Phaser.Events.EventEmitter } | null {
@@ -577,7 +613,12 @@ export class PhaserClient {
       await this.waitForMap();
       this.worldScene()?.bindActorCamera(this.camera);
       this.applySnapshot(snapshot);
-      this.gateway.onPush('actor.moved', (body) => {
+      // World + HUD reveal together only after the snapshot is applied;
+      // a failed entry below stops both, never exposing bare gameplay.
+      // (SceneManager has start/stop; launch lives on ScenePlugin.)
+      this.game?.scene.start(UI_KEY);
+      this.movedUnsub?.();
+      this.movedUnsub = this.gateway.onPush('actor.moved', (body) => {
         const id = String(body['id'] ?? '');
         const x = Number(body['x'] ?? NaN);
         const y = Number(body['y'] ?? NaN);
@@ -593,9 +634,16 @@ export class PhaserClient {
       this.setStatusVisible(false);
       window.addEventListener('keydown', this.panelKeys);
     } catch (err) {
+      this.movedUnsub?.();
+      this.movedUnsub = null;
+      this.selfId = null;
+      this.stopGameplayScenes();
+      this.setStatusVisible(true);
       this.setStatus(err instanceof Error ? err.message : 'World entry failed.');
     }
   }
+
+  private movedUnsub: (() => void) | null = null;
 
   private panelKeys = (event: KeyboardEvent): void => {
     if (!this.selfId) return;

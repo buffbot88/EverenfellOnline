@@ -6,6 +6,7 @@
  */
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { HoldingScene } from './scenes/HoldingScene';
 import { LoadingScene } from './scenes/LoadingScene';
 import { CharacterSelectScene } from './scenes/CharacterSelectScene';
 import { CharacterCreateScene } from './scenes/CharacterCreateScene';
@@ -27,6 +28,7 @@ export function createPhaserGame(parent: HTMLElement): Phaser.Game {
     scene: [
       BootScene,
       LoadingScene,
+      HoldingScene,
       CharacterSelectScene,
       CharacterCreateScene,
       WorldScene,

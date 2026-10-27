@@ -94,6 +94,9 @@ export class WorldScene extends Phaser.Scene {
     this.focusPoint(MAP_W / 2, MAP_H / 2);
 
     this.createPlayerMarker();
+    // No scene.launch('ui') here: the HUD overlay starts only from
+    // world entry (client.enterWorld) after the snapshot is applied,
+    // so gameplay never renders behind character screens.
     this.enablePanZoom(cam);
     this.enableKeys(cam);
     this.scale.on('resize', () => {
@@ -102,7 +105,6 @@ export class WorldScene extends Phaser.Scene {
     });
     this.syncViewport();
     this.loadVisibleTiles();
-    this.scene.launch('ui');
   }
 
   /** Bind the gameplay projection; actors render at world tile positions. */

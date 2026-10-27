@@ -6,8 +6,19 @@
  * substitute art is drawn.
  */
 import Phaser from 'phaser';
+import { HOLDING_KEY } from './HoldingScene';
 
 export const LOADING_KEY = 'loading';
+
+/** Set by the client before constructing the game on the gameplay path.
+ * Stopping the world after construction races scene boot and loses, so
+ * LoadingScene routes gameplay boots to the holding scene instead of
+ * ever starting the world. Map-inspect mode is unaffected. */
+let suppressWorld = false;
+
+export function setSuppressWorld(value: boolean): void {
+  suppressWorld = value;
+}
 
 export class LoadingScene extends Phaser.Scene {
   constructor() {
@@ -17,6 +28,10 @@ export class LoadingScene extends Phaser.Scene {
   create(): void {
     const params = new URLSearchParams(window.location.search);
     const next = params.get('scene') ?? 'world';
+    if (suppressWorld && next === 'world') {
+      this.scene.start(HOLDING_KEY);
+      return;
+    }
     const label = this.add
       .text(16, 16, 'Everenfell loading… (original screen pending)', {
         fontSize: '16px',

@@ -35,11 +35,13 @@ const mode = resolveMode(window.location.search, window.location.hostname);
 const auth = new AuthClient();
 const gatewayUrl =
   `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/everenfell`;
+const gameplay = params.has('server') || mode === 'play';
 const client = new PhaserClient({
   mount,
   uiMount,
   gatewayUrl,
   serverId: params.get('server') ?? undefined,
+  gameplay,
 });
 if (import.meta.env.DEV) {
   // Test hook: lets interaction checks drive the client without a backend.
@@ -86,7 +88,7 @@ async function boot(): Promise<void> {
   }
 
   await client.start();
-  if (params.has('server') || mode === 'play') client.startGameplay();
+  if (gameplay) client.startGameplay();
 }
 
 void boot().catch((err: unknown) => {

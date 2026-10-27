@@ -118,7 +118,21 @@ flash-render capture, not from exported PNGs. ZDLView is the cheapest
 first reconstruction (2 bitmaps, zero gaps). All `tg.shared.*` imports
 resolve through the encrypted tg.swf loader context and stay undecoded.
 
-## 5. Phase B entry criteria
+## 5. Phase B progress (2026-10-28)
+
+- `scripts/asset_tools/build_hud_layout.py` →
+  `websites/everenfell/src/assets/hud-layout.json` (per-component art
+  leaves with PNG paths, sizes, authored offsets).
+- `src/game/scenes/UIScene.ts` renders six components from the layout:
+  StateBar (1 art + 16 gaps), ZDLView (2, gap-free), Target (4),
+  ChatSkin (14), TaskTrack (34), MiniMap (14). Intra-component
+  positions are authored Flash-px; screen anchors are documented
+  approximations (global placement is code-positioned in the original).
+- HeroBar/HpBar/BloodShape stay unrendered (vector-only, zero art).
+- Status: implemented, awaiting visual verification (no Node in this
+  shell — build + `?scene=world` screenshot still to run).
+
+## 6. Phase B entry criteria
 1. Map gameui/hud-chat bitmaps to target regions 1/2/10/11 (portrait, orbs,
    action bar, chat) via decoder pass.
 2. Prove one-class idle/walk animation from source-grounded frames.

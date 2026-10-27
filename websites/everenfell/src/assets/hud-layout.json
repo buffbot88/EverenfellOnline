@@ -1,0 +1,2145 @@
+{
+ "components": {
+  "ui.HeroBar": {
+   "module": "gameui",
+   "cid": 438,
+   "art": [],
+   "gaps": [
+    "vector-only shape 433",
+    "vector-only shape 434",
+    "vector-only shape 436"
+   ]
+  },
+  "ui.HpBar": {
+   "module": "gameui",
+   "cid": 573,
+   "art": [],
+   "gaps": [
+    "vector-only shape 572",
+    "vector-only shape 436"
+   ]
+  },
+  "ui.BloodShape": {
+   "module": "gameui",
+   "cid": 275,
+   "art": [],
+   "gaps": [
+    "vector-only shape 274"
+   ]
+  },
+  "ui.Gain": {
+   "module": "gameui",
+   "cid": 638,
+   "art": [
+    {
+     "bitmap": 624,
+     "png": "ui/gameui/images/624-jpeg3.png",
+     "w": 16,
+     "h": 15,
+     "x": 21.15,
+     "y": 55.0,
+     "path": [
+      "ui.Gain",
+      "d2:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 635,
+     "png": "ui/gameui/images/635-jpeg3.png",
+     "w": 47,
+     "h": 17,
+     "x": 21.15,
+     "y": 55.0,
+     "path": [
+      "ui.Gain",
+      "d2:?",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 624,
+     "png": "ui/gameui/images/624-jpeg3.png",
+     "w": 16,
+     "h": 15,
+     "x": 21.15,
+     "y": 81.0,
+     "path": [
+      "ui.Gain",
+      "d6:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 635,
+     "png": "ui/gameui/images/635-jpeg3.png",
+     "w": 47,
+     "h": 17,
+     "x": 21.15,
+     "y": 81.0,
+     "path": [
+      "ui.Gain",
+      "d6:?",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 624,
+     "png": "ui/gameui/images/624-jpeg3.png",
+     "w": 16,
+     "h": 15,
+     "x": 21.15,
+     "y": 107.0,
+     "path": [
+      "ui.Gain",
+      "d10:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 635,
+     "png": "ui/gameui/images/635-jpeg3.png",
+     "w": 47,
+     "h": 17,
+     "x": 21.15,
+     "y": 107.0,
+     "path": [
+      "ui.Gain",
+      "d10:?",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 624,
+     "png": "ui/gameui/images/624-jpeg3.png",
+     "w": 16,
+     "h": 15,
+     "x": 21.15,
+     "y": 133.0,
+     "path": [
+      "ui.Gain",
+      "d14:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 635,
+     "png": "ui/gameui/images/635-jpeg3.png",
+     "w": 47,
+     "h": 17,
+     "x": 21.15,
+     "y": 133.0,
+     "path": [
+      "ui.Gain",
+      "d14:?",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 624,
+     "png": "ui/gameui/images/624-jpeg3.png",
+     "w": 16,
+     "h": 15,
+     "x": 21.15,
+     "y": 157.0,
+     "path": [
+      "ui.Gain",
+      "d18:?",
+      "d3:?"
+     ]
+    },
+    {
+     "bitmap": 635,
+     "png": "ui/gameui/images/635-jpeg3.png",
+     "w": 47,
+     "h": 17,
+     "x": 21.15,
+     "y": 157.0,
+     "path": [
+      "ui.Gain",
+      "d18:?",
+      "d2:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref tg.shared.cm.paneltwBg",
+    "vector-only shape 622",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']",
+    "vector-only shape 622",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']",
+    "vector-only shape 622",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']",
+    "vector-only shape 622",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']",
+    "vector-only shape 622",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']"
+   ]
+  },
+  "ui.ListMenu": {
+   "module": "gameui",
+   "cid": 457,
+   "art": [
+    {
+     "bitmap": 451,
+     "png": "ui/gameui/images/451-jpeg3.png",
+     "w": 48,
+     "h": 92,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ListMenu",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 454,
+     "png": "ui/gameui/images/454-jpeg3.png",
+     "w": 91,
+     "h": 27,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ListMenu",
+      "d11:?",
+      "d9:?"
+     ]
+    }
+   ],
+   "gaps": []
+  },
+  "ui.caijiBar": {
+   "module": "gameui",
+   "cid": 693,
+   "art": [
+    {
+     "bitmap": 686,
+     "png": "ui/gameui/images/686-jpeg3.png",
+     "w": 162,
+     "h": 37,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.caijiBar",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 690,
+     "png": "ui/gameui/images/690-jpeg.png",
+     "w": 6,
+     "h": 7,
+     "x": 23.25,
+     "y": 22.5,
+     "path": [
+      "ui.caijiBar",
+      "d3:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    689
+   ]
+  },
+  "ui.panel.maiyao": {
+   "module": "gameui",
+   "cid": 450,
+   "art": [
+    {
+     "bitmap": 444,
+     "png": "ui/gameui/images/444-jpeg3.png",
+     "w": 304,
+     "h": 234,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.maiyao",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    446,
+    447,
+    448,
+    "imported ref tg.shared.cm.ybutton",
+    "imported ref tg.shared.cm.CloseButton",
+    449
+   ]
+  },
+  "ui.panel.NpcTalkPanel": {
+   "module": "gameui",
+   "cid": 427,
+   "art": [
+    {
+     "bitmap": 423,
+     "png": "ui/gameui/images/423-jpeg3.png",
+     "w": 292,
+     "h": 108,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.NpcTalkPanel",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 397,
+     "png": "ui/gameui/images/397-jpeg3.png",
+     "w": 213,
+     "h": 5,
+     "x": 5.0,
+     "y": 8.0,
+     "path": [
+      "ui.panel.NpcTalkPanel",
+      "d5:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref tg.shared.cm.panelnBg",
+    425,
+    426
+   ]
+  },
+  "ui.panel.TaskTalkPanel": {
+   "module": "gameui",
+   "cid": 399,
+   "art": [
+    {
+     "bitmap": 393,
+     "png": "ui/gameui/images/393-jpeg3.png",
+     "w": 285,
+     "h": 96,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.TaskTalkPanel",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 397,
+     "png": "ui/gameui/images/397-jpeg3.png",
+     "w": 213,
+     "h": 5,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.TaskTalkPanel",
+      "d5:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref tg.shared.cm.panelnBg",
+    395,
+    396,
+    "imported ref tg.shared.cm.ybigButton"
+   ]
+  },
+  "ui.panel.fuhuoPanel": {
+   "module": "gameui",
+   "cid": 658,
+   "art": [
+    {
+     "bitmap": 639,
+     "png": "ui/gameui/images/639-jpeg.png",
+     "w": 518,
+     "h": 90,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.fuhuoPanel",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 644,
+     "png": "ui/gameui/images/644-jpeg3.png",
+     "w": 27,
+     "h": 52,
+     "x": 22.0,
+     "y": 173.0,
+     "path": [
+      "ui.panel.fuhuoPanel",
+      "d10:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 651,
+     "png": "ui/gameui/images/651-jpeg3.png",
+     "w": 27,
+     "h": 52,
+     "x": 496.0,
+     "y": 173.0,
+     "path": [
+      "ui.panel.fuhuoPanel",
+      "d12:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 10 bytes']",
+    641,
+    642,
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 10 bytes']",
+    643,
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 10 bytes']",
+    "imported ref tg.shared.cm.Slot",
+    "imported ref tg.shared.cm.PlusBtn",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref tg.shared.cm.fButton",
+    "imported ref tg.shared.cm.fButton"
+   ]
+  },
+  "ui.auto.GuajiIcon": {
+   "module": "gameui",
+   "cid": 613,
+   "art": [
+    {
+     "bitmap": 248,
+     "png": "ui/gameui/images/248-jpeg3.png",
+     "w": 167,
+     "h": 18,
+     "x": -83.5,
+     "y": -1.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 600,
+     "png": "ui/gameui/images/600-jpeg3.png",
+     "w": 30,
+     "h": 30,
+     "x": -92.0,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d2:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 251,
+     "png": "ui/gameui/images/251-jpeg3.png",
+     "w": 19,
+     "h": 19,
+     "x": 54.5,
+     "y": -8.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d4:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 258,
+     "png": "ui/gameui/images/258-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -59.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d6:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 261,
+     "png": "ui/gameui/images/261-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -37.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d8:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 607,
+     "png": "ui/gameui/images/607-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -15.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d10:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 610,
+     "png": "ui/gameui/images/610-jpeg3.png",
+     "w": 20,
+     "h": 22,
+     "x": 6.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d12:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 270,
+     "png": "ui/gameui/images/270-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": 28.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.GuajiIcon",
+      "d14:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']"
+   ]
+  },
+  "ui.auto.XunluIcon": {
+   "module": "gameui",
+   "cid": 273,
+   "art": [
+    {
+     "bitmap": 248,
+     "png": "ui/gameui/images/248-jpeg3.png",
+     "w": 167,
+     "h": 18,
+     "x": -83.5,
+     "y": -1.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d1:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 251,
+     "png": "ui/gameui/images/251-jpeg3.png",
+     "w": 19,
+     "h": 19,
+     "x": 55.5,
+     "y": -7.55,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d3:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 258,
+     "png": "ui/gameui/images/258-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -59.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d5:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 261,
+     "png": "ui/gameui/images/261-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -37.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d7:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 264,
+     "png": "ui/gameui/images/264-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": -15.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d9:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 267,
+     "png": "ui/gameui/images/267-jpeg3.png",
+     "w": 20,
+     "h": 22,
+     "x": 6.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 270,
+     "png": "ui/gameui/images/270-jpeg3.png",
+     "w": 19,
+     "h": 22,
+     "x": 28.5,
+     "y": -10.5,
+     "path": [
+      "ui.auto.XunluIcon",
+      "d13:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 27417 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 17431 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 25877 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 16660 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 33298 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']",
+    "imported ref ['char bit set but id 36374 not defined here (imported?)', 'trailing 4 bytes']"
+   ]
+  },
+  "ui.StateBar": {
+   "module": "hud-chat",
+   "cid": 172,
+   "art": [
+    {
+     "bitmap": 166,
+     "png": "ui/hud-chat/images/166-jpeg3.png",
+     "w": 16,
+     "h": 12,
+     "x": 232.0,
+     "y": 3.0,
+     "path": [
+      "ui.StateBar",
+      "d10:?",
+      "d1:?",
+      "d1:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 3 bytes']",
+    160,
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 3 bytes']",
+    162,
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 3 bytes']",
+    164,
+    "imported ref ['char bit set but id 8649 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 17097 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 25545 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 33993 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 42441 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 51145 not defined here (imported?)', 'trailing 14 bytes']",
+    "imported ref ['char bit set but id 59593 not defined here (imported?)', 'trailing 15 bytes']",
+    "imported ref ['char bit set but id 1229 not defined here (imported?)', 'trailing 15 bytes']",
+    "imported ref ['char bit set but id 5581 not defined here (imported?)', 'trailing 15 bytes']",
+    170
+   ]
+  },
+  "ui.MiniMap": {
+   "module": "hud-chat",
+   "cid": 615,
+   "art": [
+    {
+     "bitmap": 522,
+     "png": "ui/hud-chat/images/522-jpeg3.png",
+     "w": 248,
+     "h": 167,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.MiniMap",
+      "d1:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 526,
+     "png": "ui/hud-chat/images/526-jpeg3.png",
+     "w": 40,
+     "h": 19,
+     "x": 104.0,
+     "y": 162.0,
+     "path": [
+      "ui.MiniMap",
+      "d4:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 534,
+     "png": "ui/hud-chat/images/534-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 35.0,
+     "y": 52.0,
+     "path": [
+      "ui.MiniMap",
+      "d7:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 541,
+     "png": "ui/hud-chat/images/541-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 30.0,
+     "y": 85.0,
+     "path": [
+      "ui.MiniMap",
+      "d9:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 548,
+     "png": "ui/hud-chat/images/548-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 30.0,
+     "y": 85.0,
+     "path": [
+      "ui.MiniMap",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 555,
+     "png": "ui/hud-chat/images/555-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 37.0,
+     "y": 115.0,
+     "path": [
+      "ui.MiniMap",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 562,
+     "png": "ui/hud-chat/images/562-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 37.0,
+     "y": 115.0,
+     "path": [
+      "ui.MiniMap",
+      "d15:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 569,
+     "png": "ui/hud-chat/images/569-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 52.0,
+     "y": 142.0,
+     "path": [
+      "ui.MiniMap",
+      "d17:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 576,
+     "png": "ui/hud-chat/images/576-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 167.0,
+     "y": 137.0,
+     "path": [
+      "ui.MiniMap",
+      "d19:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 583,
+     "png": "ui/hud-chat/images/583-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 184.0,
+     "y": 109.0,
+     "path": [
+      "ui.MiniMap",
+      "d21:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 590,
+     "png": "ui/hud-chat/images/590-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 191.0,
+     "y": 53.0,
+     "path": [
+      "ui.MiniMap",
+      "d23:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 597,
+     "png": "ui/hud-chat/images/597-lossless2.png",
+     "w": 28,
+     "h": 28,
+     "x": 193.0,
+     "y": 83.0,
+     "path": [
+      "ui.MiniMap",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 604,
+     "png": "ui/hud-chat/images/604-jpeg3.png",
+     "w": 28,
+     "h": 28,
+     "x": 49.0,
+     "y": 25.0,
+     "path": [
+      "ui.MiniMap",
+      "d27:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 611,
+     "png": "ui/hud-chat/images/611-lossless2.png",
+     "w": 78,
+     "h": 19,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.MiniMap",
+      "d29:?"
+     ]
+    }
+   ],
+   "gaps": [
+    525,
+    528,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    613
+   ]
+  },
+  "ui.panel.TaskTrack": {
+   "module": "hud-chat",
+   "cid": 124,
+   "art": [
+    {
+     "bitmap": 64,
+     "png": "ui/hud-chat/images/64-jpeg3.png",
+     "w": 249,
+     "h": 269,
+     "x": -5.0,
+     "y": 94.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 67,
+     "png": "ui/hud-chat/images/67-jpeg.png",
+     "w": 18,
+     "h": 244,
+     "x": 216.0,
+     "y": 115.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d11:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 70,
+     "png": "ui/hud-chat/images/70-jpeg3.png",
+     "w": 18,
+     "h": 15,
+     "x": 216.0,
+     "y": 357.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d11:?",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 77,
+     "png": "ui/hud-chat/images/77-jpeg3.png",
+     "w": 18,
+     "h": 16,
+     "x": 216.0,
+     "y": 99.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d11:?",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 84,
+     "png": "ui/hud-chat/images/84-jpeg3.png",
+     "w": 16,
+     "h": 241,
+     "x": 218.2,
+     "y": 128.3,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d11:?",
+      "d15:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 87,
+     "png": "ui/hud-chat/images/87-jpeg3.png",
+     "w": 12,
+     "h": 20,
+     "x": 219.85,
+     "y": 144.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d11:?",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 91,
+     "png": "ui/hud-chat/images/91-jpeg3.png",
+     "w": 251,
+     "h": 38,
+     "x": -7.0,
+     "y": 56.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d37:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 94,
+     "png": "ui/hud-chat/images/94-jpeg3.png",
+     "w": 50,
+     "h": 24,
+     "x": 100.0,
+     "y": 73.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d47:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 101,
+     "png": "ui/hud-chat/images/101-jpeg.png",
+     "w": 20,
+     "h": 20,
+     "x": 221.0,
+     "y": 84.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d2:?",
+      "d49:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 64,
+     "png": "ui/hud-chat/images/64-jpeg3.png",
+     "w": 249,
+     "h": 269,
+     "x": -5.0,
+     "y": 217.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 67,
+     "png": "ui/hud-chat/images/67-jpeg.png",
+     "w": 18,
+     "h": 244,
+     "x": 216.0,
+     "y": 238.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d11:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 70,
+     "png": "ui/hud-chat/images/70-jpeg3.png",
+     "w": 18,
+     "h": 15,
+     "x": 216.0,
+     "y": 480.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d11:?",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 77,
+     "png": "ui/hud-chat/images/77-jpeg3.png",
+     "w": 18,
+     "h": 16,
+     "x": 216.0,
+     "y": 222.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d11:?",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 84,
+     "png": "ui/hud-chat/images/84-jpeg3.png",
+     "w": 16,
+     "h": 241,
+     "x": 218.2,
+     "y": 251.3,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d11:?",
+      "d15:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 87,
+     "png": "ui/hud-chat/images/87-jpeg3.png",
+     "w": 12,
+     "h": 20,
+     "x": 219.85,
+     "y": 267.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d11:?",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 91,
+     "png": "ui/hud-chat/images/91-jpeg3.png",
+     "w": 251,
+     "h": 38,
+     "x": -7.0,
+     "y": 179.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d37:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 94,
+     "png": "ui/hud-chat/images/94-jpeg3.png",
+     "w": 50,
+     "h": 24,
+     "x": 100.0,
+     "y": 196.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d47:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 101,
+     "png": "ui/hud-chat/images/101-jpeg.png",
+     "w": 20,
+     "h": 20,
+     "x": 221.0,
+     "y": 207.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d52:?",
+      "d49:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 64,
+     "png": "ui/hud-chat/images/64-jpeg3.png",
+     "w": 249,
+     "h": 269,
+     "x": -5.0,
+     "y": 340.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 67,
+     "png": "ui/hud-chat/images/67-jpeg.png",
+     "w": 18,
+     "h": 244,
+     "x": 216.0,
+     "y": 361.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d11:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 70,
+     "png": "ui/hud-chat/images/70-jpeg3.png",
+     "w": 18,
+     "h": 15,
+     "x": 216.0,
+     "y": 603.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d11:?",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 77,
+     "png": "ui/hud-chat/images/77-jpeg3.png",
+     "w": 18,
+     "h": 16,
+     "x": 216.0,
+     "y": 345.8,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d11:?",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 84,
+     "png": "ui/hud-chat/images/84-jpeg3.png",
+     "w": 16,
+     "h": 241,
+     "x": 218.2,
+     "y": 374.3,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d11:?",
+      "d15:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 87,
+     "png": "ui/hud-chat/images/87-jpeg3.png",
+     "w": 12,
+     "h": 20,
+     "x": 219.85,
+     "y": 390.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d11:?",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 91,
+     "png": "ui/hud-chat/images/91-jpeg3.png",
+     "w": 251,
+     "h": 38,
+     "x": -7.0,
+     "y": 302.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d37:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 94,
+     "png": "ui/hud-chat/images/94-jpeg3.png",
+     "w": 50,
+     "h": 24,
+     "x": 100.0,
+     "y": 319.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d47:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 101,
+     "png": "ui/hud-chat/images/101-jpeg.png",
+     "w": 20,
+     "h": 20,
+     "x": 221.0,
+     "y": 330.0,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d102:?",
+      "d49:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 67,
+     "png": "ui/hud-chat/images/67-jpeg.png",
+     "w": 18,
+     "h": 244,
+     "x": 215.5,
+     "y": 16.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d152:?",
+      "d2:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 70,
+     "png": "ui/hud-chat/images/70-jpeg3.png",
+     "w": 18,
+     "h": 15,
+     "x": 215.5,
+     "y": 258.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d152:?",
+      "d2:?",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 77,
+     "png": "ui/hud-chat/images/77-jpeg3.png",
+     "w": 18,
+     "h": 16,
+     "x": 215.5,
+     "y": 0.15,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d152:?",
+      "d2:?",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 84,
+     "png": "ui/hud-chat/images/84-jpeg3.png",
+     "w": 16,
+     "h": 241,
+     "x": 217.7,
+     "y": 28.65,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d152:?",
+      "d2:?",
+      "d15:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 87,
+     "png": "ui/hud-chat/images/87-jpeg3.png",
+     "w": 12,
+     "h": 20,
+     "x": 219.35,
+     "y": 44.5,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d152:?",
+      "d2:?",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 108,
+     "png": "ui/hud-chat/images/108-jpeg3.png",
+     "w": 55,
+     "h": 55,
+     "x": -71.5,
+     "y": 4.85,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d155:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 112,
+     "png": "ui/hud-chat/images/112-jpeg3.png",
+     "w": 67,
+     "h": 19,
+     "x": -74.5,
+     "y": 63.85,
+     "path": [
+      "ui.panel.TaskTrack",
+      "d155:?",
+      "d4:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "vector-only shape 63",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref tg.shared.cm.trackbg",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    110,
+    111,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?"
+   ]
+  },
+  "ui.TaskTrackItemRender": {
+   "module": "hud-chat",
+   "cid": 60,
+   "art": [],
+   "gaps": [
+    58,
+    59
+   ]
+  },
+  "ui.ChatCombox": {
+   "module": "hud-chat",
+   "cid": 804,
+   "art": [
+    {
+     "bitmap": 677,
+     "png": "ui/hud-chat/images/677-jpeg3.png",
+     "w": 91,
+     "h": 27,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ChatCombox",
+      "d1:ui.ComboxBgOver",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 680,
+     "png": "ui/hud-chat/images/680-jpeg3.png",
+     "w": 169,
+     "h": 1,
+     "x": 0.0,
+     "y": 22.0,
+     "path": [
+      "ui.ChatCombox",
+      "d11:ui.ComboxBgLine",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 783,
+     "png": "ui/hud-chat/images/783-jpeg3.png",
+     "w": 16,
+     "h": 16,
+     "x": -2.0,
+     "y": 0.25,
+     "path": [
+      "ui.ChatCombox",
+      "d21:baseFace_fla.CheckBox_49",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 792,
+     "png": "ui/hud-chat/images/792-jpeg3.png",
+     "w": 16,
+     "h": 16,
+     "x": -2.0,
+     "y": 0.25,
+     "path": [
+      "ui.ChatCombox",
+      "d21:baseFace_fla.CheckBox_49",
+      "d3:?"
+     ]
+    }
+   ],
+   "gaps": [
+    782,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    803
+   ]
+  },
+  "ui.ChatTabNavi": {
+   "module": "hud-chat",
+   "cid": 716,
+   "art": [
+    {
+     "bitmap": 712,
+     "png": "ui/hud-chat/images/712-jpeg3.png",
+     "w": 49,
+     "h": 20,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ChatTabNavi",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref ?"
+   ]
+  },
+  "ui.ChatSkin": {
+   "module": "hud-chat",
+   "cid": 781,
+   "art": [
+    {
+     "bitmap": 718,
+     "png": "ui/hud-chat/images/718-jpeg3.png",
+     "w": 300,
+     "h": 32,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ChatSkin",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 720,
+     "png": "ui/hud-chat/images/720-jpeg3.png",
+     "w": 300,
+     "h": 205,
+     "x": 0.0,
+     "y": -244.0,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d1:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 67,
+     "png": "ui/hud-chat/images/67-jpeg.png",
+     "w": 18,
+     "h": 244,
+     "x": 2.0,
+     "y": -227.0,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d4:?",
+      "d1:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 70,
+     "png": "ui/hud-chat/images/70-jpeg3.png",
+     "w": 18,
+     "h": 15,
+     "x": 2.0,
+     "y": 15.0,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d4:?",
+      "d11:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 77,
+     "png": "ui/hud-chat/images/77-jpeg3.png",
+     "w": 18,
+     "h": 16,
+     "x": 2.0,
+     "y": -243.0,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d4:?",
+      "d13:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 84,
+     "png": "ui/hud-chat/images/84-jpeg3.png",
+     "w": 16,
+     "h": 241,
+     "x": 4.2,
+     "y": -214.5,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d4:?",
+      "d15:?",
+      "d9:?"
+     ]
+    },
+    {
+     "bitmap": 87,
+     "png": "ui/hud-chat/images/87-jpeg3.png",
+     "w": 12,
+     "h": 20,
+     "x": 5.85,
+     "y": -198.65,
+     "path": [
+      "ui.ChatSkin",
+      "d3:?",
+      "d4:?",
+      "d25:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 712,
+     "png": "ui/hud-chat/images/712-jpeg3.png",
+     "w": 49,
+     "h": 20,
+     "x": 19.0,
+     "y": -39.0,
+     "path": [
+      "ui.ChatSkin",
+      "d8:ui.ChatTabNavi",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 725,
+     "png": "ui/hud-chat/images/725-jpeg3.png",
+     "w": 17,
+     "h": 15,
+     "x": 258.0,
+     "y": -36.0,
+     "path": [
+      "ui.ChatSkin",
+      "d10:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 732,
+     "png": "ui/hud-chat/images/732-jpeg3.png",
+     "w": 17,
+     "h": 15,
+     "x": 277.0,
+     "y": -37.0,
+     "path": [
+      "ui.ChatSkin",
+      "d12:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 743,
+     "png": "ui/hud-chat/images/743-jpeg.png",
+     "w": 26,
+     "h": 22,
+     "x": 270.0,
+     "y": -15.0,
+     "path": [
+      "ui.ChatSkin",
+      "d17:?",
+      "d2:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 750,
+     "png": "ui/hud-chat/images/750-jpeg.png",
+     "w": 26,
+     "h": 22,
+     "x": 244.0,
+     "y": -15.0,
+     "path": [
+      "ui.ChatSkin",
+      "d17:?",
+      "d4:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 757,
+     "png": "ui/hud-chat/images/757-jpeg.png",
+     "w": 70,
+     "h": 27,
+     "x": 2.0,
+     "y": -17.0,
+     "path": [
+      "ui.ChatSkin",
+      "d17:?",
+      "d6:?",
+      "d1:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 766,
+     "png": "ui/hud-chat/images/766-jpeg3.png",
+     "w": 69,
+     "h": 17,
+     "x": 72.0,
+     "y": -13.0,
+     "path": [
+      "ui.ChatSkin",
+      "d17:?",
+      "d10:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    723,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "vector-only shape 740",
+    742,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    764,
+    768,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 64013 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 61965 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 59917 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 57869 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 55821 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 53773 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 51725 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 49677 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 47629 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 45581 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 43533 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 41485 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 39437 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 37389 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 35341 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 33293 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 31245 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 29197 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 27149 not defined here (imported?)', 'trailing 15 bytes']",
+    "imported ref ?",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 64013 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 61965 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 59917 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 57869 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 55821 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 53773 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 51725 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 49677 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 47629 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 45581 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 43533 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 41485 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 39437 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 37389 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 35341 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 33293 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 31245 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 29197 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 27149 not defined here (imported?)', 'trailing 15 bytes']",
+    "imported ref ?",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 64013 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 61965 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 59917 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 57869 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 55821 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 53773 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 51725 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 49677 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 47629 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 45581 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 43533 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 41485 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 39437 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 37389 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 35341 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 33293 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 31245 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['char bit set but id 29197 not defined here (imported?)', 'trailing 20 bytes']",
+    "imported ref ['trailing 15 bytes']",
+    "imported ref ['char bit set but id 27149 not defined here (imported?)', 'trailing 15 bytes']"
+   ]
+  },
+  "ui.ZDLView": {
+   "module": "hud-chat",
+   "cid": 1012,
+   "art": [
+    {
+     "bitmap": 1010,
+     "png": "ui/hud-chat/images/1010-jpeg3.png",
+     "w": 180,
+     "h": 34,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.ZDLView",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 300,
+     "png": "ui/hud-chat/images/300-jpeg3.png",
+     "w": 44,
+     "h": 18,
+     "x": 0.0,
+     "y": 9.0,
+     "path": [
+      "ui.ZDLView",
+      "d2:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": []
+  },
+  "ui.panel.Target": {
+   "module": "hud-chat",
+   "cid": 157,
+   "art": [
+    {
+     "bitmap": 135,
+     "png": "ui/hud-chat/images/135-jpeg3.png",
+     "w": 353,
+     "h": 98,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.panel.Target",
+      "d2:?"
+     ]
+    },
+    {
+     "bitmap": 139,
+     "png": "ui/hud-chat/images/139-jpeg3.png",
+     "w": 245,
+     "h": 29,
+     "x": 90.0,
+     "y": 49.0,
+     "path": [
+      "ui.panel.Target",
+      "d5:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 143,
+     "png": "ui/hud-chat/images/143-lossless2.png",
+     "w": 52,
+     "h": 23,
+     "x": 256.0,
+     "y": 25.0,
+     "path": [
+      "ui.panel.Target",
+      "d8:?",
+      "d1:?"
+     ]
+    },
+    {
+     "bitmap": 150,
+     "png": "ui/hud-chat/images/150-jpeg3.png",
+     "w": 30,
+     "h": 31,
+     "x": 318.45,
+     "y": 66.0,
+     "path": [
+      "ui.panel.Target",
+      "d10:?",
+      "d1:?"
+     ]
+    }
+   ],
+   "gaps": [
+    137,
+    138,
+    142,
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?",
+    "imported ref ?"
+   ]
+  },
+  "ui.Dazuo": {
+   "module": "hud-chat",
+   "cid": 676,
+   "art": [
+    {
+     "bitmap": 671,
+     "png": "ui/hud-chat/images/671-jpeg.png",
+     "w": 180,
+     "h": 167,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.Dazuo",
+      "d1:?",
+      "d9:?"
+     ]
+    }
+   ],
+   "gaps": [
+    674,
+    "imported ref tg.shared.cm.Button",
+    "imported ref ['char bit set but id 26739 not defined here (imported?)', 'trailing 5 bytes']",
+    675
+   ]
+  },
+  "ui.LoudSpeaker": {
+   "module": "hud-chat",
+   "cid": 1043,
+   "art": [
+    {
+     "bitmap": 1040,
+     "png": "ui/hud-chat/images/1040-jpeg3.png",
+     "w": 14,
+     "h": 18,
+     "x": 0.0,
+     "y": 0.0,
+     "path": [
+      "ui.LoudSpeaker",
+      "d2:?"
+     ]
+    }
+   ],
+   "gaps": [
+    "imported ref shared.ui.ToolTipBg",
+    1042
+   ]
+  },
+  "ui.render.Statetip": {
+   "module": "hud-chat",
+   "cid": 159,
+   "art": [],
+   "gaps": [
+    "imported ref shared.ui.ToolTipBg",
+    158,
+    "imported ref ['char bit set but id 26484 not defined here (imported?)', 'trailing 4 bytes']"
+   ]
+  }
+ }
+}

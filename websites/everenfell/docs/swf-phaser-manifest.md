@@ -154,10 +154,77 @@ flags, full matrix, instance name, class name, trailing bytes. Findings:
   ChatSkin, TaskTrack, MiniMap. Intra-component positions are authored
   Flash-px; screen anchors stay documented approximations.
 - HeroBar/HpBar/BloodShape stay unrendered (vector-only, zero art).
-- Status: implemented, typechecked + built on Alpha, awaiting visual
-  verification (live screenshot vs reference still to run).
+- Status (prior increment): implemented, typechecked + built on Alpha,
+  awaiting visual verification (live screenshot vs reference still to
+  run). Superseded by §7 pass (unverified: no node in this shell).
 
-## 6. Phase B entry criteria
+## 7. roleheadskin completion pass (2026-10-28, decoder evidence)
+
+Full-frame + DefineEditText decode (`dump_hud_frames.py`,
+`decode_create_ui.parse_edittext`) now binds every live text field:
+
+| Field | SWF evidence | Phaser binding |
+|---|---|---|
+| tf0 name (cid 304) at (98,13.4) | SimSun 14px #bbae8e, centered, box 34x18, initial "100" | `role.name` from `world.enter` roles[] |
+| tf1 level (cid 288) at (132,43) | SimSun 12px #c6b8a5, centered, box 110x18 | live role level, digits only (as authored) |
+| qibing label (cid 278) at sprite-rel (-1,50) | SimSun 14px #cfc7aa, 騎戰/兵器 | "CAVALRY" (first English pass) |
+| icon11 label (cid 262) at rel (0,41) | SimSun 12px #ffe9a6, 獅駝嶺 | "SHITUO RIDGE" |
+| icon12 label (cid 282) at rel (1,41) | SimSun 12px #ffe9a6, 聖誕禮包 | "GIFT PACK" |
+| buffBtn label (cid 307) at rel (18.1,5) | 14px #ffe687, 克己 | "RESTRAINT" 10px (box-fit, verify) |
+| Target tf0 (137) at (80.5,7.9) | SimSun 14px #fed267, centered | target name (panel hidden without target) |
+| Target tf1 (138) at (113,28) | SimSun 12px white | target level |
+| Target label (142) at (102,53) | SimSun 12px #dbd3d0, empty initial | target detail |
+
+More decoder facts recorded (not guessed):
+- All roleheadskin rows are translate-only; button sprites carry
+  4-frame (up/over/down/disabled) color-transform states on vector
+  shapes; portraits/vip-digits/combat value are code-attached.
+- Portrait circle (56,74) r34 is APPROXIMATE (emblem geometry from
+  bitmap 212); class stills A:32/B:16/C:24/D:1 masked into it.
+- Combat value unbound: JSON gateway has no 12010/ZhanDouLi push
+  (value exists only in game-server AMF). Banner art renders, number
+  omitted — documented gap, not a silent zero.
+- VIP digits (viplevel sprite 247: 223/224/245) skipped: rank not
+  gateway-exposed. Button chrome renders statically; behaviors need
+  ActionScript + server features (non-interactive, documented).
+- Baked-art Chinese DONE in Blender (`scripts/asset_tools/
+  localize_hud_buttons.py` → `images-en/`): 214 TOP UP (Georgia Bold
+  cream on preserved button), 253 STR (tight red-plate cover, icon
+  intact), 300 POWER (from-scratch gold-gradient face + thin dark
+  outline, transparent bg, 44x18). VIP letters already Latin. 300
+  verified via large-size diagnostic render (vision-model misread of
+  the 44px composite discounted after the 5-glyph proof).
+- Anchors now use MEASURED leaf extents (roleheadskin 511x131,
+  MiniMap 248x181, TaskTrack 318x619 w/ -74 offset, ChatSkin
+  300x276 w/ -244 offset, Target 353x98); right/bottom components
+  subtract true size so nothing clips past the viewport. roleheadskin
+  (0,0) exact + Target-conditional rule are structural; other anchors
+  stay approximations pending ActionScript positioning rules.
+- `artPath` now uses full module-relative PNG paths: bitmap ids
+  repeat across gameui/hud-chat dumps, basenames alone can collide.
+- `client.enterWorld` passes `{playerName, playerLevel, job}` into
+  `UI_KEY`; Target renders only when target data is provided.
+
+Status: node 24 installed via wingate; `tsc --noEmit` clean and
+`npm run build` clean (dist/index-*.js). In-client verification done
+on local vite (Map 0 + UI scene via __evfClient hook):
+- roleheadskin renders top-left with live name/level, circular
+  portrait (build_portraits.py, transparency verified), TOP UP / STR
+  / POWER / CAVALRY / SHITUO RIDGE / GIFT PACK / RESTRAINT all
+  legible; no viewport clipping on any anchor; Target appears only
+  with target data (verified both states).
+- Phaser 4.2 WebGL rejects GeometryMask (setMask warning) — fixed by
+  pre-compositing circular portraits in Blender, no runtime mask.
+- 300-en needed a thin-outline + brighter-gradient second pass after
+  a large-size diagnostic proved the 5-glyph render (the tiny-composite
+  misread was discounted, not the asset).
+- Remaining baked Chinese lives in other components' art (Target 操作
+  button, TaskTrack 任務 headers, minimap 領取 clock, chat art) —
+  queued for their per-component passes, not this one.
+Pending: portrait circle pixel-fit vs emblem ring, narrow-name-box
+behavior for long names, real-gateway data binding, Alpha deploy.
+
+## 8. Phase B entry criteria
 1. Map gameui/hud-chat bitmaps to target regions 1/2/10/11 (portrait, orbs,
    action bar, chat) via decoder pass.
 2. Prove one-class idle/walk animation from source-grounded frames.

@@ -12,11 +12,11 @@
  *   stand as drawn. Full matrices on record in output/hud-frames.json.
  * - Base art: bitmap 212 (361x131) at (0,0), vector shape 213.
  * - Portrait photo is code-attached (no portrait placement in the SWF,
- *   same pattern as createUI badges). Circle geometry is APPROXIMATE:
- *   center (56,74) r34 estimated from the bitmap-212 emblem; the class
- *   portrait (create-ui stills A:32 B:16 C:24 D:1) is masked into it.
- *   Verify against the running screenshot before refining.
- * - tf0 name (edittext 288? no: 304) at (98,13.4): SimSun 14px #bbae8e,
+ *   same pattern as createUI badges). Pre-composited circular crops
+ *   (build_portraits.py, images-en/portrait-{job}.png) stand in for
+ *   the runtime photo: circle center (56,74) r34 is APPROXIMATE from
+ *   the bitmap-212 emblem — verify against the running screenshot.
+ * - tf0 name (edittext 304) at (98,13.4): SimSun 14px #bbae8e,
  *   centered, bounds 34x18, initial "100".
  * - tf1 level (edittext 288) at (132,43), above the qiangBtn: SimSun
  *   12px #c6b8a5, centered, bounds 110x18. Gateway exposes the role
@@ -47,8 +47,8 @@
  *   static art (non-interactive), gaps documented, not stubbed.
  * - Chinese label textfields are localized in-code (first English
  *   pass): CAVALRY / SHITUO RIDGE / GIFT PACK / RESTRAINT. Baked-art
- *   Chinese (214 儲值, 253 強, 300 戦闘力, VIP letters) still needs the
- *   Ultima3D/Blender rebuild — queued, not faked with overlay text.
+ *   Chinese rebuilt in Blender (images-en/, EN_PNG map): 214 TOP UP,
+ *   253 STR, 300 POWER; VIP letters were already Latin.
  *
  * Contextual visibility (from SWF structure, not aesthetics):
  * - ui.panel.Target renders ONLY when a target is provided. It has its
@@ -69,6 +69,16 @@ import Phaser from 'phaser';
 import hudLayout from '../../assets/hud-layout.json';
 
 export const UI_KEY = 'ui';
+
+/** Localized baked-art rebuilds (Blender, images-en/; SWF originals
+ *  preserved). Bitmap ids are per-dump, so only hud-chat roleheadskin
+ *  leaves are mapped here: 214 儲值 -> TOP UP, 253 強 -> STR,
+ *  300 戦闘力 label -> POWER. VIP letters need no rebuild (Latin). */
+const EN_PNG: Record<number, string> = {
+  214: 'ui/hud-chat/images-en/214-en.png',
+  253: 'ui/hud-chat/images-en/253-en.png',
+  300: 'ui/hud-chat/images-en/300-en.png',
+};
 
 /** Minimal target state the HUD will show; absent = panel hidden. */
 export interface UITarget {
@@ -112,11 +122,10 @@ const DIMS: Record<string, { w: number; h: number; ox: number; oy: number }> = {
   'ui.panel.Target': { w: 353, h: 98, ox: 0, oy: 0 },
 };
 
-/** Class portrait stills (create-ui bitmap ids by job). */
-const PORTRAIT_IMG: Record<string, number> = { A: 32, B: 16, C: 24, D: 1 };
-
-/** Portrait socket: APPROXIMATE circle from the bitmap-212 emblem.
- *  Verify against the running screenshot before refining. */
+/** Socket portraits: pre-composited circular head crops baked by
+ *  scripts/asset_tools/build_portraits.py (Phaser 4.2 WebGL rejects
+ *  GeometryMask via setMask, so runtime masking is out). Center/radius
+ *  still approximate from the bitmap-212 emblem: verify in-client. */
 const PORTRAIT_CX = 56;
 const PORTRAIT_CY = 74;
 const PORTRAIT_R = 34;
@@ -146,11 +155,17 @@ export class UIScene extends Phaser.Scene {
       for (const leaf of comp.art) {
         // Full module-relative path: bitmap ids repeat across gameui
         // and hud-chat dumps, so the basename alone can collide.
-        this.load.image(`hud-${key}-${leaf.bitmap}`, assetUrl(leaf.png));
+        const png = key === 'ui.panel.roleheadskin' && EN_PNG[leaf.bitmap] !== undefined
+          ? EN_PNG[leaf.bitmap]
+          : leaf.png;
+        this.load.image(`hud-${key}-${leaf.bitmap}`, assetUrl(png));
       }
     }
-    for (const [job, id] of Object.entries(PORTRAIT_IMG)) {
-      this.load.image(`ui-portrait-${job}`, assetUrl(`ui/create-ui/images/${id}-jpeg3.png`));
+    for (const job of ['A', 'B', 'C', 'D']) {
+      this.load.image(
+        `ui-portrait-${job}`,
+        assetUrl(`ui/hud-chat/images-en/portrait-${job}.png`),
+      );
     }
   }
 
@@ -205,13 +220,10 @@ export class UIScene extends Phaser.Scene {
    *  decoded from the DefineEditText tags; see module docstring). */
   private drawRoleheadData(data: UIProps): void {
     const serif = '"SimSun", "Songti SC", Georgia, serif';
-    if (data.job && PORTRAIT_IMG[data.job] !== undefined && this.textures.exists(`ui-portrait-${data.job}`)) {
-      const photo = this.add
+    if (data.job && this.textures.exists(`ui-portrait-${data.job}`)) {
+      this.add
         .image(PORTRAIT_CX, PORTRAIT_CY, `ui-portrait-${data.job}`)
         .setDisplaySize(PORTRAIT_R * 2, PORTRAIT_R * 2);
-      const maskShape = this.make.graphics({});
-      maskShape.fillCircle(PORTRAIT_CX, PORTRAIT_CY, PORTRAIT_R);
-      photo.setMask(maskShape.createGeometryMask());
     }
     if (data.playerName) {
       // tf0 (cid 304): centered on its 34x18 box at (98,13.4).
@@ -233,8 +245,8 @@ export class UIScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0.5);
     }
-    // Localized button labels (first English pass; baked-art Chinese
-    // on 214/253/300 still queued for the Ultima3D/Blender rebuild).
+    // Localized button labels (first English pass; baked-art handled
+    // via the EN_PNG map above).
     const label = (x: number, y: number, text: string, size: string, color: string): void => {
       this.add
         .text(x, y, text, { fontFamily: serif, fontSize: size, color })

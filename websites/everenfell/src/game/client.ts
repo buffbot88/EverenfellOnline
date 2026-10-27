@@ -412,7 +412,8 @@ export class PhaserClient {
     select?.events.off('startworld');
     select?.events.on('startworld', (picked: { id: string }) => {
       sound.click();
-      void this.enterWorld(picked.id);
+      const role = roles.find((entry) => entry.id === picked.id);
+      if (role) void this.enterWorld(role);
     });
     select?.events.off('gocreate');
     select?.events.on('gocreate', () => {
@@ -533,7 +534,7 @@ export class PhaserClient {
       }
       // START GAME goes straight into the world with the new character.
       if (created.role?.id) {
-        await this.enterWorld(created.role.id);
+        await this.enterWorld(created.role);
         return;
       }
       this.renderSelect(created.roles ?? [...existing]);
@@ -569,14 +570,14 @@ export class PhaserClient {
     return scene ?? null;
   }
 
-  private async enterWorld(roleId: string): Promise<void> {
+  private async enterWorld(role: RoleRef): Promise<void> {
     this.setStatusVisible(true);
     this.setStatus('Entering world…');
     try {
       const snapshot = (await this.gateway.request('world.snapshot', {
-        roleId,
+        roleId: role.id,
       })) as unknown as WorldSnapshot;
-      this.selfId = roleId;
+      this.selfId = role.id;
       this.clearViews();
       this.restartWorld();
       await this.waitForMap();
@@ -585,7 +586,12 @@ export class PhaserClient {
       // World + HUD reveal together only after the snapshot is applied;
       // a failed entry below stops both, never exposing bare gameplay.
       // (SceneManager has start/stop; launch lives on ScenePlugin.)
-      this.game?.scene.start(UI_KEY);
+      // Role data rides into the HUD so roleheadskin binds live values.
+      this.game?.scene.start(UI_KEY, {
+        playerName: role.name,
+        playerLevel: role.level,
+        job: role.job,
+      });
       this.movedUnsub?.();
       this.movedUnsub = this.gateway.onPush('actor.moved', (body) => {
         const id = String(body['id'] ?? '');
